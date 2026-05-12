@@ -323,6 +323,24 @@ export type ProofInvocationResult = {
 };
 
 /**
+ * Result of the "store" half of the deferred two-step apply flow.
+ *
+ * The `callAndProof` invokes `store_actions(actions)` on the pool with the
+ * proof attached — proof validation happens here so apply later runs without
+ * a proof. `actionsHash` is the key to pass to `apply_stored_actions`.
+ */
+export type DeferredStoreResult = {
+  /** Call + proof to submit via the user's account to commit the actions to storage. */
+  callAndProof: CallAndProof;
+  /** Hash that keys the stored entry — pass to apply_stored_actions later. */
+  actionsHash: string;
+  /** Server actions calldata (Span<ServerAction>) — same value embedded in callAndProof.call.calldata. */
+  serverActions: string[];
+  registry: PrivateRegistry;
+  warnings: Warning[];
+};
+
+/**
  * Simple interface for simple private transfer scenarios
  */
 export interface SimplePrivateTransfersInterface {
@@ -446,6 +464,29 @@ export interface PrivateTransfersInterface {
     invocation: ProofInvocationResult,
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult>;
+
+  /**
+   * Deferred apply — step 1.
+   *
+   * Proves the invocation against a recent block, computes the actions hash
+   * from the proof output, and returns a `CallAndProof` whose call is
+   * `store_actions(server_actions)` with the proof attached. The proof is
+   * validated on chain at store time; subsequent `apply_stored_actions` runs
+   * with no proof and no fee.
+   */
+  buildStoreCallFromInvocation(
+    invocation: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<DeferredStoreResult>;
+
+  /**
+   * Deferred apply — step 2.
+   *
+   * Builds a plain `apply_stored_actions(actions_hash)` Call. No proof or fee
+   * is needed because both were paid at store time. The returned ExecuteResult
+   * has an empty `proof` in `callAndProof`.
+   */
+  buildApplyStoredCall(actionsHash: import("starknet").BigNumberish): import("starknet").Call;
 
   /**
    * Clear the cached pool nonce so the next createProofInvocation/execute fetches a fresh one.

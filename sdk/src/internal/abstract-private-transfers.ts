@@ -5,10 +5,11 @@
  * leaving only the execute method as abstract for subclasses to implement.
  */
 
-import type { BlockIdentifier } from "starknet";
+import type { BigNumberish, BlockIdentifier, Call } from "starknet";
 import type {
   Actions,
   Channel,
+  DeferredStoreResult,
   DiscoveryProviderInterface,
   ExecuteOptions,
   ExecuteResult,
@@ -124,4 +125,19 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
     invocation: ProofInvocationResult,
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult>;
+
+  /**
+   * Deferred apply step 1 — prove and build the `store_actions` CallAndProof.
+   * The proof is validated on chain at store time.
+   */
+  abstract buildStoreCallFromInvocation(
+    invocation: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<DeferredStoreResult>;
+
+  /**
+   * Deferred apply step 2 — build a plain `apply_stored_actions(hash)` Call.
+   * No proof or fee.
+   */
+  abstract buildApplyStoredCall(actionsHash: BigNumberish): Call;
 }

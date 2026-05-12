@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Deferred-apply two-step flow on `PrivateTransfersInterface`:
+  - `buildStoreCallFromInvocation(invocation)` — compiles client actions on chain via the pool's `compile_actions` view and returns a `store_actions` Call (no proof, no fee).
+  - `executeStoredApplyWithInvocation(invocation, provingBlockId?)` — proves the invocation and returns a `CallAndProof` whose call is `apply_stored_actions(actions_hash)` with the proof attached.
+  - New `DeferredStoreResult` type exported from `interfaces`.
+  - New `computeMessageHash` helper exported from `utils/proof-facts` so consumers can derive the actions hash deterministically.
+
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.

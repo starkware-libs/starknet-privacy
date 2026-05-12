@@ -21,8 +21,10 @@ import { InfoPanel } from "./components/InfoPanel.tsx";
 import { ActionPanel } from "./components/ActionPanel.tsx";
 import { TransactionBuilder } from "./components/TransactionBuilder.tsx";
 import { StatusBar } from "./components/StatusBar.tsx";
+import { PendingStoredPanel } from "./components/PendingStoredPanel.tsx";
 import { ServiceHealthBar } from "./components/ServiceHealthBar.tsx";
 import { useTransactionBuilder } from "./hooks/useTransactionBuilder.ts";
+import { usePendingStored } from "./hooks/usePendingStored.ts";
 import { useLastTxBlockNumber } from "./hooks/useLastTxBlock.ts";
 import { useServiceHealth } from "./hooks/useServiceHealth.ts";
 import { DefiPanel } from "./components/DefiPanel.tsx";
@@ -86,6 +88,18 @@ export function App() {
     if (isMainnetChain) return;
     setOhttpEnabled(enabled);
     localStorage.setItem("ohttpEnabled", String(enabled));
+  }, []);
+
+  // Deferred apply: when enabled, the builder splits each action into a
+  // store_actions tx (no proof) followed by an apply_stored_actions tx (with proof).
+  const [deferredApplyEnabled, setDeferredApplyEnabled] = useState(() => {
+    const stored = localStorage.getItem("deferredApplyEnabled");
+    return stored === "true";
+  });
+
+  const toggleDeferredApply = useCallback((enabled: boolean) => {
+    setDeferredApplyEnabled(enabled);
+    localStorage.setItem("deferredApplyEnabled", String(enabled));
   }, []);
 
   // On mainnet, accounts live in memory only — no localStorage, no URL
@@ -262,6 +276,12 @@ export function App() {
   }, [refresh]);
 
   const {
+    entries: pendingStored,
+    add: addPendingStored,
+    remove: removePendingStored,
+  } = usePendingStored();
+
+  const {
     status,
     register,
     mint,
@@ -272,19 +292,23 @@ export function App() {
     avnuSwap,
     vesuSupply,
     vesuWithdraw,
+    applyStored,
   } = useTransactions(
-      provider,
-      transfers,
-      userAccount,
-      adminAccount,
-      activeAccount?.address,
-      poolAddress,
-      txConfig,
-      refreshAll,
-      refreshBalances,
-      lastTxBlockNumberRef,
-      updateLastTxBlockNumber
-    );
+    provider,
+    transfers,
+    userAccount,
+    adminAccount,
+    activeAccount?.address,
+    poolAddress,
+    txConfig,
+    refreshAll,
+    refreshBalances,
+    lastTxBlockNumberRef,
+    updateLastTxBlockNumber,
+    deferredApplyEnabled,
+    addPendingStored,
+    removePendingStored
+  );
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
     provider,
@@ -295,7 +319,9 @@ export function App() {
     txConfig,
     refreshAll,
     lastTxBlockNumberRef,
-    updateLastTxBlockNumber
+    updateLastTxBlockNumber,
+    deferredApplyEnabled,
+    addPendingStored
   );
 
   const serviceHealth = useServiceHealth(provider, effectiveConfig);
@@ -346,7 +372,10 @@ export function App() {
       />
       {activeAccount && (
         <>
-          <StatusBar status={activeView === "builder" ? builderStatus : status} />
+          <StatusBar
+            status={activeView === "builder" ? builderStatus : status}
+            explorerUrl={config.explorerUrl}
+          />
           <div className="main-layout">
             <InfoPanel
               state={state}
@@ -423,13 +452,35 @@ export function App() {
                   vesu={config.vesu}
                   paymasterAvailable={Boolean(txConfig.paymasterUrl)}
                   onSwap={swap}
-                  onAvnuSwap={avnuSwap}
+                  // AVNU is a mainnet aggregator — it returns "no route" on Sepolia.
+                  // Hide the form on testnet so users aren't stuck on a broken UI.
+                  onAvnuSwap={isMainnetChain ? avnuSwap : undefined}
                   onVesuSupply={vesuSupply}
                   onVesuWithdraw={vesuWithdraw}
                 />
               )}
+              <PendingStoredPanel
+                entries={pendingStored}
+                activeAddress={activeAccount?.address}
+                explorerUrl={config.explorerUrl}
+                pending={status.pending || builderStatus.pending}
+                onApply={applyStored}
+                onDiscard={removePendingStored}
+              />
               <div className="config-island">
                 <h3>Config</h3>
+                <label
+                  className="builder-checkbox"
+                  title="Execute only runs store_actions (with proof). Use the Pending stored panel to trigger apply_stored_actions later."
+                >
+                  <input
+                    type="checkbox"
+                    checked={deferredApplyEnabled}
+                    onChange={(e) => toggleDeferredApply(e.target.checked)}
+                  />
+                  Deferred apply
+                  <span className="chip">2-step</span>
+                </label>
                 <label
                   className="builder-checkbox"
                   title={isMainnetChain ? "OHTTP is enforced on mainnet" : undefined}
@@ -447,15 +498,25 @@ export function App() {
                 {config.paymasterUrl && (() => {
                   const tokensWithBalance = state.tokenBalances.filter((tb) => tb.private > 0n);
                   const hasPrivateBalance = tokensWithBalance.length > 0;
+                  const paymasterDisabled = !hasPrivateBalance || deferredApplyEnabled;
+                  const paymasterTooltip = deferredApplyEnabled
+                    ? "Paymaster is bypassed in deferred-apply mode — store_actions / apply_stored_actions go via direct execution."
+                    : !hasPrivateBalance
+                      ? "Paymaster needs a private balance to draw the fee from."
+                      : undefined;
                   return (
-                    <label className="builder-checkbox">
+                    <label
+                      className="builder-checkbox"
+                      title={paymasterTooltip}
+                    >
                       <input
                         type="checkbox"
-                        checked={paymasterEnabled && hasPrivateBalance}
+                        checked={paymasterEnabled && hasPrivateBalance && !deferredApplyEnabled}
                         onChange={(e) => togglePaymaster(e.target.checked)}
-                        disabled={!hasPrivateBalance}
+                        disabled={paymasterDisabled}
                       />
                       Paymaster
+                      {deferredApplyEnabled && <span className="chip">bypassed</span>}
                       {hasPrivateBalance ? (
                         <select
                           value={feeToken ?? ""}

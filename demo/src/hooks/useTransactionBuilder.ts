@@ -32,6 +32,18 @@ function base64ByteLength(base64: string): number {
   return (base64.length * 3) / 4 - padding;
 }
 
+import type { PendingStored } from "./usePendingStored.ts";
+
+function buildOperationsLabel(operations: BuilderOperation[]): string {
+  const parts: string[] = [];
+  for (const op of operations) {
+    if (op.operationType === "surplus") continue;
+    const amount = op.amount ? op.amount : "?";
+    parts.push(`${op.operationType} ${amount}`);
+  }
+  return parts.length ? parts.join(", ") : "deferred batch";
+}
+
 export function useTransactionBuilder(
   provider: RpcProvider | undefined,
   transfers: PrivateTransfersInterface | undefined,
@@ -41,7 +53,9 @@ export function useTransactionBuilder(
   config: AppConfig,
   onSettled: () => void,
   lastTxBlockNumberRef: RefObject<number | undefined>,
-  updateLastTxBlockNumber: (blockNumber: number) => void
+  updateLastTxBlockNumber: (blockNumber: number) => void,
+  deferredApplyEnabled: boolean,
+  addPendingStored: (entry: PendingStored) => void
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -214,6 +228,54 @@ export function useTransactionBuilder(
             const invocation = await timeline.step("Build transaction", () =>
               chain.createProofInvocation({ provingBlockId })
             );
+
+            // Deferred mode: only run store_actions (with proof). Apply is a separate
+            // user-triggered action — see `applyStored` returned by this hook.
+            // Paymaster is bypassed in this branch.
+            if (deferredApplyEnabled) {
+              const deferred = await timeline.step("Prove + build store", () =>
+                transfers.buildStoreCallFromInvocation(invocation, provingBlockId)
+              );
+              const storeProofDetails = deferred.callAndProof.proof.proofFacts?.length
+                ? {
+                    proofFacts: deferred.callAndProof.proof.proofFacts,
+                    proof: deferred.callAndProof.proof.data,
+                  }
+                : {};
+              const storeTx = await timeline.step("Submit store_actions", () =>
+                userAccount.execute(deferred.callAndProof.call, {
+                  tip: 0n,
+                  ...storeProofDetails,
+                })
+              );
+              const storeReceipt = await timeline.step("Wait for store receipt", () =>
+                provider.waitForTransaction(storeTx.transaction_hash, WAIT_OPTIONS)
+              );
+              if (!storeReceipt.isSuccess()) {
+                throw new Error(`store_actions reverted: ${JSON.stringify(storeReceipt)}`);
+              }
+              updateLastTxBlockNumber(storeReceipt.block_number);
+              addPendingStored({
+                actionsHash: deferred.actionsHash,
+                label: buildOperationsLabel(operations),
+                createdAt: Date.now(),
+                storeTxHash: storeTx.transaction_hash,
+                ownerAddress: activeAddress,
+              });
+              const proofSizeBytes = deferred.callAndProof.proof.data
+                ? base64ByteLength(deferred.callAndProof.proof.data)
+                : null;
+              setStatus({
+                pending: false,
+                action: null,
+                lastTxHash: storeTx.transaction_hash,
+                lastError: null,
+                proofSizeBytes,
+                timeline,
+              });
+              return;
+            }
+
             const { callAndProof } = await timeline.step("Prove", () =>
               transfers.executeWithInvocation(invocation, provingBlockId)
             );
@@ -296,7 +358,7 @@ export function useTransactionBuilder(
         }
       })();
     },
-    [userAccount, transfers, provider, activeAddress, config, poolAddress]
+    [userAccount, transfers, provider, activeAddress, config, poolAddress, deferredApplyEnabled]
   );
 
   return { status, executeBatch };

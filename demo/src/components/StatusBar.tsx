@@ -28,9 +28,10 @@ function formatProofSize(bytes: number): string {
 
 type Props = {
   status: TransactionStatus;
+  explorerUrl?: string;
 };
 
-export function StatusBar({ status }: Props) {
+export function StatusBar({ status, explorerUrl }: Props) {
   const [showTimeline, setShowTimeline] = useState(false);
 
   if (!status.pending && !status.lastTxHash && !status.lastError) return null;
@@ -40,7 +41,18 @@ export function StatusBar({ status }: Props) {
       {status.pending && <span className="pending">{status.action ?? "Transaction"}...</span>}
       {status.lastTxHash && (
         <span className="success">
-          Tx: <code>{status.lastTxHash}</code>
+          Tx:{" "}
+          {explorerUrl ? (
+            <a
+              href={`${explorerUrl.replace(/\/$/, "")}/tx/${status.lastTxHash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <code>{status.lastTxHash}</code>
+            </a>
+          ) : (
+            <code>{status.lastTxHash}</code>
+          )}
           {status.proofSizeBytes != null && (
             <span className="proof-size">Proof: {formatProofSize(status.proofSizeBytes)}</span>
           )}

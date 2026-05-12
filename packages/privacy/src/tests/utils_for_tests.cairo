@@ -1644,6 +1644,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn store_actions(self: @PrivacyCfg, actions: Span<ServerAction>) -> felt252 {
+        let caller = constants::PAYMASTER;
+        self._fund_fee(:caller);
+        self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
         self.server.store_actions(:actions)
     }
 
@@ -1651,31 +1655,27 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_store_actions(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<felt252, Array<felt252>> {
-        self.safe_server.store_actions(:actions)
-    }
-
-    fn apply_stored_actions(self: @PrivacyCfg, actions_hash: felt252, actions: Span<ServerAction>) {
         let caller = constants::PAYMASTER;
         self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        self.safe_server.store_actions(:actions)
+    }
+
+    /// Like `safe_store_actions` but without cheating the proof facts.
+    #[feature("safe_dispatcher")]
+    fn safe_store_actions_without_cheat(
+        self: @PrivacyCfg, actions: Span<ServerAction>,
+    ) -> Result<felt252, Array<felt252>> {
+        self.safe_server.store_actions(:actions)
+    }
+
+    fn apply_stored_actions(self: @PrivacyCfg, actions_hash: felt252) {
         self.server.apply_stored_actions(:actions_hash);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_stored_actions(
-        self: @PrivacyCfg, actions_hash: felt252, actions: Span<ServerAction>,
-    ) -> Result<(), Array<felt252>> {
-        let caller = constants::PAYMASTER;
-        self._fund_fee(:caller);
-        self.cheat_proof_facts(:actions);
-        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.safe_server.apply_stored_actions(:actions_hash)
-    }
-
-    /// Like `safe_apply_stored_actions` but without cheating the proof facts.
-    #[feature("safe_dispatcher")]
-    fn safe_apply_stored_actions_without_cheat(
         self: @PrivacyCfg, actions_hash: felt252,
     ) -> Result<(), Array<felt252>> {
         self.safe_server.apply_stored_actions(:actions_hash)

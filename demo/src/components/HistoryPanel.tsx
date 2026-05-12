@@ -99,7 +99,18 @@ export function HistoryPanel({
               <span className="history-field">
                 <span className="history-label">Tx</span>
                 <span className="history-value">
-                  {transaction.transactionHash}
+                  {explorerUrl ? (
+                    <a
+                      href={`${explorerUrl.replace(/\/$/, "")}/tx/${transaction.fullTransactionHash}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={(event) => event.stopPropagation()}
+                    >
+                      {transaction.transactionHash}
+                    </a>
+                  ) : (
+                    transaction.transactionHash
+                  )}
                 </span>
               </span>
               <span className="history-field history-balance-field">

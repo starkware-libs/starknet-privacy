@@ -189,10 +189,21 @@ export function DefiPanel({
   const swapPool = findEkuboPool(ekubo, swapFromToken, swapToToken);
   const toTokenDecimals =
     tokens.find((t) => t.address === swapToToken)?.decimals ?? 18;
-  const expectedOutHuman =
-    poolPrice && swapAmount ? parseFloat(swapAmount) * poolPrice.price : 0;
+  // When the Core contract doesn't expose `get_pool_price` (mock AMMs) we
+  // can't compute a real expected output. Fall back to 1:1 so the UI shows
+  // something useful and the user can submit; the mock executor's `swap`
+  // returns deterministic amounts and the on-chain slippage floor is set
+  // to 0 in this case (see swap-submit title hint).
+  const fromAmountNumber = swapAmount ? parseFloat(swapAmount) : 0;
+  const expectedOutHuman = poolPrice
+    ? fromAmountNumber * poolPrice.price
+    : swapPool
+      ? fromAmountNumber
+      : 0;
   const minOutHuman =
-    expectedOutHuman > 0 ? (expectedOutHuman * (10000 - slippageBps)) / 10000 : 0;
+    poolPrice && expectedOutHuman > 0
+      ? (expectedOutHuman * (10000 - slippageBps)) / 10000
+      : 0;
 
   function computeMinReceivedRaw(): bigint {
     if (minOutHuman <= 0) return 0n;
@@ -445,17 +456,25 @@ export function DefiPanel({
             </button>
           </div>
           <div className="swap-box">
-            <label className="swap-label">To (min)</label>
+            <label className="swap-label">{poolPrice ? "To (min)" : "To (est.)"}</label>
             <div className="swap-row">
               <input
                 type="text"
                 readOnly
-                value={minOutHuman > 0 ? minOutHuman.toPrecision(6) : ""}
+                value={
+                  minOutHuman > 0
+                    ? minOutHuman.toPrecision(6)
+                    : expectedOutHuman > 0
+                      ? expectedOutHuman.toPrecision(6)
+                      : ""
+                }
                 placeholder="0.0"
                 title={
-                  expectedOutHuman > 0
+                  poolPrice && expectedOutHuman > 0
                     ? `Minimum received after ${slippageBps / 100}% slippage (expected ${expectedOutHuman.toPrecision(6)})`
-                    : undefined
+                    : expectedOutHuman > 0
+                      ? "Estimated output assuming a 1:1 mock pool. Actual output may differ."
+                      : undefined
                 }
               />
               <TokenSelect tokens={swapToOptions} value={swapToToken} onChange={setSwapToToken} />
@@ -489,14 +508,13 @@ export function DefiPanel({
               !sendCapable ||
               swapFromToken === swapToToken ||
               !swapAmount ||
-              !swapPool ||
-              !poolPrice
+              !swapPool
             }
             title={
               !swapPool && swapFromToken !== swapToToken
                 ? "No pool for this pair"
                 : !poolPrice
-                  ? "Waiting for pool price to compute slippage floor"
+                  ? "No pool price available — submitting with no slippage floor (minimum_received=0)"
                   : disabledTitle
             }
           >

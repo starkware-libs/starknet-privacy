@@ -4,6 +4,7 @@
 
 import type {
   Actions,
+  DeferredStoreResult,
   ExecuteOptions,
   ExecuteResult,
   ProofProviderInterface,
@@ -13,13 +14,14 @@ import type {
   ProofInvocationResult,
   ProvingBlockId,
 } from "../interfaces.js";
-import type { Account, TypedContractV2 } from "starknet";
+import type { Account, BigNumberish, Call, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
+import { computeMessageHash } from "../utils/proof-facts.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -106,6 +108,64 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       },
       registry,
       warnings,
+    };
+  }
+
+  /**
+   * Deferred apply — step 1.
+   *
+   * Proves the invocation and returns a CallAndProof for
+   * `store_actions(server_actions)` with proof attached. The proof is validated
+   * on chain at store time so the later `apply_stored_actions` call is a plain
+   * tx with no proof.
+   */
+  async buildStoreCallFromInvocation(
+    { invocation, registry, warnings }: ProofInvocationResult,
+    provingBlockId?: ProvingBlockId
+  ): Promise<DeferredStoreResult> {
+    const proof = await this.params.provingProvider.prove(invocation, provingBlockId);
+
+    // proof.output = [class_hash, ...serialized_actions]. store_actions takes Span<ServerAction>.
+    const serverActionsCalldata = proof.output.slice(1);
+    const classHash = proof.output[0];
+    const actionsHash = toHex(
+      computeMessageHash(
+        toBigInt(this.params.poolContractAddress),
+        classHash,
+        serverActionsCalldata
+      )
+    );
+
+    debugLog("private-transfers", "buildStoreCall", "parsed server actions", () =>
+      this.params.proofInvocationFactory.parseOutput(serverActionsCalldata)
+    );
+
+    return {
+      callAndProof: {
+        call: {
+          contractAddress: toHex(this.params.poolContractAddress),
+          entrypoint: "store_actions",
+          calldata: serverActionsCalldata,
+        },
+        proof,
+      },
+      actionsHash,
+      serverActions: serverActionsCalldata,
+      registry,
+      warnings,
+    };
+  }
+
+  /**
+   * Deferred apply — step 2.
+   *
+   * Builds a plain `apply_stored_actions(actions_hash)` Call. No proof or fee.
+   */
+  buildApplyStoredCall(actionsHash: BigNumberish): Call {
+    return {
+      contractAddress: toHex(this.params.poolContractAddress),
+      entrypoint: "apply_stored_actions",
+      calldata: [toHex(actionsHash)],
     };
   }
 }

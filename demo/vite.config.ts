@@ -31,6 +31,10 @@ export default defineConfig({
         sdkDist,
         "internal/indexer-discovery.js",
       ),
+      "starknet-sdk/dist/internal/proof-invocation-factory.js": resolve(
+        sdkDist,
+        "internal/proof-invocation-factory.js",
+      ),
     },
   },
 });

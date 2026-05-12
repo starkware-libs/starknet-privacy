@@ -377,6 +377,61 @@ input[type="number"] {
   border-top: 1px solid #30363d;
 }
 
+.pending-stored-panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  background: rgba(56, 139, 253, 0.06);
+}
+
+.pending-stored-panel h3 {
+  margin: 0 0 4px 0;
+  font-size: 14px;
+}
+
+.pending-stored-hint {
+  margin: 0 0 8px 0;
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.pending-stored-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pending-stored-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 13px;
+}
+
+.pending-stored-label {
+  font-weight: 500;
+}
+
+.pending-stored-hash,
+.pending-stored-time {
+  color: #8b949e;
+  font-size: 12px;
+}
+
+.pending-stored-link {
+  font-size: 12px;
+}
+
+.pool-action-button.secondary {
+  background: transparent;
+  border: 1px solid #30363d;
+}
+
 .action-form {
   margin-bottom: 12px;
   padding-bottom: 12px;

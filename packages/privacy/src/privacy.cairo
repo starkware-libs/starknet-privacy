@@ -742,6 +742,9 @@ pub mod Privacy {
         fn store_actions(ref self: ContractState, actions: Span<ServerAction>) -> felt252 {
             self.reentrancy_guard.start();
             self.pausable.assert_not_paused();
+            // The proof is validated here so the apply step does not need any proof attached.
+            self.validate_proof(:actions);
+            self.collect_fee();
 
             let actions_hash = compute_message_hash(
                 :actions, contract_address: get_contract_address(),
@@ -784,10 +787,7 @@ pub mod Privacy {
                 .expect(errors::INVALID_STORED_ACTIONS);
             assert(serialized_span.is_empty(), errors::INVALID_STORED_ACTIONS);
 
-            // The proof is validated here (not at store time), so the proof may be issued any
-            // time after store_actions, against a recent block at apply time.
-            self.validate_proof(:actions);
-            self.collect_fee();
+            // No proof or fee at apply time — both were paid at store time.
 
             // Mark as applied before applying, so any reentrancy via Invoke cannot replay.
             self.stored_actions_applied.entry(actions_hash).write(true);
@@ -1033,6 +1033,20 @@ pub mod Privacy {
 
         fn get_proof_validity_blocks(self: @ContractState) -> u64 {
             self.proof_validity_blocks.read()
+        }
+
+        fn get_stored_actions(self: @ContractState, actions_hash: felt252) -> Span<felt252> {
+            let entry = self.stored_actions.entry(actions_hash);
+            let length = entry.len();
+            let mut serialized: Array<felt252> = array![];
+            for i in 0..length {
+                serialized.append(entry.at(i).read());
+            }
+            serialized.span()
+        }
+
+        fn is_stored_actions_applied(self: @ContractState, actions_hash: felt252) -> bool {
+            self.stored_actions_applied.read(actions_hash)
         }
     }
 

@@ -537,13 +537,12 @@ pub trait IServer<T> {
     ///   are rejected by the ReentrancyGuard component.
     fn apply_actions(ref self: T, actions: Span<ServerAction>);
 
-    /// Stores a set of server actions for later application without proof or fee.
+    /// Validates the proof and stores a set of server actions for later application.
     ///
-    /// Serializes `actions` into storage keyed by the L1 message hash for that action set. Proof
-    /// validation and fee collection happen at
-    /// [`apply_stored_actions`](privacy::interface::IServer::apply_stored_actions) time, so the
-    /// caller does NOT need a valid proof at store time. This enables a deferred flow where the
-    /// proof is generated against a recent block only when applying.
+    /// Runs the same gate as [`apply_actions`](privacy::interface::IServer::apply_actions) — proof
+    /// validation against the L1 message hash and fee collection — but instead of executing the
+    /// actions, it serializes them into storage keyed by the message hash. The proof is required
+    /// here because apply time has no access to fresh proof facts (it only takes the hash).
     ///
     /// #### Parameters
     /// - `actions` (`Span<`[`ServerAction`](privacy::actions::ServerAction)`>`): The list of server
@@ -555,6 +554,7 @@ pub trait IServer<T> {
     ///
     /// #### Preconditions
     /// - The contract must not be paused.
+    /// - `proof_facts` in the TX info must be valid for `actions` (same checks as `apply_actions`).
     /// - No prior `store_actions` call for the same actions hash with a pending entry.
     /// - The actions hash must not have been already applied via `apply_stored_actions`.
     ///
@@ -562,6 +562,8 @@ pub trait IServer<T> {
     /// - [`ActionsStored`](privacy::events::ActionsStored): With the actions hash.
     ///
     /// #### Reverts
+    /// - All proof-validation errors that
+    ///   [`apply_actions`](privacy::interface::IServer::apply_actions) raises.
     /// - [`ACTIONS_ALREADY_STORED`](privacy::errors::ACTIONS_ALREADY_STORED): If the actions hash
     ///   already has a non-empty stored entry.
     /// - [`STORED_ACTIONS_ALREADY_APPLIED`](privacy::errors::STORED_ACTIONS_ALREADY_APPLIED): If
@@ -571,11 +573,11 @@ pub trait IServer<T> {
     /// - Any address can call this function.
     fn store_actions(ref self: T, actions: Span<ServerAction>) -> felt252;
 
-    /// Validates the proof and applies a previously stored set of server actions.
+    /// Applies a previously stored set of server actions without proof or fee.
     ///
     /// Loads actions stored by [`store_actions`](privacy::interface::IServer::store_actions),
-    /// validates the proof in `proof_facts` against those actions, collects the fee, then
-    /// executes the actions. After application, the stored entry is drained and the hash is
+    /// deserializes them, and executes them. No proof or fee is required because both were paid
+    /// at store time. After application, the stored entry is drained and the hash is
     /// permanently marked as applied to prevent replay.
     ///
     /// #### Parameters
@@ -586,7 +588,6 @@ pub trait IServer<T> {
     /// - The contract must not be paused.
     /// - A non-empty entry must exist at `actions_hash`.
     /// - The hash must not have been previously applied.
-    /// - `proof_facts` in the TX info must be valid for the stored actions.
     ///
     /// #### Events Emitted
     /// - Events emitted by the applied actions (same as `apply_actions`).
@@ -599,8 +600,6 @@ pub trait IServer<T> {
     ///   the hash was already applied.
     /// - [`INVALID_STORED_ACTIONS`](privacy::errors::INVALID_STORED_ACTIONS): If the stored bytes
     ///   cannot be deserialized into `Span<ServerAction>`.
-    /// - All proof-validation errors that
-    ///   [`apply_actions`](privacy::interface::IServer::apply_actions) raises.
     /// - Any error that the underlying server actions would raise.
     ///
     /// #### Access Control
@@ -762,6 +761,29 @@ pub trait IViews<T> {
     /// #### Returns
     /// - (`u64`): The number of blocks that a proof is valid for.
     fn get_proof_validity_blocks(self: @T) -> u64;
+
+    /// Returns the raw serialized actions stored under the given hash.
+    ///
+    /// Reads from the pending entry written by
+    /// [`store_actions`](privacy::interface::IServer::store_actions). The returned span is the
+    /// Cairo Serde of `Span<ServerAction>` — empty when nothing is stored under this hash (either
+    /// never stored, or already applied and drained).
+    ///
+    /// #### Parameters
+    /// - `actions_hash` (`felt252`): The actions hash returned by `store_actions`.
+    ///
+    /// #### Returns
+    /// - (`Span<felt252>`): The raw serialized actions, or an empty span if no entry exists.
+    fn get_stored_actions(self: @T, actions_hash: felt252) -> Span<felt252>;
+
+    /// Returns whether a stored-actions entry for the given hash has already been applied.
+    ///
+    /// #### Parameters
+    /// - `actions_hash` (`felt252`): The actions hash returned by `store_actions`.
+    ///
+    /// #### Returns
+    /// - (`bool`): True iff the hash was consumed by `apply_stored_actions`.
+    fn is_stored_actions_applied(self: @T, actions_hash: felt252) -> bool;
 }
 
 #[starknet::interface]

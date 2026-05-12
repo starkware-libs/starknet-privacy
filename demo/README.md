@@ -8,15 +8,39 @@ Developer-facing demo app for interacting with the privacy pool on StarkNet inte
 
 ## Setup
 
+For the **deferred-apply** demo on Sepolia, no env editing is needed —
+`demo/.env.testnet` is committed with the pool, RPC, indexer, prover, and
+explorer URLs already filled in:
+
 ```bash
-# Build the SDK (demo links to it via file:../sdk)
+# Build the SDK once (demo links to it via file:../sdk)
 cd sdk && npm install && npm run build && cd ..
 
 cd demo
-cp .env.example .env.testnet.local       # fill in testnet addresses/keys
-cp .env.mainnet.example .env.mainnet.local  # fill in mainnet addresses (for mainnet runs)
 npm install
+npm run dev          # http://localhost:5173 — uses .env.testnet
 ```
+
+Then click **Import** in the UI and paste a JSON array of accounts:
+
+```json
+[{"name":"Me","address":"0x...","privateKey":"0x..."}]
+```
+
+You're done — Mint / Deposit / Transfer / Withdraw work against the
+deferred-apply pool on Sepolia.
+
+### Customising the config
+
+Anything in `.env.testnet.local` (gitignored) overrides `.env.testnet`.
+Typical reasons to add it:
+
+- Point at a different pool: set `VITE_POOL_ADDRESS` + `VITE_POOL_CLASS_HASH`.
+- Use a different RPC: set `VITE_RPC_URL`.
+- Enable the AVNU paymaster: set `VITE_PAYMASTER_URL`, `VITE_PAYMASTER_FEE_TOKEN`, `VITE_AVNU_API_KEY`.
+
+For mainnet, mode is `mainnet` and the corresponding files are
+`.env.mainnet` / `.env.mainnet.local` — see `.env.mainnet.example`.
 
 ### Env file layout (strict mode isolation)
 
@@ -26,7 +50,8 @@ are **not** used for chain-specific values:
 
 | File | Loaded when | Use for |
 |------|-------------|---------|
-| `.env.testnet.local` | `dev`, `build:testnet` | Your local testnet config |
+| `.env.testnet` | `dev`, `build:testnet` | Tracked baseline — works out of the box |
+| `.env.testnet.local` | `dev`, `build:testnet` | Your personal overrides (gitignored) |
 | `.env.mainnet.local` | `dev:mainnet`, `build:mainnet`, `preview:mainnet` | Your local mainnet config |
 | `.env.example` | never | Reference schema (tracked in git) |
 | `.env.mainnet.example` | never | Mainnet reference schema (tracked in git) |

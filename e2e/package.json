@@ -12,6 +12,7 @@
     "scarb:build:vesu": "cd contracts/vesu && asdf exec scarb build",
     "build:contracts": "npm run scarb:build && npm run scarb:build:vesu",
 "declare-class": "tsx --env-file=.env scripts/declare-class.ts",
+    "deploy-privacy-pool": "tsx --env-file=.env scripts/deploy-privacy-pool.ts",
     "deploy-accounts": "tsx --env-file=.env scripts/deploy-accounts.ts",
     "load-test-discovery": "tsx --env-file=.env scripts/load-test-discovery.ts",
     "deploy-vesu": "tsx --env-file=.env --env-file=.env.deployed scripts/deploy-vesu.ts",

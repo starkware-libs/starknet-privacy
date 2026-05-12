@@ -55,7 +55,7 @@ function computeVirtualOsConfigHash(
  * Compute the message hash matching Cairo's _compute_message_hash:
  *   `poseidon([pool_address, 0, payload_len, class_hash, ...serialized_actions])`
  */
-function computeMessageHash(
+export function computeMessageHash(
   poolAddress: BigNumberish,
   poolClassHash: BigNumberish,
   serverActionsCalldata: string[]

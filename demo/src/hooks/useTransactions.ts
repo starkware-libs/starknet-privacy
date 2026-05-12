@@ -13,6 +13,7 @@ import {
   paymasterExecuteApplyAction,
   toPaymasterCall,
 } from "../paymaster.ts";
+import type { PendingStored } from "./usePendingStored.ts";
 
 const WAIT_OPTIONS = {
   successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
@@ -126,7 +127,12 @@ async function buildProveSubmit(
   timeline: Timeline,
   userAccount: Account,
   provider: RpcProvider,
-  lastTxBlockNumber: number | undefined
+  lastTxBlockNumber: number | undefined,
+  deferredOptions?: {
+    label: string;
+    ownerAddress: string;
+    addPendingStored: (entry: PendingStored) => void;
+  }
 ): Promise<{ txHash: string; proofSizeBytes?: number; blockNumber: number }> {
   addFeeWithdraw(builder, feeAction);
 
@@ -135,6 +141,44 @@ async function buildProveSubmit(
   const invocation = await timeline.step("Build transaction", () =>
     builder.createProofInvocation({ provingBlockId })
   );
+
+  // Deferred path: store_actions only. Paymaster is bypassed.
+  if (deferredOptions) {
+    const deferred = await timeline.step("Prove + build store", () =>
+      transfers.buildStoreCallFromInvocation(invocation, provingBlockId)
+    );
+    const storeProofDetails = deferred.callAndProof.proof.proofFacts?.length
+      ? {
+          proofFacts: deferred.callAndProof.proof.proofFacts,
+          proof: deferred.callAndProof.proof.data,
+        }
+      : {};
+    const storeTx = await timeline.step("Submit store_actions", () =>
+      userAccount.execute(deferred.callAndProof.call, { tip: 0n, ...storeProofDetails })
+    );
+    const storeReceipt = await timeline.step("Wait for store receipt", () =>
+      provider.waitForTransaction(storeTx.transaction_hash, WAIT_OPTIONS)
+    );
+    if (!storeReceipt.isSuccess()) {
+      throw new Error(`store_actions reverted: ${JSON.stringify(storeReceipt)}`);
+    }
+    deferredOptions.addPendingStored({
+      actionsHash: deferred.actionsHash,
+      label: deferredOptions.label,
+      createdAt: Date.now(),
+      storeTxHash: storeTx.transaction_hash,
+      ownerAddress: deferredOptions.ownerAddress,
+    });
+    const proofSizeBytes = deferred.callAndProof.proof.data
+      ? base64ByteLength(deferred.callAndProof.proof.data)
+      : undefined;
+    return {
+      txHash: storeTx.transaction_hash,
+      proofSizeBytes,
+      blockNumber: storeReceipt.block_number,
+    };
+  }
+
   const { callAndProof } = await timeline.step("Prove", () =>
     transfers.executeWithInvocation(invocation, provingBlockId)
   );
@@ -196,7 +240,10 @@ export function useTransactions(
   onSettled: () => void,
   onBalancesChanged: (() => Promise<void>) | undefined,
   lastTxBlockNumberRef: RefObject<number | undefined>,
-  updateLastTxBlockNumber: (blockNumber: number) => void
+  updateLastTxBlockNumber: (blockNumber: number) => void,
+  deferredApplyEnabled: boolean,
+  addPendingStored: (entry: PendingStored) => void,
+  removePendingStored: (actionsHash: string) => void
 ) {
   const [status, setStatus] = useState<TransactionStatus>({
     pending: false,
@@ -216,6 +263,11 @@ export function useTransactions(
     () => new Map(config.tokens.map((t) => [t.address, t.decimals])),
     [config.tokens]
   );
+
+  function deferredOptionsFor(label: string) {
+    if (!deferredApplyEnabled || !activeAddress) return undefined;
+    return { label, ownerAddress: activeAddress, addPendingStored };
+  }
 
   function scaleAmount(token: string, humanAmount: string): bigint {
     const decimals = decimalsByToken.get(token) ?? 0;
@@ -290,10 +342,22 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor("Register")
         );
       }),
-    [userAccount, transfers, provider, config, poolAddress, execute, lastTxBlockNumberRef]
+    [
+      userAccount,
+      transfers,
+      provider,
+      config,
+      poolAddress,
+      execute,
+      lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      activeAddress,
+      addPendingStored,
+    ]
   );
 
   const mint = useCallback(
@@ -379,7 +443,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Deposit ${amount}`)
         );
       }),
     [
@@ -391,6 +456,8 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
   );
 
@@ -419,7 +486,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Withdraw ${amount}`)
         );
       }),
     [
@@ -431,6 +499,8 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
   );
 
@@ -460,7 +530,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Transfer ${amount}`)
         );
       }),
     [
@@ -470,6 +541,8 @@ export function useTransactions(
       activeAddress,
       config,
       poolAddress,
+      deferredApplyEnabled,
+      addPendingStored,
       execute,
       lastTxBlockNumberRef,
     ]
@@ -545,7 +618,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Swap ${amount} ${fromToken.slice(0, 10)}…→${toToken.slice(0, 10)}…`)
         );
       }),
     [
@@ -557,6 +631,8 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
   );
 
@@ -636,7 +712,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`AVNU Swap ${amount}`)
         );
       }),
     [
@@ -648,6 +725,8 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
   );
 
@@ -696,7 +775,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Vesu Supply ${amount}`)
         );
       }),
     [
@@ -708,6 +788,8 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
   );
 
@@ -769,7 +851,8 @@ export function useTransactions(
           tl,
           userAccount,
           provider,
-          lastTxBlockNumber
+          lastTxBlockNumber,
+          deferredOptionsFor(`Vesu Withdraw ${amount}`)
         );
       }),
     [
@@ -781,7 +864,32 @@ export function useTransactions(
       poolAddress,
       execute,
       lastTxBlockNumberRef,
+      deferredApplyEnabled,
+      addPendingStored,
     ]
+  );
+
+  const applyStored = useCallback(
+    (entry: PendingStored) =>
+      execute(`Apply stored: ${entry.label}`, async (tl) => {
+        if (!userAccount || !transfers || !provider) throw new Error("Not ready");
+        const applyCall = transfers.buildApplyStoredCall(entry.actionsHash);
+        const applyTx = await tl.step("Submit apply_stored_actions", () =>
+          userAccount.execute(applyCall, { tip: 0n })
+        );
+        const applyReceipt = await tl.step("Wait for receipt", () =>
+          provider.waitForTransaction(applyTx.transaction_hash, WAIT_OPTIONS)
+        );
+        if (!applyReceipt.isSuccess()) {
+          throw new Error(`apply_stored_actions reverted: ${JSON.stringify(applyReceipt)}`);
+        }
+        removePendingStored(entry.actionsHash);
+        return {
+          txHash: applyTx.transaction_hash,
+          blockNumber: applyReceipt.block_number,
+        };
+      }),
+    [userAccount, transfers, provider, execute, removePendingStored]
   );
 
   return {
@@ -795,5 +903,6 @@ export function useTransactions(
     avnuSwap,
     vesuSupply,
     vesuWithdraw,
+    applyStored,
   };
 }
