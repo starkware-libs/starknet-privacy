@@ -5,5 +5,6 @@ pub mod test_finalize;
 pub mod test_mailbox_receiver;
 pub mod test_privacy_invoke;
 pub mod test_recover;
+pub mod test_register_inbound;
 pub mod test_sdk_parity;
 pub mod test_utils;

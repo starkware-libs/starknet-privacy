@@ -12,6 +12,7 @@
 //! same outputs. Treat any diff between this file and the SDK fixture as a
 //! breaking change to be coordinated.
 
+use core::pedersen::pedersen;
 use near_intents_anonymizer::near_intents_anonymizer::{
     OUTPUT_SALT_DOMAIN, REFUND_SALT_DOMAIN, output_salt, refund_salt,
 };
@@ -158,4 +159,64 @@ fn fixture_mailbox_constructor_calldata_layout() {
     anonymizer.serialize(ref calldata);
     assert(calldata.len() == 1, 'ctor calldata != 1');
     assert(*calldata.at(0) == anonymizer.into(), 'ctor pos0 != anon addr');
+}
+
+// ====================================================================
+// Fixture 6 — `register_inbound` calldata layout.
+//
+//   [0] swap_id              : felt252
+//   [1] asset_out            : ContractAddress
+//   [2] note_id_out          : felt252
+//   [3] deposit_address_hint : felt252
+//
+// Total: 4 felts. The SDK MUST emit exactly this layout for the inbound
+// on-ramp call.
+// ====================================================================
+
+fn fix_inbound_user() -> ContractAddress {
+    0x0fedcba_felt252.try_into().unwrap()
+}
+
+#[test]
+fn fixture_register_inbound_calldata_layout() {
+    let mut calldata: Array<felt252> = array![];
+    FIX_SWAP_ID.serialize(ref calldata);
+    fix_asset_out().serialize(ref calldata);
+    FIX_NOTE_OUT.serialize(ref calldata);
+    let deposit_hint: felt252 = 'depositAddr@1click';
+    deposit_hint.serialize(ref calldata);
+
+    assert(calldata.len() == 4, 'inbound calldata len != 4');
+    assert(*calldata.at(0) == FIX_SWAP_ID, 'pos0 swap_id');
+    assert(*calldata.at(1) == fix_asset_out().into(), 'pos1 asset_out');
+    assert(*calldata.at(2) == FIX_NOTE_OUT, 'pos2 note_id_out');
+    assert(*calldata.at(3) == deposit_hint, 'pos3 deposit_hint');
+}
+
+// ====================================================================
+// Fixture 7 — caller-namespaced `effective_swap_id` formula.
+//
+//   effective_swap_id = pedersen(user, swap_id)
+//
+// The SDK MUST compute the same value off-chain when:
+//   - Submitting `finalize(effective_swap_id)`.
+//   - Asking the contract for `output_mailbox(effective_swap_id)`.
+//   - Setting the 1Click `recipient` field to that mailbox.
+//
+// Two users with the same raw `swap_id` must land on different
+// `effective_swap_id`s — this is the anti-griefing invariant.
+// ====================================================================
+
+#[test]
+fn fixture_effective_swap_id_pedersen_user_swap_id() {
+    let computed = pedersen(fix_inbound_user().into(), FIX_SWAP_ID);
+    // Stability: re-running produces the same value.
+    assert(computed == pedersen(fix_inbound_user().into(), FIX_SWAP_ID), 'unstable');
+    assert(computed != 0, 'eff zero');
+    // Anti-grief: a different user with the same swap_id gets a different id.
+    let other_user: ContractAddress = 0x099999_felt252.try_into().unwrap();
+    let other = pedersen(other_user.into(), FIX_SWAP_ID);
+    assert(computed != other, 'eff collides across users');
+    // Raw swap_id alone is not the storage key.
+    assert(computed != FIX_SWAP_ID, 'eff == raw swap_id');
 }

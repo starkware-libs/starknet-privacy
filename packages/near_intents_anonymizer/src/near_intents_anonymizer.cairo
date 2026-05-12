@@ -64,6 +64,10 @@ pub mod errors {
     pub const OUT_NOTE_NOT_OURS: felt252 = 'NIA_OUT_DEPOSITOR';
     pub const REFUND_NOTE_NOT_OURS: felt252 = 'NIA_REFUND_DEPOSITOR';
     pub const INSUFFICIENT_BALANCE: felt252 = 'NIA_INSUFFICIENT_BAL';
+    // inbound (register_inbound) — reuses ZERO_SWAP_ID / ZERO_ASSET_OUT /
+    // ZERO_NOTE_ID / SWAP_ID_TAKEN / OUT_NOTE_NOT_OURS where the meaning is
+    // identical to the outbound path.
+    pub const NO_INBOUND_RECOVERY: felt252 = 'NIA_NO_INBOUND_RECOVERY';
     // finalize/recover
     pub const SWAP_NOT_PENDING: felt252 = 'NIA_SWAP_NOT_PENDING';
     pub const MAILBOX_MISMATCH: felt252 = 'NIA_MBX_MISMATCH';
@@ -122,25 +126,64 @@ pub trait INearIntentsAnonymizer<T> {
         note_id: felt252,
     ) -> Span<OpenNoteDeposit>;
 
+    /// Register an inbound (on-ramp) swap. Called directly by the user from a
+    /// regular Starknet tx (not via the pool's `InvokeExternal`). Reserves
+    /// the swap slot for the caller-bound `effective_swap_id =
+    /// pedersen(caller, swap_id)`; the user is responsible for sending
+    /// `asset_in` on a foreign chain to the 1Click depositAddress, with
+    /// `recipient = output_mailbox(effective_swap_id)`. On settlement, anyone
+    /// calls `finalize(effective_swap_id)` and the user's pre-created open
+    /// note (with depositor = anonymizer) is filled.
+    ///
+    /// `swap_id` is *caller-namespaced*: two different users can both pass
+    /// the same raw `swap_id` without colliding — the storage slot is keyed
+    /// by `effective_swap_id`. The SDK must compute the same
+    /// `effective_swap_id` off-chain and pass it everywhere downstream
+    /// (1Click `recipient` field, subsequent `finalize` call).
+    ///
+    /// `deposit_address_hint` is opaque to the contract and surfaced in the
+    /// emitted event for off-chain observers; it is *not* validated. The
+    /// contract holds no inbound funds — they land at the mailbox directly.
+    ///
+    /// Reverts: `ZERO_SWAP_ID`, `ZERO_ASSET_OUT`, `ZERO_NOTE_ID`,
+    /// `SWAP_ID_TAKEN` (against `effective_swap_id`),
+    /// `OUT_NOTE_TOKEN_MISMATCH`, `OUT_NOTE_NOT_OURS`.
+    fn register_inbound(
+        ref self: T,
+        swap_id: felt252,
+        asset_out: ContractAddress,
+        note_id_out: felt252,
+        deposit_address_hint: felt252,
+    );
+
     /// Permissionless. Sweeps the output mailbox for `swap_id` and fills the
     /// user's pre-allocated `note_id_out` via the pool's
-    /// `deposit_to_open_note`.
+    /// `deposit_to_open_note`. For inbound swaps, the caller passes the
+    /// `effective_swap_id` they computed and emitted via `register_inbound`.
     fn finalize(ref self: T, swap_id: felt252);
 
     /// Permissionless. Sweeps the refund mailbox for `swap_id` and fills the
     /// user's pre-allocated `refund_note_id` via the pool's
-    /// `deposit_to_open_note`.
+    /// `deposit_to_open_note`. Rejects inbound swaps (`NO_INBOUND_RECOVERY`):
+    /// the refund leg lives on the foreign chain and has no Starknet mailbox.
     fn recover(ref self: T, swap_id: felt252);
 
     /// View: deterministic output-leg mailbox address for `swap_id`.
     /// SDK must compute the same value off-chain before requesting the
-    /// 1Click quote.
+    /// 1Click quote. For inbound, pass `effective_swap_id`.
     fn output_mailbox(self: @T, swap_id: felt252) -> ContractAddress;
     /// View: deterministic refund-leg mailbox address for `swap_id`.
     fn refund_mailbox(self: @T, swap_id: felt252) -> ContractAddress;
     /// View: current state for a swap. Returns the default (status=None) for
-    /// unknown `swap_id`.
+    /// unknown `swap_id`. For inbound, pass `effective_swap_id`.
     fn get_swap(self: @T, swap_id: felt252) -> PendingSwap;
+
+    /// View: derive the caller-bound effective swap id for the inbound flow.
+    /// Pure function — `pedersen(user, swap_id)`. Exposed so the SDK can
+    /// double-check its off-chain computation against the on-chain formula.
+    fn compute_effective_swap_id(
+        self: @T, user: ContractAddress, swap_id: felt252,
+    ) -> felt252;
 }
 
 /// Salt for the output-leg mailbox. Domain-separated so output and refund
@@ -190,6 +233,7 @@ pub fn compute_address(
 #[starknet::contract]
 pub mod NearIntentsAnonymizer {
     use core::num::traits::Zero;
+    use core::pedersen::pedersen;
     use crate::mailbox_receiver::{IMailboxReceiverDispatcher, IMailboxReceiverDispatcherTrait};
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use privacy::interface::{
@@ -224,6 +268,7 @@ pub mod NearIntentsAnonymizer {
         SwapStarted: SwapStarted,
         SwapFinalized: SwapFinalized,
         SwapRecovered: SwapRecovered,
+        InboundRegistered: InboundRegistered,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -252,6 +297,24 @@ pub mod NearIntentsAnonymizer {
         #[key]
         pub swap_id: felt252,
         pub amount: u128,
+    }
+
+    /// Emitted by `register_inbound`. The indexed `effective_swap_id` is the
+    /// storage key and the swap-id all downstream entry points (`finalize`,
+    /// `output_mailbox`, `get_swap`) take. `swap_id` is the raw user-chosen
+    /// value (un-namespaced), surfaced for off-chain correlation with the
+    /// user's local intent record. `output_mailbox` is precomputed so
+    /// off-chain observers don't have to redo the derivation.
+    #[derive(Drop, starknet::Event)]
+    pub struct InboundRegistered {
+        #[key]
+        pub effective_swap_id: felt252,
+        pub swap_id: felt252,
+        pub user: ContractAddress,
+        pub asset_out: ContractAddress,
+        pub note_id_out: felt252,
+        pub deposit_address_hint: felt252,
+        pub output_mailbox: ContractAddress,
     }
 
     #[constructor]
@@ -389,6 +452,9 @@ pub mod NearIntentsAnonymizer {
         fn recover(ref self: ContractState, swap_id: felt252) {
             let state = self.pending_swaps.entry(swap_id).read();
             assert(state.status == SwapStatus::Pending, errors::SWAP_NOT_PENDING);
+            // Inbound entries have `asset_in == 0` and `refund_note_id == 0`
+            // (no Starknet refund leg — refunds happen on the foreign chain).
+            assert(state.asset_in.is_non_zero(), errors::NO_INBOUND_RECOVERY);
 
             let amount = self
                 .deploy_and_sweep(
@@ -411,6 +477,72 @@ pub mod NearIntentsAnonymizer {
             self.emit(Event::SwapRecovered(SwapRecovered { swap_id, amount }));
         }
 
+        fn register_inbound(
+            ref self: ContractState,
+            swap_id: felt252,
+            asset_out: ContractAddress,
+            note_id_out: felt252,
+            deposit_address_hint: felt252,
+        ) {
+            // Input validation. `swap_id` here is the raw user value, NOT
+            // the storage key — collisions across users are resolved by
+            // namespacing into `effective_swap_id` below.
+            assert(swap_id.is_non_zero(), errors::ZERO_SWAP_ID);
+            assert(asset_out.is_non_zero(), errors::ZERO_ASSET_OUT);
+            assert(note_id_out.is_non_zero(), errors::ZERO_NOTE_ID);
+
+            let user = get_caller_address();
+            let effective_swap_id = pedersen(user.into(), swap_id);
+
+            // Slot uniqueness — keyed by the caller-namespaced id so two
+            // users can never lock each other out of the same raw swap_id.
+            let existing = self.pending_swaps.entry(effective_swap_id).read();
+            assert(existing.status == SwapStatus::None, errors::SWAP_ID_TAKEN);
+
+            // Verify the user already created the output open note with us
+            // as depositor. Catches SDK typos before any funds flow on the
+            // foreign chain — finalize would otherwise fail much later with
+            // CALLER_NOT_DEPOSITOR after the cross-chain leg settled.
+            let pool_views = IViewsDispatcher {
+                contract_address: self.privacy_address.read(),
+            };
+            let out_note = pool_views.get_note(note_id: note_id_out);
+            let self_addr = get_contract_address();
+            assert(out_note.token == asset_out, errors::OUT_NOTE_TOKEN_MISMATCH);
+            assert(out_note.depositor == self_addr, errors::OUT_NOTE_NOT_OURS);
+
+            // Persist with `asset_in == 0` and `refund_note_id == 0` —
+            // sentinels for the inbound shape that `recover` checks to
+            // reject calls cleanly (`NO_INBOUND_RECOVERY`).
+            self
+                .pending_swaps
+                .entry(effective_swap_id)
+                .write(
+                    PendingSwap {
+                        asset_in: Zero::zero(),
+                        asset_out,
+                        note_id_out,
+                        refund_note_id: 0,
+                        status: SwapStatus::Pending,
+                    },
+                );
+
+            self
+                .emit(
+                    Event::InboundRegistered(
+                        InboundRegistered {
+                            effective_swap_id,
+                            swap_id,
+                            user,
+                            asset_out,
+                            note_id_out,
+                            deposit_address_hint,
+                            output_mailbox: self.compute_output_mailbox(effective_swap_id),
+                        },
+                    ),
+                );
+        }
+
         fn output_mailbox(self: @ContractState, swap_id: felt252) -> ContractAddress {
             self.compute_output_mailbox(swap_id)
         }
@@ -421,6 +553,12 @@ pub mod NearIntentsAnonymizer {
 
         fn get_swap(self: @ContractState, swap_id: felt252) -> PendingSwap {
             self.pending_swaps.entry(swap_id).read()
+        }
+
+        fn compute_effective_swap_id(
+            self: @ContractState, user: ContractAddress, swap_id: felt252,
+        ) -> felt252 {
+            pedersen(user.into(), swap_id)
         }
     }
 
