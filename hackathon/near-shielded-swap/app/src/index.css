@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: dark;
+  }
+
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    font-family: theme("fontFamily.sans");
+    font-feature-settings: "ss01", "ss02", "cv11";
+    background:
+      radial-gradient(60% 60% at 50% -10%, rgba(182, 243, 95, 0.06) 0%, transparent 60%),
+      radial-gradient(40% 40% at 90% 110%, rgba(182, 243, 95, 0.04) 0%, transparent 70%),
+      theme("colors.surface.DEFAULT");
+    background-attachment: fixed;
+  }
+
+  /* Hairline grid texture for atmosphere — sits under the swap card. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(255, 255, 255, 0.018) 1px, transparent 1px);
+    background-size: 56px 56px;
+    background-position: -1px -1px;
+    mask-image: radial-gradient(80% 60% at 50% 30%, black 30%, transparent 80%);
+    z-index: 0;
+  }
+
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  input[type="number"] {
+    -moz-appearance: textfield;
+  }
+
+  ::selection {
+    background: theme("colors.accent.DEFAULT");
+    color: theme("colors.accent.foreground");
+  }
+}
+
+@layer components {
+  .pill {
+    @apply inline-flex items-center gap-2 rounded-pill border border-border bg-surface-elevated/70 px-3 py-1.5 text-sm text-foreground transition;
+  }
+  .pill:hover {
+    @apply border-border-strong bg-surface-muted;
+  }
+
+  .panel {
+    @apply rounded-2xl border border-border bg-surface-elevated/80 backdrop-blur-sm;
+  }
+
+  .focus-ring {
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/60 focus-visible:ring-offset-2 focus-visible:ring-offset-surface;
+  }
+}
