@@ -10,6 +10,7 @@ import {
 } from "../../src/interfaces.js";
 
 export const POOL_ADDRESS = 0x1n;
+export const CALL_ANONYMIZER_ADDRESS = 0xa1n;
 
 // Default options presets - for operations AFTER registration and setup are done
 export const AUTO_ALL: ExecuteOptions = {
@@ -44,11 +45,12 @@ export function createTestEnv(): MockTestEnv {
   const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
   const env = mocknet.initialize(); // Funds all users with 1000n of ace/bee
 
+  const anonymizerOpts = { callAnonymizerAddress: CALL_ANONYMIZER_ADDRESS };
   const transfers = {
-    alice: mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey),
-    bob: mocknet.createPrivateTransfers(env.bob.address, env.bob.privateKey),
-    carol: mocknet.createPrivateTransfers(env.carol.address, env.carol.privateKey),
-    david: mocknet.createPrivateTransfers(env.david.address, env.david.privateKey),
+    alice: mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, anonymizerOpts),
+    bob: mocknet.createPrivateTransfers(env.bob.address, env.bob.privateKey, anonymizerOpts),
+    carol: mocknet.createPrivateTransfers(env.carol.address, env.carol.privateKey, anonymizerOpts),
+    david: mocknet.createPrivateTransfers(env.david.address, env.david.privateKey, anonymizerOpts),
   };
 
   return { mocknet, env, transfers };

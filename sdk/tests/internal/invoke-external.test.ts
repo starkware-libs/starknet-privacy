@@ -52,9 +52,9 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: anonymizer.address })
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: anonymizer.address })
         .done()
         .invoke(({ openNotes, withdrawals }) => {
           expect(openNotes.length).toBe(2);
@@ -123,7 +123,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: swapAmount })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: anonymizer.address })
         .done()
         .with(env.bee, (t) => t.withdraw({ recipient: env.alice.address, amount: feeAmount }))
         .invoke(({ openNotes }) => {
@@ -191,7 +191,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: anonymizer.address })
         .done()
         .invoke(({ openNotes, withdrawals }) => {
           expect(openNotes.length).toBe(1);

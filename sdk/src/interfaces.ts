@@ -6,6 +6,7 @@ import type {
   BlockNumber,
   Call,
   CallDetails,
+  SignerInterface,
   constants,
 } from "starknet";
 import { ec } from "starknet";
@@ -206,7 +207,7 @@ export type InvokeCalldataBuilderArgs = {
 };
 
 export type InvokeAction = {
-  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
+  callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails | Promise<CallDetails>;
 };
 
 /** Actions - context comes from registry */
@@ -455,7 +456,92 @@ export interface PrivateTransfersInterface {
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
+
+  /**
+   * Build the calls needed to deposit funds held by an ephemeral SNIP-9 account
+   * `ephemeralAddress` into a fresh open note in the caller's own channel.
+   *
+   * The deposit is routed through the generic `CallAnonymizer` contract: the user's open note
+   * is created with `depositor = ephemeralAddress`, and `apply_actions` invokes the anonymizer
+   * via `privacy_invoke` with a calls array of (optionally) `[UDC.deployContract(...),
+   * ephemeralAddress.execute_from_outside_v2(...)]`. The user-signed SNIP-9 inner calls
+   * `[token.approve(pool, amount), pool.deposit_to_open_note(note_id, token, amount)]` run with
+   * `caller = ephemeralAddress`, which matches the note's depositor and lets the deposit fill
+   * the note atomically.
+   *
+   * Requires `callAnonymizerAddress` to be set on the `createPrivateTransfers` config; throws
+   * otherwise.
+   *
+   * The returned `calls` array is a single `pool.apply_actions(...)` call. Submit it wiring the
+   * usual `proof_facts = proof.proofFacts`. The optional UDC deploy is folded into the
+   * `privacy_invoke` calls array inside `apply_actions`.
+   *
+   * The ephemeral account class **must** implement SNIP-9 `execute_from_outside_v2`
+   * (OpenZeppelin `AccountComponent` ships it).
+   */
+  createEphemeralDeposit(
+    params: EphemeralDepositParams,
+    options?: ExecuteOptions
+  ): Promise<EphemeralDepositResult>;
 }
+
+/**
+ * Inputs for `PrivateTransfersInterface.createEphemeralDeposit`.
+ */
+export type EphemeralDepositParams = {
+  /** The address of the ephemeral account that holds the funds to deposit. */
+  ephemeralAddress: StarknetAddress;
+  /** ERC-20 to deposit. */
+  token: StarknetAddress;
+  /** Amount to deposit (and to approve, since open notes are single-fill). */
+  amount: Amount;
+  /** Signs the SNIP-9 OutsideExecution typed data with the ephemeral private key. */
+  signer: Pick<SignerInterface, "signMessage">;
+  /**
+   * If provided, prepend a UDC `deployContract` call to deploy the ephemeral
+   * account in the same tx. The SDK derives the address from these fields and
+   * throws if it does not match `ephemeralAddress`.
+   */
+  deploy?: {
+    classHash: BigNumberish;
+    constructorCalldata: BigNumberish[];
+    /** Defaults to 0. */
+    salt?: BigNumberish;
+    /** Defaults to false. */
+    unique?: boolean;
+    /** Required iff `unique === true`. */
+    deployerAddress?: BigNumberish;
+  };
+  /**
+   * Optional SNIP-9 OutsideExecution knobs. Defaults to a random nonce, no expiry, and the
+   * `CallAnonymizer` address as `caller`. The anonymizer is the only contract that invokes
+   * `execute_from_outside_v2` here, so this is the tightest valid binding.
+   */
+  outsideExecution?: {
+    nonce?: BigNumberish;
+    executeAfter?: BigNumberish;
+    executeBefore?: BigNumberish;
+    /** Defaults to the `CallAnonymizer` address. Pass `ANY_CALLER` to widen. */
+    caller?: StarknetAddress;
+  };
+};
+
+/**
+ * Result of `PrivateTransfersInterface.createEphemeralDeposit`.
+ */
+export type EphemeralDepositResult = {
+  ephemeralAddress: StarknetAddress;
+  /** Proof for the apply_actions call. Must be wired into the tx envelope. */
+  proof: Proof;
+  /**
+   * Always a single `pool.apply_actions(...)` call (submit with `proof_facts = proof`). Its
+   * embedded `InvokeExternal` action dispatches the optional UDC deploy and the SNIP-9
+   * `execute_from_outside_v2` on `ephemeralAddress`.
+   */
+  calls: Call[];
+  registry: PrivateRegistry;
+  warnings: Warning[];
+};
 
 // ============ Builder Types ============
 
@@ -600,7 +686,9 @@ export interface PrivateTransfersBuilder {
   setup(recipient: StarknetAddress): this;
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
-  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
+  invoke(
+    callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails | Promise<CallDetails>
+  ): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.

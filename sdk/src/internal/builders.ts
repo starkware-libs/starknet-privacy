@@ -181,7 +181,9 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     return this;
   }
 
-  invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this {
+  invoke(
+    callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails | Promise<CallDetails>
+  ): this {
     if (this.invokeExternal !== undefined) {
       throw new Error("At most one .invoke() per transaction; already set.");
     }

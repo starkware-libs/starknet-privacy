@@ -5,7 +5,6 @@ export default defineConfig({
   test: {
     globals: true,
     environment: "node",
-    include: ["tests/**/*.test.ts"],
     reporters: ["default"], // shows failures with context; use "verbose" to see all tests
     outputFile: undefined,
     hideSkippedTests: true,
@@ -13,6 +12,28 @@ export default defineConfig({
     hookTimeout: 30000, // for beforeAll/afterAll hooks
     teardownTimeout: 5000, // max time for cleanup
     pool: "forks", // isolate tests in separate processes (can be killed)
+    // Tests that spawn a real devnet (`tests/devnet.test.ts` and `tests/**/*.devnet.test.ts`)
+    // collide if run as parallel forks — each fork wants its own devnet, and the resulting
+    // RPC traffic + filesystem state races. Carve them into their own project with
+    // `fileParallelism: false`; everything else stays parallel.
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          include: ["tests/**/*.test.ts"],
+          exclude: ["tests/devnet.test.ts", "tests/**/*.devnet.test.ts"],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "devnet",
+          include: ["tests/devnet.test.ts", "tests/**/*.devnet.test.ts"],
+          fileParallelism: false,
+        },
+      },
+    ],
     coverage: {
       enabled: true,
       provider: "v8",

@@ -72,6 +72,11 @@ export function createPrivateTransfers(params: {
   provingProvider: ProofProviderInterface | ProofProviderConfig;
   discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
   poolContractAddress: StarknetAddress;
+  /**
+   * Address of the deployed `CallAnonymizer` contract for this pool. Required only if you
+   * intend to call `createEphemeralDeposit`; that method throws when unset.
+   */
+  callAnonymizerAddress?: StarknetAddress;
 }): PrivateTransfersInterface {
   const provingProvider: ProofProviderInterface = isProofProviderConfig(params.provingProvider)
     ? new ProvingServiceProofProvider(params.provingProvider.url, params.provingProvider.chainId, {

@@ -2,6 +2,34 @@
 
 ## Unreleased
 
+### Added
+
+- `createEphemeralDeposit` on `PrivateTransfersInterface` and standalone
+  `calculateEphemeralAddress` / `buildEphemeralDepositInvoke`: orchestrate
+  a single-tx deposit from an ephemeral SNIP-9 account into the caller's
+  own channel. The caller provides a future account address (deterministically
+  derived from a class hash + constructor calldata), optionally instructions
+  to deploy it via UDC, and a `Pick<SignerInterface, "signMessage">` that
+  owns the ephemeral key. The SDK returns a single `pool.apply_actions(...)`
+  call; the optional UDC deploy and the SNIP-9 `execute_from_outside_v2`
+  forwarding are dispatched server-side by a new `CallAnonymizer` contract
+  via the pool's `InvokeExternal` action (`privacy_invoke` selector). The
+  ephemeral account class must implement SNIP-9 outside execution
+  (OpenZeppelin `AccountComponent` ships it).
+- `callAnonymizerAddress` option on `createPrivateTransfers`: address of
+  the deployed `CallAnonymizer` for this pool. Required only for
+  `createEphemeralDeposit`; throws when unset.
+- `.invoke()` callback on `PrivateTransfersBuilder` may now return
+  `Promise<CallDetails>`. Enables flows where the call payload depends on
+  data produced during compilation (e.g. open-note ids).
+
+### Changed
+
+- `Devnet.executeOutside` (in `@starkware-libs/starknet-privacy-sdk/testing`)
+  now also accepts `{ calls: Call[]; proof: Proof }` for multi-call flows
+  such as `createEphemeralDeposit`. The existing single-call `CallAndProof`
+  overload is unchanged.
+
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.

@@ -4,6 +4,8 @@
 
 import type {
   Actions,
+  EphemeralDepositParams,
+  EphemeralDepositResult,
   ExecuteOptions,
   ExecuteResult,
   ProofProviderInterface,
@@ -17,6 +19,7 @@ import type { Account, TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+import { createEphemeralDeposit as createEphemeralDepositImpl } from "./ephemeral-deposit.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
@@ -33,6 +36,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
+      callAnonymizerAddress?: StarknetAddress;
     }
   ) {
     super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
@@ -107,5 +111,24 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       registry,
       warnings,
     };
+  }
+
+  async createEphemeralDeposit(
+    params: EphemeralDepositParams,
+    options?: ExecuteOptions
+  ): Promise<EphemeralDepositResult> {
+    if (this.params.callAnonymizerAddress === undefined) {
+      throw new Error(
+        "createEphemeralDeposit: callAnonymizerAddress must be set on createPrivateTransfers to use this method"
+      );
+    }
+    const { chainId } = await this.params.provingProvider.getDefaultDetails();
+    return createEphemeralDepositImpl(
+      this,
+      this.params.callAnonymizerAddress,
+      chainId,
+      params,
+      options
+    );
   }
 }

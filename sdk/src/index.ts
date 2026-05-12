@@ -37,3 +37,4 @@ export type {
   HistoryAction,
   SwapLeg,
 } from "./internal/action-classifier.js";
+export { calculateEphemeralAddress } from "./internal/ephemeral-deposit.js";

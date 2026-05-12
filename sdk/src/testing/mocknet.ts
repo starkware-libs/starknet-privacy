@@ -131,7 +131,11 @@ export class Mocknet {
    * @param userAddress - The user's Starknet address
    * @param viewingKey - The user's viewing key (private key)
    */
-  createPrivateTransfers(userAddress: bigint, viewingKey: ViewingKey): PrivateTransfers {
+  createPrivateTransfers(
+    userAddress: bigint,
+    viewingKey: ViewingKey,
+    options?: { callAnonymizerAddress?: bigint }
+  ): PrivateTransfers {
     const pool = this.pool;
 
     return new PrivateTransfers({
@@ -142,6 +146,9 @@ export class Mocknet {
       discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),
       poolContractAddress: `0x${this.poolAddress.toString(16)}`,
+      callAnonymizerAddress: options?.callAnonymizerAddress
+        ? `0x${options.callAnonymizerAddress.toString(16)}`
+        : undefined,
     });
   }
 
