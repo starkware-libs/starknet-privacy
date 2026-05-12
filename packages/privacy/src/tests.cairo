@@ -6,6 +6,7 @@ pub mod test_admin;
 pub mod test_client;
 pub mod test_e2e;
 pub mod test_ekubo_swap_anonymizer;
+pub mod test_near_intents_anonymizer;
 pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
