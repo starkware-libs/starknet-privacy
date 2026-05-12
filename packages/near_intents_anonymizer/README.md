@@ -180,26 +180,126 @@ PATH="$HOME/.cargo/bin:$PATH" mise exec -- snforge test --package privacy test_n
 # Expected: 3 passed
 ```
 
-## Deploying
+## Sepolia deploy runbook
 
-Once a privacy pool with the `unfilled-open-note-support` feature is
-deployed:
+### Prerequisites
+
+1. A privacy pool deployed on Sepolia with the
+   `unfilled-open-note-support` feature (`Note.depositor` field, public
+   `deposit_to_open_note` entrypoint). The pool's address goes into
+   `PRIVACY_CONTRACT_ADDRESS`.
+2. A funded Sepolia account: `ADMIN_ADDRESS` + `ADMIN_PRIVATE_KEY` set
+   in `e2e/.env`. Needs STRK to pay declare + deploy fees (~0.01 STRK).
+3. `STARKNET_RPC` pointing at any v0.10-compatible Sepolia RPC.
+4. mise + cargo + the `unfilled-open-note-support` branch checked out
+   (matches the privacy package version this was built against).
+
+### Hash pre-flight (optional but recommended)
+
+Compute the Sierra + CASM class hashes from the artifacts before
+hitting the network. Lets the SDK dev hardcode `RECEIVER_CLASS_HASH`
+immediately while the actual declare happens in parallel:
 
 ```bash
-# Build the package
+# 1. Build artifacts
 PATH="$HOME/.cargo/bin:$PATH" mise exec -- scarb build -p near_intents_anonymizer
 
-# Set in e2e/.env (or e2e/.env.deployed):
-# PRIVACY_CONTRACT_ADDRESS=0x…   ← the pool you're targeting
+# 2. Compute class hashes off-chain (no network)
+cd e2e
+./node_modules/.bin/tsx scripts/precompute-near-intents-anonymizer-hashes.ts
+```
+
+Output looks like:
+
+```
+# MailboxReceiver
+  Sierra class hash:    0x5231c55e8e9ba48278dea33e5fd593e5e3de3d75b14bdbfe7656b744cbb13b0
+  Compiled class hash:  0x4a7faa6d5ea312e33be3c4deede066b357af3888455efa3998864003f5aeb96
+
+# NearIntentsAnonymizer
+  Sierra class hash:    0x512bc11a954bd58749a1b4402821d43868ffcf63f882030d39af7a1d8fb685b
+  Compiled class hash:  0x3dd6fb07b5ecaa1f32ff8cbf7be8322f3c6df247a915c16e2a90e30107ef703
+```
+
+These will match what `account.declare(...)` computes on Sepolia for
+the same artifacts.
+
+### Live deploy
+
+```bash
+# Set in e2e/.env.deployed (or .env):
+#   PRIVACY_CONTRACT_ADDRESS=0x…
+#   STARKNET_RPC=https://…
+#   ADMIN_ADDRESS=0x…
+#   ADMIN_PRIVATE_KEY=0x…
+# Optional: DEPLOY_SALT_SEED=0x…  (bump for a fresh instance)
 
 cd e2e
 npm run deploy-near-intents-anonymizer
 ```
 
-Class hashes + the anonymizer's address get appended to
-`e2e/.env.deployed`. The deploy is idempotent — re-running with the same
-`DEPLOY_SALT_SEED` lands at the same address; bump the seed to deploy a
-fresh instance.
+The script:
+1. Declares `MailboxReceiver` (skips if already declared at the same
+   class hash).
+2. Declares `NearIntentsAnonymizer` (same).
+3. Deploys `NearIntentsAnonymizer(privacy_address, receiver_class_hash)`
+   with a salt derived from `DEPLOY_SALT_SEED + 0xN1A`.
+4. Appends class hashes + the anonymizer's address to
+   `e2e/.env.deployed`.
+
+The deploy is idempotent on declares; re-running with the same
+`DEPLOY_SALT_SEED` and the same constructor args lands at the same
+contract address (no-op). Bump the seed to deploy a fresh instance.
+
+### Post-deploy sanity checks
+
+Three quick on-chain checks before handing off to the SDK dev:
+
+```bash
+# 1. Anonymizer is wired to the right pool.
+sncast --rpc-url $STARKNET_RPC call \
+  --contract-address $NEAR_INTENTS_ANONYMIZER_ADDRESS \
+  --function get_swap --calldata 0x0
+# Should return PendingSwap { asset_in: 0, asset_out: 0, note_id_out: 0,
+# refund_note_id: 0, status: SwapStatus::None }
+
+# 2. Output mailbox derivation agrees with the off-chain formula.
+sncast --rpc-url $STARKNET_RPC call \
+  --contract-address $NEAR_INTENTS_ANONYMIZER_ADDRESS \
+  --function output_mailbox --calldata 'FIXTURE_SWAP_1'
+# Compare with the value the SDK's off-chain replica computes for the
+# same swap_id + anonymizer_address + receiver_class_hash.
+
+# 3. Refund mailbox differs from output for the same swap_id.
+sncast --rpc-url $STARKNET_RPC call \
+  --contract-address $NEAR_INTENTS_ANONYMIZER_ADDRESS \
+  --function refund_mailbox --calldata 'FIXTURE_SWAP_1'
+```
+
+If (2) disagrees with the SDK's off-chain output, **stop and
+investigate** — that's the silent failure mode that strands user funds
+in inaccessible mailboxes. The parity test
+(`test_compute_address_matches_deploy_syscall`) pins this against
+`deploy_syscall` so disagreement means either the SDK formula has
+drifted from `compute_address` in `near_intents_anonymizer.cairo`, or
+the deployed receiver class hash isn't what the SDK is using.
+
+### Hand-off to the SDK dev
+
+After a successful deploy, hand the SDK dev:
+
+| Field | Source |
+|---|---|
+| `ANONYMIZER_ADDRESS` | `e2e/.env.deployed` (`NEAR_INTENTS_ANONYMIZER_ADDRESS`) |
+| `RECEIVER_CLASS_HASH` | Same file (`NEAR_INTENTS_RECEIVER_CLASS_HASH`) |
+| Salt domains | This README, §"Salt-domain constants" |
+| Mailbox address formula | This README, §"Mailbox-address derivation" |
+| Calldata layouts | This README, §"Entrypoint calldata layouts" + `test_sdk_parity.cairo` |
+| Parity fixture values | `test_sdk_parity.cairo` — run snforge once and copy the per-`FIXTURE_SWAP_ID` outputs |
+
+The SDK dev's off-chain mailbox replica should produce the same address
+as the on-chain `output_mailbox`/`refund_mailbox` views for any
+`swap_id`. Verify with sanity check (2) above before any live swap.
 
 ## Future work (out of scope for hackathon)
 
