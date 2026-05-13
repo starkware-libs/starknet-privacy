@@ -6,7 +6,7 @@ use clap::Parser;
 use std::sync::Arc;
 
 use discovery_service::api::ApiServer;
-use discovery_service::config::ServiceConfig;
+use discovery_service::config::{LogFormat, ServiceConfig};
 use discovery_service::indexer::Indexer;
 use discovery_service::rpc_backend::RpcBackend;
 use discovery_service::shutdown::Shutdown;
@@ -24,19 +24,28 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-fn init_tracing(log_level: Option<&str>) {
+fn init_tracing(log_level: Option<&str>, format: LogFormat) {
     let env_filter = match log_level {
         Some(level) => EnvFilter::new(level),
         None => EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
     };
 
-    let subscriber = tracing_subscriber::fmt()
+    let builder = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
-        .with_writer(std::io::stderr)
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
-        .finish();
+        .with_writer(std::io::stderr);
 
-    set_global_default(subscriber).expect("Failed to set tracing subscriber");
+    match format {
+        LogFormat::Text => {
+            let subscriber = builder
+                .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+                .finish();
+            set_global_default(subscriber).expect("Failed to set tracing subscriber");
+        }
+        LogFormat::Json => {
+            let subscriber = builder.with_ansi(false).json().finish();
+            set_global_default(subscriber).expect("Failed to set tracing subscriber");
+        }
+    }
 }
 
 #[tokio::main]
@@ -59,9 +68,10 @@ async fn main() {
         std::process::exit(1);
     });
 
-    // Extract log level before build_configs() consumes the config
+    // Extract logging settings before build_configs() consumes the config
     let log_level = config.logging.level.clone();
-    init_tracing(log_level.as_deref());
+    let log_format = config.logging.format;
+    init_tracing(log_level.as_deref(), log_format);
 
     info!("Discovery service is launching...");
 
