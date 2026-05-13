@@ -53,6 +53,7 @@ handshake_timeout = 10  # seconds, default 10
 
 [logging]
 level = "info"
+format = "text"             # "text" (default, human-readable) or "json" (one JSON object per line on stderr)
 
 [limits]
 max_cursor_channels = 256
@@ -74,6 +75,7 @@ These env vars override the corresponding config file values at runtime:
 | `WS_URL` | `indexer.ws_url` | `ws://127.0.0.1:5050/ws` |
 | `API_HOST` | `api.host` | `127.0.0.1:8080` |
 | `RUST_LOG` | `logging.level` | `info` |
+| `LOG_FORMAT` | `logging.format` | `text` (accepts `text` or `json`, case-insensitive) |
 | `SERVER_BUDGET` | `limits.server_budget` | `10000` |
 | `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
 | `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |

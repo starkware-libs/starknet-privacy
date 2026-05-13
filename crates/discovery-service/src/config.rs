@@ -29,6 +29,8 @@ pub enum ConfigError {
         "incomplete TLS configuration: both TLS_CERT_PATH and TLS_KEY_PATH must be set together"
     )]
     IncompleteTls,
+    #[error("unknown log format: {0}")]
+    UnknownLogFormat(String),
 }
 
 /// Configuration for the RPC backend (flattened, no nested pool section).
@@ -178,6 +180,18 @@ impl Default for ValidationLimits {
 #[serde(default)]
 pub struct LoggingConfig {
     pub level: Option<String>,
+    pub format: LogFormat,
+}
+
+/// Output format for log records.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// Human-readable text formatter (default).
+    #[default]
+    Text,
+    /// One JSON object per line.
+    Json,
 }
 
 /// Configuration for Oblivious HTTP (OHTTP) envelope encryption.
@@ -238,6 +252,13 @@ impl ServiceConfig {
         }
         if let Ok(v) = std::env::var("RUST_LOG") {
             self.logging.level = Some(v);
+        }
+        if let Ok(v) = std::env::var("LOG_FORMAT") {
+            match v.to_ascii_lowercase().as_str() {
+                "json" => self.logging.format = LogFormat::Json,
+                "text" => self.logging.format = LogFormat::Text,
+                other => return Err(ConfigError::UnknownLogFormat(other.to_owned())),
+            }
         }
         if let Ok(v) = std::env::var("SERVER_BUDGET") {
             if let Ok(n) = v.parse() {
@@ -335,33 +356,49 @@ fn expand_env_vars(input: &str) -> Result<String, ConfigError> {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Mutex;
+
+    /// Process environment is global; serialize tests that mutate it so parallel
+    /// `cargo test` runs do not race on `set_var` / `remove_var`.
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
+
+    fn with_locked_env<F: FnOnce()>(f: F) {
+        let _guard = ENV_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        f();
+    }
 
     #[test]
     fn test_expand_env_vars_with_default() {
-        // SAFETY: test-only, single-threaded access to unique env var name.
-        unsafe { std::env::remove_var("__TEST_MISSING_VAR") };
-        let input = "url = \"${__TEST_MISSING_VAR:-http://localhost:5050}\"";
-        let result = expand_env_vars(input).unwrap();
-        assert_eq!(result, "url = \"http://localhost:5050\"");
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe { std::env::remove_var("__TEST_MISSING_VAR") };
+            let input = "url = \"${__TEST_MISSING_VAR:-http://localhost:5050}\"";
+            let result = expand_env_vars(input).unwrap();
+            assert_eq!(result, "url = \"http://localhost:5050\"");
+        });
     }
 
     #[test]
     fn test_expand_env_vars_present() {
-        // SAFETY: test-only, single-threaded access to unique env var name.
-        unsafe { std::env::set_var("__TEST_PRESENT_VAR", "custom_value") };
-        let input = "url = \"${__TEST_PRESENT_VAR:-fallback}\"";
-        let result = expand_env_vars(input).unwrap();
-        assert_eq!(result, "url = \"custom_value\"");
-        unsafe { std::env::remove_var("__TEST_PRESENT_VAR") };
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe { std::env::set_var("__TEST_PRESENT_VAR", "custom_value") };
+            let input = "url = \"${__TEST_PRESENT_VAR:-fallback}\"";
+            let result = expand_env_vars(input).unwrap();
+            assert_eq!(result, "url = \"custom_value\"");
+            unsafe { std::env::remove_var("__TEST_PRESENT_VAR") };
+        });
     }
 
     #[test]
     fn test_expand_env_vars_required_missing() {
-        // SAFETY: test-only, single-threaded access to unique env var name.
-        unsafe { std::env::remove_var("__TEST_REQUIRED_MISSING") };
-        let input = "url = \"${__TEST_REQUIRED_MISSING}\"";
-        let result = expand_env_vars(input);
-        assert!(result.is_err());
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe { std::env::remove_var("__TEST_REQUIRED_MISSING") };
+            let input = "url = \"${__TEST_REQUIRED_MISSING}\"";
+            let result = expand_env_vars(input);
+            assert!(result.is_err());
+        });
     }
 
     #[test]
@@ -397,6 +434,7 @@ health_max_lag_secs = 10
 
 [logging]
 level = "debug"
+format = "json"
 
 [limits]
 max_channels = 128
@@ -413,6 +451,7 @@ server_budget = 50
         assert_eq!(config.api.host, "0.0.0.0:9090");
         assert_eq!(config.api.health_max_lag_secs, 10);
         assert_eq!(config.logging.level.as_deref(), Some("debug"));
+        assert_eq!(config.logging.format, LogFormat::Json);
         assert_eq!(config.limits.cursor_limits.max_channels, 128);
         assert_eq!(config.limits.server_budget, 50);
     }
@@ -429,19 +468,50 @@ host = "127.0.0.1:8080"
         )
         .unwrap();
 
-        // SAFETY: test-only, no other test touches these env vars concurrently.
-        unsafe {
-            std::env::set_var("API_HOST", "0.0.0.0:9999");
-        }
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe {
+                std::env::set_var("API_HOST", "0.0.0.0:9999");
+            }
 
-        let mut config = ServiceConfig::load(f.path()).unwrap();
-        config.apply_env_overrides().unwrap();
+            let mut config = ServiceConfig::load(f.path()).unwrap();
+            config.apply_env_overrides().unwrap();
 
-        assert_eq!(config.api.host, "0.0.0.0:9999");
+            assert_eq!(config.api.host, "0.0.0.0:9999");
 
-        unsafe {
-            std::env::remove_var("API_HOST");
-        }
+            unsafe {
+                std::env::remove_var("API_HOST");
+            }
+        });
+    }
+
+    #[test]
+    fn test_log_format_defaults_to_text() {
+        let config = ServiceConfig::default();
+        assert_eq!(config.logging.format, LogFormat::Text);
+    }
+
+    #[test]
+    fn test_log_format_env_override() {
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe {
+                std::env::set_var("LOG_FORMAT", "json");
+            }
+            let mut config = ServiceConfig::default();
+            config.apply_env_overrides().unwrap();
+            assert_eq!(config.logging.format, LogFormat::Json);
+
+            unsafe {
+                std::env::set_var("LOG_FORMAT", "TEXT");
+            }
+            config.apply_env_overrides().unwrap();
+            assert_eq!(config.logging.format, LogFormat::Text);
+
+            unsafe {
+                std::env::remove_var("LOG_FORMAT");
+            }
+        });
     }
 
     #[test]
@@ -518,38 +588,40 @@ host = "127.0.0.1:8080"
 
     #[test]
     fn test_tls_config() {
-        // SAFETY: test-only, single-threaded access to unique env var names.
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
 
-        // Both set → TlsConfig populated
-        unsafe {
-            std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
-            std::env::set_var("TLS_KEY_PATH", "/tmp/key.pem");
-        }
-        let mut config = ServiceConfig::default();
-        config.apply_env_overrides().unwrap();
-        let tls = config.api.tls.expect("TLS config should be set");
-        assert_eq!(tls.cert_path, "/tmp/cert.pem");
-        assert_eq!(tls.key_path, "/tmp/key.pem");
-        assert_eq!(tls.handshake_timeout, Duration::from_secs(10));
+            // Both set → TlsConfig populated
+            unsafe {
+                std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
+                std::env::set_var("TLS_KEY_PATH", "/tmp/key.pem");
+            }
+            let mut config = ServiceConfig::default();
+            config.apply_env_overrides().unwrap();
+            let tls = config.api.tls.expect("TLS config should be set");
+            assert_eq!(tls.cert_path, "/tmp/cert.pem");
+            assert_eq!(tls.key_path, "/tmp/key.pem");
+            assert_eq!(tls.handshake_timeout, Duration::from_secs(10));
 
-        // Neither set → None
-        unsafe {
-            std::env::remove_var("TLS_CERT_PATH");
-            std::env::remove_var("TLS_KEY_PATH");
-        }
-        let mut config = ServiceConfig::default();
-        config.apply_env_overrides().unwrap();
-        assert!(config.api.tls.is_none());
+            // Neither set → None
+            unsafe {
+                std::env::remove_var("TLS_CERT_PATH");
+                std::env::remove_var("TLS_KEY_PATH");
+            }
+            let mut config = ServiceConfig::default();
+            config.apply_env_overrides().unwrap();
+            assert!(config.api.tls.is_none());
 
-        // Only one set → error
-        unsafe {
-            std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
-        }
-        let mut config = ServiceConfig::default();
-        assert!(config.apply_env_overrides().is_err());
-        unsafe {
-            std::env::remove_var("TLS_CERT_PATH");
-        }
+            // Only one set → error
+            unsafe {
+                std::env::set_var("TLS_CERT_PATH", "/tmp/cert.pem");
+            }
+            let mut config = ServiceConfig::default();
+            assert!(config.apply_env_overrides().is_err());
+            unsafe {
+                std::env::remove_var("TLS_CERT_PATH");
+            }
+        });
 
         // TOML file
         let mut f = tempfile::NamedTempFile::new().unwrap();
