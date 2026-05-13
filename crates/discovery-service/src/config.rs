@@ -178,6 +178,18 @@ impl Default for ValidationLimits {
 #[serde(default)]
 pub struct LoggingConfig {
     pub level: Option<String>,
+    pub format: LogFormat,
+}
+
+/// Output format for log records.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LogFormat {
+    /// Human-readable text formatter (default).
+    #[default]
+    Text,
+    /// One JSON object per line.
+    Json,
 }
 
 /// Configuration for Oblivious HTTP (OHTTP) envelope encryption.
@@ -238,6 +250,16 @@ impl ServiceConfig {
         }
         if let Ok(v) = std::env::var("RUST_LOG") {
             self.logging.level = Some(v);
+        }
+        if let Ok(v) = std::env::var("LOG_FORMAT") {
+            match v.to_ascii_lowercase().as_str() {
+                "json" => self.logging.format = LogFormat::Json,
+                "text" => self.logging.format = LogFormat::Text,
+                other => warn!(
+                    value = other,
+                    "ignoring unknown LOG_FORMAT; expected 'text' or 'json'"
+                ),
+            }
         }
         if let Ok(v) = std::env::var("SERVER_BUDGET") {
             if let Ok(n) = v.parse() {
@@ -397,6 +419,7 @@ health_max_lag_secs = 10
 
 [logging]
 level = "debug"
+format = "json"
 
 [limits]
 max_channels = 128
@@ -413,6 +436,7 @@ server_budget = 50
         assert_eq!(config.api.host, "0.0.0.0:9090");
         assert_eq!(config.api.health_max_lag_secs, 10);
         assert_eq!(config.logging.level.as_deref(), Some("debug"));
+        assert_eq!(config.logging.format, LogFormat::Json);
         assert_eq!(config.limits.cursor_limits.max_channels, 128);
         assert_eq!(config.limits.server_budget, 50);
     }
@@ -441,6 +465,33 @@ host = "127.0.0.1:8080"
 
         unsafe {
             std::env::remove_var("API_HOST");
+        }
+    }
+
+    #[test]
+    fn test_log_format_defaults_to_text() {
+        let config = ServiceConfig::default();
+        assert_eq!(config.logging.format, LogFormat::Text);
+    }
+
+    #[test]
+    fn test_log_format_env_override() {
+        // SAFETY: test-only, single-threaded access to unique env var name.
+        unsafe {
+            std::env::set_var("LOG_FORMAT", "json");
+        }
+        let mut config = ServiceConfig::default();
+        config.apply_env_overrides().unwrap();
+        assert_eq!(config.logging.format, LogFormat::Json);
+
+        unsafe {
+            std::env::set_var("LOG_FORMAT", "TEXT");
+        }
+        config.apply_env_overrides().unwrap();
+        assert_eq!(config.logging.format, LogFormat::Text);
+
+        unsafe {
+            std::env::remove_var("LOG_FORMAT");
         }
     }
 
