@@ -225,21 +225,35 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
   }> {
     if (recipients === "total-only") {
-      // For total-only, do a minimal outgoing sync to get the total channel count
-      const body: Record<string, unknown> = {
-        contract_address: toHex(this.contractAddress),
-        sender_address: toHex(address),
-        viewing_key: toHex(viewingKey),
-        cursor: { channel_discovery_complete: false },
-      };
-      if (params?.blockIdentifier !== undefined) {
-        body.block_ref = params.blockIdentifier;
+      // For total-only, follow outgoing-channel pagination until the service
+      // reaches the sentinel and reports the count. Drop per-channel cursors
+      // between calls: the compiler only needs the channel total here, not
+      // subchannel/note state.
+      let apiCursor: ApiDiscoveryCursor = { channel_discovery_complete: false };
+      let blockRef: BlockIdentifier | undefined;
+      while (true) {
+        const body: Record<string, unknown> = {
+          contract_address: toHex(this.contractAddress),
+          sender_address: toHex(address),
+          viewing_key: toHex(viewingKey),
+          cursor: apiCursor,
+        };
+        if (blockRef) {
+          body.block_ref = blockRef;
+        } else if (params?.blockIdentifier !== undefined) {
+          body.block_ref = params.blockIdentifier;
+        }
+
+        const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
+        blockRef = resp.block_ref;
+
+        const total = totalChannelsFromCursor(resp.cursor);
+        if (total !== undefined) {
+          return { timestamp: blockRef, total };
+        }
+
+        apiCursor = totalOnlyCursor(resp.cursor);
       }
-      const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
-      return {
-        timestamp: resp.block_ref,
-        total: resp.cursor.total_n_channels!,
-      };
     }
 
     const cursorMap = params?.cursor?.channels;
@@ -436,6 +450,20 @@ function isApiCursorComplete(cursor: ApiDiscoveryCursor): boolean {
       ch.subchannel_discovery_complete &&
       (!ch.subchannels || Object.values(ch.subchannels).every((sc) => !!sc.note_discovery_complete))
   );
+}
+
+function totalChannelsFromCursor(cursor: ApiDiscoveryCursor): number | undefined {
+  if (cursor.total_n_channels !== undefined) return cursor.total_n_channels;
+  if (cursor.channel_discovery_complete) return (cursor.last_channel_index ?? -1) + 1;
+  return undefined;
+}
+
+function totalOnlyCursor(cursor: ApiDiscoveryCursor): ApiDiscoveryCursor {
+  return {
+    channel_discovery_complete: cursor.channel_discovery_complete,
+    last_channel_index: cursor.last_channel_index,
+    total_n_channels: cursor.total_n_channels,
+  };
 }
 
 /** Builds `Record<string, ApiSubchannelCursor>` from token→noteIndex pairs, optionally filtered. */
