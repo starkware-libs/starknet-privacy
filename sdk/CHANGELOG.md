@@ -12,6 +12,7 @@
 
 - Fixed `INDEX_NOT_SEQUENTIAL` error when the paymaster fee token equals the swap output token (`toToken`) in a private swap. The compiler was emitting `CreateEncNote` at index N+1 before `CreateOpenNote` at index N for the same token. Note-creation actions are now accumulated in a single list in processing order instead of separate enc/open arrays.
 - `OhttpClient` now builds the inner OHTTP request URL with a synthetic origin (`https://ohttp-target.invalid`) instead of `${gatewayUrl}${path}`. Previously, when `gatewayUrl` included a reverse-proxy path prefix (e.g. `https://api.example.com/discovery`), that prefix leaked into the encrypted inner request path and produced a 404 inside the OHTTP envelope (`OHTTP inner response /v1/sync/outgoing_state failed (404)`). The OHTTP gateway routes by path only, so the synthetic origin is inert; only the per-call `path` argument is used for routing.
+- `IndexerDiscoveryProvider.discoverChannels(..., "total-only")` now paginates `/v1/sync/outgoing_state` until the discovery service reports `total_n_channels`, instead of assuming the count is present on the first page.
 
 ## 0.14.2-RC.3
 
