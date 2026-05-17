@@ -436,7 +436,7 @@ describe("ScreeningInterceptor", () => {
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
-      return parsed.screening === "complete";
+      return parsed.event === "screening_complete";
     });
     expect(logCall).toBeDefined();
     const logData = JSON.parse(logCall![0] as string);
@@ -462,7 +462,7 @@ describe("ScreeningInterceptor", () => {
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
-      return parsed.screening === "complete";
+      return parsed.event === "screening_complete";
     });
     expect(logCall).toBeDefined();
     const logData = JSON.parse(logCall![0] as string);
@@ -521,7 +521,7 @@ describe("ScreeningInterceptor", () => {
 
     const errorCall = errorSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
-      return parsed.error === "screening_failed";
+      return parsed.event === "screening_failed";
     });
     expect(errorCall).toBeDefined();
     expect(JSON.parse(errorCall![0] as string).attempts).toBe(1);
@@ -579,7 +579,7 @@ describe("ScreeningInterceptor", () => {
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
-      return parsed.screening === "complete";
+      return parsed.event === "screening_complete";
     });
     expect(logCall).toBeDefined();
     expect(JSON.parse(logCall![0] as string).attempts).toBe(3);
@@ -608,10 +608,10 @@ describe("ScreeningInterceptor", () => {
 
     const logEntry = findLogEntry(
       logSpy,
-      (entry) => entry.screening === "non_pool_tx"
+      (entry) => entry.event === "screening_non_pool_tx"
     );
-    expect(logEntry).toEqual({
-      screening: "non_pool_tx",
+    expect(logEntry).toMatchObject({
+      event: "screening_non_pool_tx",
       action: "allow",
       blockNonPoolTx: false,
     });
@@ -638,10 +638,10 @@ describe("ScreeningInterceptor", () => {
 
       const logEntry = findLogEntry(
         logSpy,
-        (entry) => entry.screening === "non_pool_tx"
+        (entry) => entry.event === "screening_non_pool_tx"
       );
-      expect(logEntry).toEqual({
-        screening: "non_pool_tx",
+      expect(logEntry).toMatchObject({
+        event: "screening_non_pool_tx",
         action: "block",
         blockNonPoolTx: true,
       });
@@ -670,7 +670,7 @@ describe("ScreeningInterceptor", () => {
 
       const logEntry = findLogEntry(
         logSpy,
-        (entry) => entry.screening === "non_pool_tx"
+        (entry) => entry.event === "screening_non_pool_tx"
       );
       expect(logEntry?.action).toBe("block");
       logSpy.mockRestore();
@@ -693,7 +693,7 @@ describe("ScreeningInterceptor", () => {
       // through the screening path instead.
       const nonPoolLog = findLogEntry(
         logSpy,
-        (entry) => entry.screening === "non_pool_tx"
+        (entry) => entry.event === "screening_non_pool_tx"
       );
       expect(nonPoolLog).toBeUndefined();
       logSpy.mockRestore();

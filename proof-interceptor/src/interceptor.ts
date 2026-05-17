@@ -1,5 +1,6 @@
 // src/interceptor.ts
 import type { ProveTxnV3 } from "./types.js";
+import { logger } from "./logger.js";
 import {
   interceptorVerdicts,
   interceptorDuration,
@@ -31,7 +32,11 @@ export async function runInterceptors(
       verdict = await interceptor.intercept(transaction);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(JSON.stringify({ error: "interceptor_error", message }));
+      logger.error({
+        event: "interceptor_error",
+        interceptor: interceptor.name,
+        message,
+      });
       errorsTotal.inc({ type: "interceptor_error" });
       verdict = { action: "block", reason: message };
     }

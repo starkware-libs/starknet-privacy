@@ -146,6 +146,69 @@ describe("handler", () => {
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: "payload too large" });
   });
+
+  it("echoes x-request-id from the request when provided", async () => {
+    await startProxy();
+    const requestId = "client-supplied-id-123";
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+  });
+
+  it("generates an x-request-id when none is supplied", async () => {
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+    const generated = response.headers.get("x-request-id");
+    expect(generated).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+  });
+
+  it("includes status and request_id in the per-request log line", async () => {
+    await startProxy();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "trace-XYZ",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+
+    const requestLog = logSpy.mock.calls
+      .map((call) => {
+        try {
+          return JSON.parse(call[0] as string) as Record<string, unknown>;
+        } catch {
+          return undefined;
+        }
+      })
+      .find((entry) => entry?.event === "request");
+    expect(requestLog).toBeDefined();
+    expect(requestLog).toMatchObject({
+      event: "request",
+      method: "POST",
+      url: "/",
+      status: 200,
+      request_id: "trace-XYZ",
+    });
+    expect(typeof requestLog!.latencyMs).toBe("number");
+    logSpy.mockRestore();
+  });
 });
 
 describe("handler with interceptors", () => {
