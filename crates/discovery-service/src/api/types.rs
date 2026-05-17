@@ -4,6 +4,8 @@
 use std::collections::HashSet;
 
 use axum::http::StatusCode;
+use axum::response::{IntoResponse, Response};
+use axum::Json;
 use discovery_core::discovery::incoming_channels::IncomingChannel;
 use discovery_core::discovery::notes::DecryptedNote;
 use discovery_core::discovery::outgoing_channels::OutgoingChannel;
@@ -15,6 +17,7 @@ use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::{BlockId, Felt};
+use tower_http::request_id::RequestId;
 use tracing::{debug, warn};
 
 use super::block_id_serde;
@@ -42,6 +45,10 @@ pub struct ApiErrorBody {
     pub message: String,
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub details: Option<serde_json::Value>,
+    /// Echoes the `x-request-id` header value bound to this request, so
+    /// clients can correlate this error with server-side logs.
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub request_id: Option<String>,
 }
 
 impl ApiErrorResponse {
@@ -51,6 +58,7 @@ impl ApiErrorResponse {
                 code: code.to_string(),
                 message: message.into(),
                 details: None,
+                request_id: None,
             },
         }
     }
@@ -65,9 +73,31 @@ impl ApiErrorResponse {
                 code: code.to_string(),
                 message: message.into(),
                 details: Some(details),
+                request_id: None,
             },
         }
     }
+
+    /// Attaches a request id to the error body, returning the updated response.
+    pub fn with_request_id(mut self, request_id: impl Into<String>) -> Self {
+        self.error.request_id = Some(request_id.into());
+        self
+    }
+}
+
+/// Builds an HTTP response from an error, attaching `request_id` from the
+/// `SetRequestId` layer (if present) so every error body carries the same
+/// id the client receives in the `x-request-id` response header.
+pub fn into_error_response(
+    request_id: Option<&RequestId>,
+    status: StatusCode,
+    error: ApiErrorResponse,
+) -> Response {
+    let error = match request_id.and_then(|id| id.header_value().to_str().ok()) {
+        Some(id) => error.with_request_id(id),
+        None => error,
+    };
+    (status, Json(error)).into_response()
 }
 
 /// Maps [`discovery_core::storage_backend::StorageError`] (e.g. from
@@ -355,6 +385,49 @@ pub struct HistoryResponse {
     pub transactions: Vec<HistoryTransaction>,
     /// Updated cursor for continuation.
     pub cursor: HistoryCursor,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    use axum::http::HeaderValue;
+    use http_body_util::BodyExt;
+
+    fn make_request_id(value: &'static str) -> RequestId {
+        RequestId::new(HeaderValue::from_static(value))
+    }
+
+    #[tokio::test]
+    async fn into_error_response_attaches_request_id() {
+        let request_id = make_request_id("abc-123");
+        let response = into_error_response(
+            Some(&request_id),
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(error_codes::INVALID_REQUEST, "bad input"),
+        );
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let parsed: ApiErrorResponse = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(parsed.error.request_id.as_deref(), Some("abc-123"));
+        assert_eq!(parsed.error.code, error_codes::INVALID_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn into_error_response_omits_request_id_when_absent() {
+        let response = into_error_response(
+            None,
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(error_codes::INVALID_REQUEST, "bad input"),
+        );
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let body_str = std::str::from_utf8(&body_bytes).unwrap();
+        assert!(
+            !body_str.contains("request_id"),
+            "request_id field should be omitted when no id is bound: {body_str}"
+        );
+    }
 }
 
 /// Well-known error codes.

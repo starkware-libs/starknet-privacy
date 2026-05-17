@@ -6,19 +6,20 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
+use axum::{Extension, Json};
 use discovery_core::events_backend::RawEventAccess;
 use discovery_core::io_budget::IoBudget;
 use discovery_core::storage_backend::StorageBackend;
 use starknet_core::types::{BlockId, Felt};
+use tower_http::request_id::RequestId;
 use tracing::debug;
 
 use discovery_core::privacy_pool::felt_hex;
 
 use crate::api::types::{
-    error_codes, ApiErrorResponse, HealthResponse, HistoryRequest, HistoryResponse,
-    IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest, OutgoingSyncResponse,
-    PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
+    error_codes, into_error_response, ApiErrorResponse, HealthResponse, HistoryRequest,
+    HistoryResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
+    OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
 };
 use crate::api::validators::{
     validate_block_ref, validate_cursor, validate_history_cursor, validate_recipients,
@@ -115,6 +116,7 @@ where
 /// Handler for POST /v1/sync/incoming_state.
 pub async fn incoming_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
+    request_id: Option<Extension<RequestId>>,
     Json(request): Json<IncomingSyncRequest>,
 ) -> impl IntoResponse
 where
@@ -123,7 +125,7 @@ where
 {
     match incoming_sync_impl(&state, request).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err((status, error)) => (status, Json(error)).into_response(),
+        Err((status, error)) => into_error_response(request_id.as_deref(), status, error),
     }
 }
 
@@ -175,6 +177,7 @@ where
 /// Handler for POST /v1/sync/outgoing_state.
 pub async fn outgoing_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
+    request_id: Option<Extension<RequestId>>,
     Json(request): Json<OutgoingSyncRequest>,
 ) -> impl IntoResponse
 where
@@ -183,7 +186,7 @@ where
 {
     match outgoing_sync_impl(&state, request).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err((status, error)) => (status, Json(error)).into_response(),
+        Err((status, error)) => into_error_response(request_id.as_deref(), status, error),
     }
 }
 
@@ -238,6 +241,7 @@ where
 /// Handler for POST /v1/sync/preflight_check.
 pub async fn preflight_check_handler<B>(
     State(state): State<Arc<AppState<B>>>,
+    request_id: Option<Extension<RequestId>>,
     Json(request): Json<PreflightCheckRequest>,
 ) -> impl IntoResponse
 where
@@ -246,7 +250,7 @@ where
 {
     match preflight_check_impl(&state, request).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err((status, error)) => (status, Json(error)).into_response(),
+        Err((status, error)) => into_error_response(request_id.as_deref(), status, error),
     }
 }
 
@@ -309,6 +313,7 @@ where
 /// Handler for POST /v1/history.
 pub async fn history_handler<B>(
     State(state): State<Arc<AppState<B>>>,
+    request_id: Option<Extension<RequestId>>,
     Json(request): Json<HistoryRequest>,
 ) -> impl IntoResponse
 where
@@ -317,7 +322,7 @@ where
 {
     match history_impl(&state, request).await {
         Ok(response) => (StatusCode::OK, Json(response)).into_response(),
-        Err((status, error)) => (status, Json(error)).into_response(),
+        Err((status, error)) => into_error_response(request_id.as_deref(), status, error),
     }
 }
 

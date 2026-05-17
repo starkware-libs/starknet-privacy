@@ -9,10 +9,13 @@ All error responses follow a consistent structure:
   "error": {
     "code": "ERROR_CODE",
     "message": "Human-readable description",
-    "details": { }
+    "details": { },
+    "request_id": "request-id-echoed-from-header"
   }
 }
 ```
+
+`request_id` echoes the value of the `x-request-id` response header. The server reuses a client-supplied `x-request-id` header when it is non-empty, printable ASCII (bytes `0x20`–`0x7E`), and no longer than 36 bytes (the length of the canonical UUID v4 fallback); otherwise it generates a fresh UUID. It is omitted from the body when no id is bound to the request. Clients should include this id when reporting an error so the corresponding server-side logs can be located.
 
 **HTTP status codes:**
 
