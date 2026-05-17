@@ -206,6 +206,9 @@ describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () =
 
     expect(body.error.code).toBe(10000);
     expect(body.error.message).toBe("Transaction rejected");
-    expect(body.error.data).toContain("0xbad0");
+    // The depositor address must NOT appear in the JSON-RPC error data — it
+    // is read from private-pool calldata and would leak to the caller.
+    expect(body.error.data).toBe("address_blocked");
+    expect(body.error.data).not.toContain("0xbad0");
   }, 15000);
 });

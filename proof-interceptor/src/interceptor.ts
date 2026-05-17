@@ -3,6 +3,7 @@ import type { ProveTxnV3 } from "./types.js";
 import {
   interceptorVerdicts,
   interceptorDuration,
+  interceptorErrors,
   errorsTotal,
 } from "./metrics.js";
 
@@ -31,8 +32,15 @@ export async function runInterceptors(
       verdict = await interceptor.intercept(transaction);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(JSON.stringify({ error: "interceptor_error", message }));
+      console.error(
+        JSON.stringify({
+          error: "interceptor_error",
+          interceptor: interceptor.name,
+          message,
+        })
+      );
       errorsTotal.inc({ type: "interceptor_error" });
+      interceptorErrors.inc({ interceptor: interceptor.name });
       verdict = { action: "block", reason: message };
     }
     const durationSeconds = (Date.now() - startTime) / 1000;
