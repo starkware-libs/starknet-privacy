@@ -6,10 +6,24 @@ import {
   Gauge,
   collectDefaultMetrics,
 } from "prom-client";
+import { GIT_SHA, SERVICE_VERSION } from "./build_info.js";
 
 export const registry = new Registry();
 
 collectDefaultMetrics({ register: registry });
+
+/**
+ * Constant gauge that exposes build identity. Always 1 — the value carries no
+ * information; the `version` and `git_sha` labels are what dashboards join
+ * against to correlate behaviour with deploys.
+ */
+export const buildInfo = new Gauge({
+  name: "proof_interceptor_build_info",
+  help: "Build identity (version, git SHA). Value is always 1.",
+  labelNames: ["version", "git_sha"] as const,
+  registers: [registry],
+});
+buildInfo.labels(SERVICE_VERSION, GIT_SHA).set(1);
 
 export const rpcRequestsTotal = new Counter({
   name: "proof_interceptor_rpc_requests_total",

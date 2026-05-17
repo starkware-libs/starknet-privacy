@@ -65,6 +65,30 @@ export function requiredEnv(name: string): string {
   return value;
 }
 
+/**
+ * Returns a copy of `config` suitable for logging at startup. Strips fields
+ * that could leak credentials — currently `screening.partnerSecret`. The
+ * presence of the secret is preserved as a marker so misconfiguration (e.g.
+ * empty secret in production) is still observable from logs.
+ */
+export function redactConfig(config: Config): Record<string, unknown> {
+  const { screening, tls, ...rest } = config;
+  const redacted: Record<string, unknown> = { ...rest };
+  if (screening) {
+    const { partnerSecret, ...screeningRest } = screening;
+    redacted.screening = {
+      ...screeningRest,
+      partnerSecret: partnerSecret.length > 0 ? "[REDACTED]" : "[EMPTY]",
+    };
+  }
+  if (tls) {
+    // Paths are not secrets but the contents are; surface only the on/off bit
+    // so startup logs stay narrow.
+    redacted.tls = { enabled: true };
+  }
+  return redacted;
+}
+
 function parseIntEnv(name: string, defaultValue: number): number {
   const raw = process.env[name];
   if (raw == null) return defaultValue;
