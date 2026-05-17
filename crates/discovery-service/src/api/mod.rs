@@ -1,5 +1,6 @@
 //! Axum API server for the discovery service.
 
+mod access_log;
 pub mod block_id_serde;
 pub mod handlers;
 pub mod types;
@@ -138,7 +139,8 @@ where
             .layer(TimeoutLayer::with_status_code(
                 axum::http::StatusCode::REQUEST_TIMEOUT,
                 self.config.request_timeout,
-            ));
+            ))
+            .layer(axum::middleware::from_fn(access_log::access_log));
 
         let tcp_listener = TcpListener::bind(&self.config.host)
             .await
