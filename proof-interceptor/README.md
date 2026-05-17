@@ -128,6 +128,7 @@ The body mirrors `starknet_proveTransaction` exactly (object or positional param
 
 Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.ts`):
 
+- `proof_interceptor_build_info{version,git_sha}` — always `1`; the labels are the point. Join against it to tie behaviour to a deploy. `version` comes from `package.json`, `git_sha` from the `GIT_SHA` env var (`unknown` when unset).
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
@@ -149,6 +150,11 @@ Each request produces exactly one `event="request"` line with `method`, `url`, `
 they are mapped to a response.
 
 Request bodies are never logged: `user_addr` and pool calldata are private user data.
+
+On startup one `event="startup"` line records the version, the git SHA, and the loaded config
+with `screening.partnerSecret` replaced by `[REDACTED]` (or `[EMPTY]`, so a blank secret stays
+visible) and `tls` collapsed to `{"enabled":true}` so cert paths stay out. Everything else is
+logged as-is — including `SCREENING_URL`, so do not embed credentials in that URL.
 
 ## Process lifecycle
 
