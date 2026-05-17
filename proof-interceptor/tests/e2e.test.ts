@@ -92,6 +92,8 @@ async function startInterceptor(): Promise<void> {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: "0xpool",
+    blockNonPoolTx: false,
+    healthMaxUnavailableMs: 30000,
   });
 
   const handler = createHandler({ interceptors: [interceptor] });

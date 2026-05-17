@@ -43,6 +43,10 @@ export function loadConfig(): Config {
       totalTimeoutMs: parseIntEnv("SCREENING_TOTAL_TIMEOUT_MS", 10000),
       poolAddress: requiredEnv("SCREENING_POOL_ADDRESS"),
       blockNonPoolTx: process.env.SCREENING_BLOCK_NON_POOL_TX === "true",
+      healthMaxUnavailableMs: parseIntEnv(
+        "SCREENING_HEALTH_MAX_UNAVAILABLE_MS",
+        30000
+      ),
     };
   }
 
