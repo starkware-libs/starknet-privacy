@@ -13,6 +13,7 @@ use std::time::Instant;
 use axum::extract::{MatchedPath, Request};
 use axum::middleware::Next;
 use axum::response::Response;
+use tower_http::request_id::RequestId;
 use tracing::{debug, info};
 
 /// Path treated as low-signal for access logs (readiness probes).
@@ -26,6 +27,15 @@ pub async fn access_log(req: Request, next: Next) -> Response {
         .get::<MatchedPath>()
         .map(|matched| matched.as_str().to_owned())
         .unwrap_or_else(|| req.uri().path().to_owned());
+    // Pulled explicitly so the id appears at the top level of the JSON line.
+    // The parent `http_request` span carries the same field, but the JSON
+    // formatter nests span fields under "spans" rather than the event root.
+    let request_id = req
+        .extensions()
+        .get::<RequestId>()
+        .and_then(|id| id.header_value().to_str().ok())
+        .map(|s| s.to_owned())
+        .unwrap_or_default();
 
     let response = next.run(req).await;
 
@@ -38,6 +48,7 @@ pub async fn access_log(req: Request, next: Next) -> Response {
             path = %path,
             status,
             latency_ms,
+            request_id = %request_id,
             "http_access"
         );
     } else {
@@ -46,6 +57,7 @@ pub async fn access_log(req: Request, next: Next) -> Response {
             path = %path,
             status,
             latency_ms,
+            request_id = %request_id,
             "http_access"
         );
     }
@@ -60,10 +72,11 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use axum::body::Body;
-    use axum::http::{Request as HttpRequest, StatusCode};
+    use axum::http::{HeaderName, Request as HttpRequest, StatusCode};
     use axum::routing::get;
     use axum::Router;
     use tower::ServiceExt;
+    use tower_http::request_id::{MakeRequestUuid, SetRequestIdLayer};
     use tracing::Level;
     use tracing_subscriber::fmt::MakeWriter;
 
@@ -92,6 +105,10 @@ mod tests {
             .route("/health", get(|| async { "ok" }))
             .route("/v1/echo", get(|| async { "ok" }))
             .layer(axum::middleware::from_fn(access_log))
+            .layer(SetRequestIdLayer::new(
+                HeaderName::from_static("x-request-id"),
+                MakeRequestUuid,
+            ))
     }
 
     async fn capture_logs<F>(test_body: F) -> String
@@ -142,10 +159,38 @@ mod tests {
         );
         assert!(logs.contains(r#""status":200"#), "status missing: {logs}");
         assert!(logs.contains(r#""latency_ms":"#), "latency missing: {logs}");
+        assert!(
+            logs.contains(r#""request_id":""#),
+            "request_id missing: {logs}"
+        );
         assert_eq!(
             logs.lines().count(),
             1,
             "expected exactly one log line: {logs}"
+        );
+    }
+
+    #[tokio::test]
+    async fn echoes_inbound_request_id_in_access_log() {
+        let inbound_id = "test-request-abc";
+        let logs = capture_logs(async {
+            router()
+                .oneshot(
+                    HttpRequest::builder()
+                        .method("GET")
+                        .uri("/v1/echo")
+                        .header("x-request-id", inbound_id)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+        })
+        .await;
+
+        assert!(
+            logs.contains(&format!(r#""request_id":"{inbound_id}""#)),
+            "expected inbound request id in log: {logs}"
         );
     }
 

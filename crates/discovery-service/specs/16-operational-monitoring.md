@@ -66,6 +66,7 @@ Every HTTP request emits exactly one structured log line at response time. Field
 - `path` — matched route template (e.g. `/v1/sync/incoming_state`), or the raw URI path when no route matched. Using the template keeps log cardinality bounded.
 - `status` — HTTP status code as a number.
 - `latency_ms` — wall-clock latency in milliseconds, measured outside CORS / body-limit / timeout layers.
+- `request_id` — value of the `x-request-id` header bound to this request. If the client supplied the header, it is reused verbatim; otherwise the server generates a UUID. The same id is echoed on the response header and on every error body for this request, so a single error report ties together the client log, the access-log line, and any handler-level logs emitted inside the request span.
 
 Level selection:
 
