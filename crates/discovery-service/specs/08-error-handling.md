@@ -39,6 +39,19 @@ All error responses follow a consistent structure:
 | `RPC_UNAVAILABLE` | 503 | Yes | Upstream RPC is unavailable |
 | `INTERNAL_ERROR` | 500 | Yes | Unexpected internal error. RPC/storage error details are logged server-side, not forwarded to the client |
 
+## 8.3 Server-Side Logging
+
+Every error response has a paired log line emitted at the point the error is detected (validators, snapshot acquisition, discovery engine, JSON body extraction). The mapping helpers from error → HTTP response are pure: they do not log, so each error is recorded exactly once.
+
+**Level policy:**
+
+- `INFO` — client-driven 4xx errors (bad cursor, mismatched viewing key, decryption failure, `CONTRACT_NOT_FOUND`, JSON deserialization rejection, reorged `last_known_block`). These are expected outcomes of invalid input and would flood production logs at `WARN`.
+- `WARN` — server-side / unexpected failures (RPC unavailable, storage backend errors not caused by user input, internal discovery errors, no indexed head yet, panicked tasks, I/O budget overflow).
+
+**Body extraction errors** (malformed or missing JSON, missing required fields) are routed through a custom `ApiJson<T>` extractor that returns the standard `ApiErrorResponse` body (with `request_id` attached) rather than axum's default `text/plain` rejection. The rejection reason is logged at `INFO`.
+
+Every log line for a failed request inherits the `request_id` field from the surrounding `http_request` span, so a client-supplied `x-request-id` (or the server-generated UUID) is sufficient to pull all server-side logs for a single failure.
+
 ## 8.4 Retry Guidance
 
 Clients should implement exponential backoff for retryable errors:

@@ -17,9 +17,10 @@ use tracing::debug;
 use discovery_core::privacy_pool::felt_hex;
 
 use crate::api::types::{
-    error_codes, into_error_response, ApiErrorResponse, HealthResponse, HistoryRequest,
-    HistoryResponse, IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest,
-    OutgoingSyncResponse, PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
+    error_codes, into_error_response, log_discovery_error, log_storage_error, ApiErrorResponse,
+    ApiJson, HealthResponse, HistoryRequest, HistoryResponse, IncomingSyncRequest,
+    IncomingSyncResponse, OutgoingSyncRequest, OutgoingSyncResponse, PreflightCheckRequest,
+    PreflightCheckResponse, SyncRequestBase,
 };
 use crate::api::validators::{
     validate_block_ref, validate_cursor, validate_history_cursor, validate_recipients,
@@ -92,6 +93,7 @@ where
         .backend
         .snapshot(base.contract_address, Some(block_ref))
         .await
+        .inspect_err(|err| log_storage_error("prepare_sync_context.snapshot", err))
         .map_err(crate::api::types::storage_error_to_response)?;
 
     validate_viewing_key(
@@ -117,7 +119,7 @@ where
 pub async fn incoming_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
     request_id: Option<Extension<RequestId>>,
-    Json(request): Json<IncomingSyncRequest>,
+    ApiJson(request): ApiJson<IncomingSyncRequest>,
 ) -> impl IntoResponse
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
@@ -155,6 +157,7 @@ where
         &context.budget,
     )
     .await
+    .inspect_err(|err| log_discovery_error("incoming_sync", err))
     .map_err(crate::api::types::discovery_error_to_response)?;
 
     debug!(
@@ -178,7 +181,7 @@ where
 pub async fn outgoing_sync_handler<B>(
     State(state): State<Arc<AppState<B>>>,
     request_id: Option<Extension<RequestId>>,
-    Json(request): Json<OutgoingSyncRequest>,
+    ApiJson(request): ApiJson<OutgoingSyncRequest>,
 ) -> impl IntoResponse
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
@@ -221,6 +224,7 @@ where
         request.recipients.as_ref(),
     )
     .await
+    .inspect_err(|err| log_discovery_error("outgoing_sync", err))
     .map_err(crate::api::types::discovery_error_to_response)?;
 
     debug!(
@@ -242,7 +246,7 @@ where
 pub async fn preflight_check_handler<B>(
     State(state): State<Arc<AppState<B>>>,
     request_id: Option<Extension<RequestId>>,
-    Json(request): Json<PreflightCheckRequest>,
+    ApiJson(request): ApiJson<PreflightCheckRequest>,
 ) -> impl IntoResponse
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
@@ -263,6 +267,7 @@ where
     B::Snapshot: Clone + Send + Sync + 'static,
 {
     let head = state.backend.get_head().await.ok_or_else(|| {
+        tracing::warn!(operation = "preflight_check", "no block indexed yet");
         (
             StatusCode::SERVICE_UNAVAILABLE,
             ApiErrorResponse::new(error_codes::SERVICE_UNAVAILABLE, "No block indexed yet"),
@@ -274,6 +279,7 @@ where
         .backend
         .snapshot(request.contract_address, Some(block_ref))
         .await
+        .inspect_err(|err| log_storage_error("preflight_check.snapshot", err))
         .map_err(crate::api::types::storage_error_to_response)?;
 
     validate_viewing_key(
@@ -300,6 +306,7 @@ where
         request.token,
     )
     .await
+    .inspect_err(|err| log_discovery_error("preflight_check", err))
     .map_err(crate::api::types::discovery_error_to_response)?;
 
     Ok(PreflightCheckResponse {
@@ -314,7 +321,7 @@ where
 pub async fn history_handler<B>(
     State(state): State<Arc<AppState<B>>>,
     request_id: Option<Extension<RequestId>>,
-    Json(request): Json<HistoryRequest>,
+    ApiJson(request): ApiJson<HistoryRequest>,
 ) -> impl IntoResponse
 where
     B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
@@ -347,6 +354,7 @@ where
         .backend
         .snapshot(request.contract_address, Some(block_ref))
         .await
+        .inspect_err(|err| log_storage_error("history.snapshot", err))
         .map_err(crate::api::types::storage_error_to_response)?;
 
     let mut cursor = request.cursor;
@@ -368,6 +376,7 @@ where
         &budget,
     )
     .await
+    .inspect_err(|err| log_discovery_error("history", err))
     .map_err(crate::api::types::discovery_error_to_response)?;
 
     debug!(
