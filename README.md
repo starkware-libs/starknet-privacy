@@ -41,37 +41,37 @@ graph LR
 
 All components in a row are tested together. Use matching revisions when deploying.
 
-| Component | Docs | Tag |
-|-----------|------|-------------|
+| Component          | Docs                                                                                                                     | Tag                                                                                                                                                                                                          |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Transaction Prover | [README](https://github.com/starkware-libs/sequencer/tree/avi/privacy/configmap-docs/crates/starknet_transaction_prover) | [`ghcr.io/starkware-libs/starknet-privacy/transaction-prover:PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/sequencer/pkgs/container/starknet-privacy%2Ftransaction-prover?tag=PRIVACY-0.14.2-RC.5) |
-| Discovery Service | [README](deploy/discovery-service/README.md) | [`ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service) |
-| Pathfinder* | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder) | [`eqlabs/pathfinder:v0.22.3`](https://hub.docker.com/layers/eqlabs/pathfinder/v0.22.3/images/sha256-e3ae2c2895d18dd17a3bb64c3582c6758e4701a248dff9f957b69f1ad63be7f7) |
-| SDK | [README](sdk/README.md) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) |
+| Discovery Service  | [README](deploy/discovery-service/README.md)                                                                             | [`ghcr.io/starkware-libs/starknet-privacy/discovery-service:PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/pkgs/container/starknet-privacy%2Fdiscovery-service)                    |
+| Pathfinder\*       | [docs](https://eqlabs.github.io/pathfinder/getting-started/running-pathfinder)                                           | [`eqlabs/pathfinder:v0.22.3`](https://hub.docker.com/layers/eqlabs/pathfinder/v0.22.3/images/sha256-e3ae2c2895d18dd17a3bb64c3582c6758e4701a248dff9f957b69f1ad63be7f7)                                        |
+| SDK                | [README](sdk/README.md)                                                                                                  | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5)                                                                                                         |
 
 \* For the transaction prover to work correctly with Pathfinder, set `PATHFINDER_STORAGE_STATE_TRIES=10000`.
 
 ### Contracts
 
-| Contract | Docs | Tag | Class Hash |
-|----------|------|-----|------------|
-| Privacy Pool | [README](packages/privacy/README.md) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x30b8c540cf04d8ef0f4db2a9098d9cc0e35e83af1cb3325f5a4f40144b4b30b` |
-| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x61047c201f235d66cab8a0c4768ea0ca9f900c64b478a90531fb2fb30e061dc` |
-| Vesu Anonymizer | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x2fec72887f6431e4a66090bec49ecf8bde30cf39a7045e4ed6ce57447704b24` |
+| Contract         | Docs                                                                                                    | Tag                                                                                                  | Class Hash                                                          |
+| ---------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x30b8c540cf04d8ef0f4db2a9098d9cc0e35e83af1cb3325f5a4f40144b4b30b` |
+| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x61047c201f235d66cab8a0c4768ea0ca9f900c64b478a90531fb2fb30e061dc` |
+| Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x2fec72887f6431e4a66090bec49ecf8bde30cf39a7045e4ed6ce57447704b24` |
 
 ## Repository map
 
-| Directory | Description |
-|-----------|-------------|
-| [`packages/privacy/`](packages/privacy/) | Cairo smart contract ([README](packages/privacy/README.md)) |
-| [`crates/discovery-core/`](crates/discovery-core/) | Core discovery logic & cryptography ([README](crates/discovery-core/README.md)) |
-| [`crates/discovery-service/`](crates/discovery-service/) | HTTP discovery service (RPC-backed) ([README](crates/discovery-service/README.md)) |
-| [`sdk/`](sdk/) | TypeScript SDK for private transfers ([README](sdk/README.md)) |
-| [`e2e/`](e2e/) | End-to-end tests & devnet fixture generation ([README](e2e/README.md)) |
-| [`deploy/discovery-service/`](deploy/discovery-service/) | Dockerfile & deployment ([README](deploy/discovery-service/README.md)) |
-| [`lean/`](lean/) | Formal verification (Lean) |
-| [`demo/`](demo/) | Web demo application |
-| [`scripts/`](scripts/) | Utility scripts (devnet, deployment, etc.) |
-| [`docs/`](docs/) | Audit reports & security docs ([audit](docs/audit/README.md)) |
+| Directory                                                            | Description                                                                           |
+| -------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
+| [`packages/privacy/`](packages/privacy/)                             | Cairo smart contract ([README](packages/privacy/README.md))                           |
+| [`crates/discovery-core/`](crates/discovery-core/)                   | Core discovery logic & cryptography ([README](crates/discovery-core/README.md))       |
+| [`crates/discovery-service/`](crates/discovery-service/)             | HTTP discovery service (RPC-backed) ([README](crates/discovery-service/README.md))    |
+| [`sdk/`](sdk/)                                                       | TypeScript SDK for private transfers ([README](sdk/README.md))                        |
+| [`e2e/`](e2e/)                                                       | End-to-end tests & devnet fixture generation ([README](e2e/README.md))                |
+| [`deploy/discovery-service/`](deploy/discovery-service/)             | Dockerfile & deployment ([README](deploy/discovery-service/README.md))                |
+| [`lean/`](lean/)                                                     | Formal verification (Lean)                                                            |
+| [`demo/`](demo/)                                                     | Web demo application                                                                  |
+| [`scripts/`](scripts/)                                               | Utility scripts (devnet, deployment, etc.)                                            |
+| [`docs/`](docs/)                                                     | Audit reports & security docs ([audit](docs/audit/README.md))                         |
 | [`crates/discovery-service/specs/`](crates/discovery-service/specs/) | Discovery service specifications ([README](crates/discovery-service/specs/README.md)) |
 
 ## Prerequisites
