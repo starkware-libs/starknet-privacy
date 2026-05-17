@@ -225,10 +225,10 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
   }> {
     if (recipients === "total-only") {
-      // For total-only, follow outgoing-channel pagination until the service
-      // reaches the sentinel and reports the count. Drop per-channel cursors
-      // between calls: the compiler only needs the channel total here, not
-      // subchannel/note state.
+      // For total-only, follow outgoing-channel pagination until a total can
+      // be read from total_n_channels or derived from a completed cursor.
+      // Drop per-channel cursors between calls: the compiler only needs the
+      // channel total here, not subchannel/note state.
       let apiCursor: ApiDiscoveryCursor = { channel_discovery_complete: false };
       let blockRef: BlockIdentifier | undefined;
       while (true) {
