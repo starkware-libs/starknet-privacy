@@ -75,7 +75,7 @@ Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. O
 | Path       | Method | Description                                                                                                           |
 | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | `/`        | POST   | JSON-RPC entrypoint. Only `starknet_checkTransaction` is accepted; everything else returns `-32601 Method not found`. |
-| `/health`  | GET    | Liveness/readiness. Returns `200 {"status":"ok"}`.                                                                    |
+| `/health`  | GET    | Liveness/readiness. `200 {"status":"ok"}`, or `503` naming the unhealthy interceptors. See [Health checks](#health-checks). |
 | `/metrics` | GET    | Prometheus metrics.                                                                                                   |
 
 Every response carries an `x-request-id` header. An inbound `x-request-id` is reused when it
@@ -139,6 +139,29 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 - `proof_interceptor_process_crashes_total{source}` — `uncaught_exception` / `unhandled_rejection`. Non-zero means the process died and was restarted.
 
 Plus default Node.js process metrics from `prom-client`.
+
+## Health checks
+
+`/health` asks every registered interceptor whether it is healthy. Interceptors that do not
+implement the optional `health()` are treated as healthy, so with no interceptors registered
+`/health` is still `200`. If any reports unhealthy the response is `503` with
+
+```json
+{ "status": "unhealthy", "interceptors": [{ "name": "screening", "reason": "screening_unreachable" }] }
+```
+
+The body carries only names and opaque reason codes — no timestamps, counts, or upstream URLs —
+because `/health` is unauthenticated.
+
+The screening interceptor reports unhealthy once the proxy has been continuously unreachable for
+`SCREENING_HEALTH_MAX_UNAVAILABLE_MS` (default 30000). It is always healthy when
+`SCREENING_FAIL_OPEN=true`, since fail-open means an unreachable proxy is tolerated by choice.
+
+**The window only advances on traffic.** It is opened by a failing screening call and cleared by
+a succeeding one; `/health` itself never probes the proxy. A load balancer that drains the pod on
+`503` therefore removes the very traffic that would clear the flag, so the pod stays unhealthy
+until something sends it another request. Pair the probe with a retry or a traffic source that
+survives draining.
 
 ## Logging
 
