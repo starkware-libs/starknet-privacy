@@ -3,6 +3,8 @@
 
 use std::collections::HashSet;
 
+use axum::extract::rejection::JsonRejection;
+use axum::extract::{FromRequest, Request};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
@@ -18,7 +20,6 @@ use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::{BlockId, Felt};
 use tower_http::request_id::RequestId;
-use tracing::{debug, warn};
 
 use super::block_id_serde;
 use crate::chain_state::ChainHead;
@@ -85,6 +86,54 @@ impl ApiErrorResponse {
     }
 }
 
+/// Drop-in replacement for [`axum::Json`] in handler signatures. Behaves
+/// identically on success; on a deserialization failure it logs the rejection
+/// reason at `info` (these are client-driven 4xx errors) and returns the
+/// standard [`ApiErrorResponse`] body with `request_id` attached, instead of
+/// axum's default `text/plain` rejection.
+pub struct ApiJson<T>(pub T);
+
+impl<T, S> FromRequest<S> for ApiJson<T>
+where
+    T: serde::de::DeserializeOwned,
+    S: Send + Sync,
+{
+    type Rejection = Response;
+
+    async fn from_request(req: Request, state: &S) -> Result<Self, Self::Rejection> {
+        // Capture the request id before delegating to Json, which consumes the
+        // request and would make the extension unreachable on the rejection path.
+        let request_id = req.extensions().get::<RequestId>().cloned();
+        match Json::<T>::from_request(req, state).await {
+            Ok(Json(value)) => Ok(ApiJson(value)),
+            Err(rejection) => {
+                let body_text = rejection.body_text();
+                tracing::info!(
+                    rejection = %rejection_kind(&rejection),
+                    reason = %body_text,
+                    "rejected request body"
+                );
+                Err(into_error_response(
+                    request_id.as_ref(),
+                    StatusCode::BAD_REQUEST,
+                    ApiErrorResponse::new(error_codes::INVALID_REQUEST, body_text),
+                ))
+            }
+        }
+    }
+}
+
+/// Short identifier for a [`JsonRejection`] variant, suitable for log fields.
+fn rejection_kind(rejection: &JsonRejection) -> &'static str {
+    match rejection {
+        JsonRejection::JsonDataError(_) => "json_data_error",
+        JsonRejection::JsonSyntaxError(_) => "json_syntax_error",
+        JsonRejection::MissingJsonContentType(_) => "missing_json_content_type",
+        JsonRejection::BytesRejection(_) => "bytes_rejection",
+        _ => "other",
+    }
+}
+
 /// Builds an HTTP response from an error, attaching `request_id` from the
 /// `SetRequestId` layer (if present) so every error body carries the same
 /// id the client receives in the `x-request-id` response header.
@@ -102,6 +151,10 @@ pub fn into_error_response(
 
 /// Maps [`discovery_core::storage_backend::StorageError`] (e.g. from
 /// `StorageBackend::snapshot`) to an HTTP status + API error response.
+///
+/// This helper is intentionally a pure mapping. The caller is responsible for
+/// logging at the origin (see [`log_storage_error`]) so each error is emitted
+/// to the log exactly once with operation context.
 pub fn storage_error_to_response(
     error: discovery_core::storage_backend::StorageError,
 ) -> (StatusCode, ApiErrorResponse) {
@@ -114,61 +167,82 @@ pub fn storage_error_to_response(
                 "Contract not found at the configured address",
             ),
         ),
-        other => {
-            debug!("Storage error: {}", other);
-            (
-                StatusCode::SERVICE_UNAVAILABLE,
-                ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),
-            )
-        }
+        _ => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),
+        ),
     }
 }
 
 /// Maps [`DiscoveryError`] to an HTTP status + API error response.
+///
+/// Pure mapping (see [`storage_error_to_response`] for the same contract);
+/// callers must log at the origin via [`log_discovery_error`].
 pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErrorResponse) {
     match error {
         DiscoveryError::Storage(storage_err) => storage_error_to_response(storage_err),
-        DiscoveryError::Decryption { index, source } => {
-            warn!("Decryption failed at channel index {}: {}", index, source);
-            (
-                StatusCode::BAD_REQUEST,
-                ApiErrorResponse::new(error_codes::DECRYPTION_FAILED, "Decryption failed"),
-            )
-        }
-        DiscoveryError::TaskPanicked(msg) => {
-            warn!("Discovery task panicked: {}", msg);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
-            )
-        }
+        DiscoveryError::Decryption { .. } => (
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(error_codes::DECRYPTION_FAILED, "Decryption failed"),
+        ),
         DiscoveryError::InvalidCursor(msg) => (
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(error_codes::INVALID_REQUEST, msg),
         ),
+        DiscoveryError::TaskPanicked(_)
+        | DiscoveryError::InsufficientBudget { .. }
+        | DiscoveryError::CostOverflow(_)
+        | DiscoveryError::EventError(_) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
+        ),
+    }
+}
+
+/// Emits a single log line for a storage error at its origin.
+///
+/// `ContractNotFound` is client-driven (the address the caller supplied is
+/// wrong) so it's logged at `INFO`. Everything else is a backend failure and
+/// logs at `WARN`.
+pub fn log_storage_error(
+    operation: &'static str,
+    error: &discovery_core::storage_backend::StorageError,
+) {
+    use discovery_core::storage_backend::StorageError;
+    match error {
+        StorageError::ContractNotFound => {
+            tracing::info!(operation, "contract not found at configured address")
+        }
+        _ => tracing::warn!(operation, error = %error, "storage backend error"),
+    }
+}
+
+/// Emits a single log line for a discovery error at its origin.
+///
+/// `InvalidCursor` and `Decryption` are client-driven (the request supplied a
+/// bad cursor or a wrong key) so they log at `INFO`; the rest are internal
+/// failures and log at `WARN`. `Storage` is forwarded so `log_storage_error`
+/// can apply its own level policy.
+pub fn log_discovery_error(operation: &'static str, error: &DiscoveryError) {
+    match error {
+        DiscoveryError::Storage(storage_err) => log_storage_error(operation, storage_err),
+        DiscoveryError::Decryption { index, source } => {
+            tracing::info!(operation, index, error = %source, "decryption failed");
+        }
+        DiscoveryError::InvalidCursor(msg) => {
+            tracing::info!(operation, reason = %msg, "invalid cursor");
+        }
+        DiscoveryError::TaskPanicked(msg) => {
+            tracing::warn!(operation, error = %msg, "discovery task panicked");
+        }
         DiscoveryError::InsufficientBudget { needed, available } => {
-            warn!(
-                "Insufficient I/O budget: needed {}, available {}",
-                needed, available
-            );
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
-            )
+            tracing::warn!(operation, needed, available, "insufficient I/O budget");
         }
         DiscoveryError::CostOverflow(cost) => {
-            warn!("I/O cost overflow: {} exceeds usize", cost);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
-            )
+            tracing::warn!(operation, cost, "I/O cost overflow");
         }
         DiscoveryError::EventError(msg) => {
-            warn!("Event error: {}", msg);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
-            )
+            tracing::warn!(operation, error = %msg, "event error");
         }
     }
 }
@@ -391,8 +465,14 @@ pub struct HistoryResponse {
 mod tests {
     use super::*;
 
-    use axum::http::HeaderValue;
+    use axum::body::Body;
+    use axum::http::{HeaderValue, Request as HttpRequest};
+    use axum::routing::post;
+    use axum::Router;
     use http_body_util::BodyExt;
+    use serde::Deserialize as DeserializeDerive;
+    use tower::ServiceExt;
+    use tower_http::request_id::{MakeRequestUuid, SetRequestIdLayer};
 
     fn make_request_id(value: &'static str) -> RequestId {
         RequestId::new(HeaderValue::from_static(value))
@@ -412,6 +492,50 @@ mod tests {
         let parsed: ApiErrorResponse = serde_json::from_slice(&body_bytes).unwrap();
         assert_eq!(parsed.error.request_id.as_deref(), Some("abc-123"));
         assert_eq!(parsed.error.code, error_codes::INVALID_REQUEST);
+    }
+
+    #[derive(DeserializeDerive)]
+    struct Echo {
+        #[allow(dead_code)]
+        value: u32,
+    }
+
+    async fn echo_handler(_: ApiJson<Echo>) -> &'static str {
+        "ok"
+    }
+
+    #[tokio::test]
+    async fn api_json_rejection_returns_structured_error_with_request_id() {
+        let app = Router::new()
+            .route("/echo", post(echo_handler))
+            .layer(SetRequestIdLayer::new(
+                axum::http::HeaderName::from_static("x-request-id"),
+                MakeRequestUuid,
+            ));
+
+        let response = app
+            .oneshot(
+                HttpRequest::builder()
+                    .method("POST")
+                    .uri("/echo")
+                    .header("content-type", "application/json")
+                    .header("x-request-id", "req-xyz")
+                    .body(Body::from("{}"))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body_bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let parsed: ApiErrorResponse = serde_json::from_slice(&body_bytes).unwrap();
+        assert_eq!(parsed.error.code, error_codes::INVALID_REQUEST);
+        assert_eq!(parsed.error.request_id.as_deref(), Some("req-xyz"));
+        assert!(
+            parsed.error.message.contains("value"),
+            "rejection message should mention missing field: {}",
+            parsed.error.message
+        );
     }
 
     #[tokio::test]

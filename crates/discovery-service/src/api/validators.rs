@@ -7,7 +7,7 @@ use discovery_core::discovery::DiscoveryCursor;
 use discovery_core::history::types::HistoryCursor;
 use discovery_core::storage_backend::{StorageError, StorageSnapshot};
 use starknet_core::types::{BlockId, Felt};
-use tracing::{debug, warn};
+use tracing::{info, warn};
 
 use crate::api::types::{error_codes, ApiErrorResponse};
 use crate::chain_state::{ChainState, ChainStateError};
@@ -26,6 +26,11 @@ pub async fn validate_block_ref<B: ChainState>(
 ) -> Result<BlockId, (StatusCode, ApiErrorResponse)> {
     // last_known_block is for first requests, block_ref is for pagination — never both.
     if last_known_block.is_some() && block_ref.is_some() {
+        info!(
+            validator = "block_ref",
+            reason = "mutually_exclusive_fields",
+            "rejected request: last_known_block and block_ref both set"
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(
@@ -40,6 +45,11 @@ pub async fn validate_block_ref<B: ChainState>(
         match backend.is_canonical(last_known).await {
             Ok(true) => {}
             Ok(false) => {
+                info!(
+                    validator = "block_ref",
+                    block = %format!("{:#x}", last_known),
+                    "rejected request: last_known_block was reorged out"
+                );
                 return Err((
                     StatusCode::CONFLICT,
                     ApiErrorResponse::new(
@@ -49,7 +59,11 @@ pub async fn validate_block_ref<B: ChainState>(
                 ));
             }
             Err(ChainStateError::RpcError(e)) => {
-                warn!("RPC error checking is_canonical: {}", e);
+                warn!(
+                    validator = "block_ref",
+                    error = %e,
+                    "RPC error checking is_canonical"
+                );
                 return Err((
                     StatusCode::SERVICE_UNAVAILABLE,
                     ApiErrorResponse::new(
@@ -66,6 +80,7 @@ pub async fn validate_block_ref<B: ChainState>(
         Some(id) => Ok(id),
         None => {
             let head = backend.get_head().await.ok_or_else(|| {
+                warn!(validator = "block_ref", "no indexed head available yet");
                 (
                     StatusCode::SERVICE_UNAVAILABLE,
                     ApiErrorResponse::new(
@@ -86,6 +101,13 @@ fn validate_bound(
     field_name: &str,
 ) -> Result<(), (StatusCode, ApiErrorResponse)> {
     if actual_size > max_allowed {
+        info!(
+            validator = "bound",
+            field = field_name,
+            actual = actual_size,
+            max = max_allowed,
+            "rejected request: bound exceeded"
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(
@@ -125,6 +147,13 @@ pub fn validate_cursor(
         for subchannel_cursor in channel_cursor.subchannels.values() {
             if let Some(total_n_notes) = subchannel_cursor.total_n_notes {
                 if total_n_notes > max_notes {
+                    info!(
+                        validator = "cursor",
+                        field = "total_n_notes",
+                        actual = total_n_notes,
+                        max = max_notes,
+                        "rejected request: cursor bound exceeded"
+                    );
                     return Err((
                         StatusCode::BAD_REQUEST,
                         ApiErrorResponse::new(
@@ -139,6 +168,13 @@ pub fn validate_cursor(
             }
             if let Some(last_note_index) = subchannel_cursor.last_note_index {
                 if last_note_index >= max_notes {
+                    info!(
+                        validator = "cursor",
+                        field = "last_note_index",
+                        actual = last_note_index,
+                        max = max_notes,
+                        "rejected request: cursor bound exceeded"
+                    );
                     return Err((
                         StatusCode::BAD_REQUEST,
                         ApiErrorResponse::new(
@@ -208,15 +244,26 @@ pub async fn validate_viewing_key<S: StorageSnapshot>(
             .get_public_key(user_address)
             .await
             .map_err(|storage_error| match storage_error {
-                StorageError::ContractNotFound => (
-                    StatusCode::BAD_REQUEST,
-                    ApiErrorResponse::new(
-                        error_codes::CONTRACT_NOT_FOUND,
-                        "Contract not found at the configured address",
-                    ),
-                ),
+                StorageError::ContractNotFound => {
+                    info!(
+                        validator = "viewing_key",
+                        user_address = %format!("{:#x}", user_address),
+                        "rejected request: contract not found at configured address"
+                    );
+                    (
+                        StatusCode::BAD_REQUEST,
+                        ApiErrorResponse::new(
+                            error_codes::CONTRACT_NOT_FOUND,
+                            "Contract not found at the configured address",
+                        ),
+                    )
+                }
                 other => {
-                    debug!("Storage error fetching public key: {}", other);
+                    warn!(
+                        validator = "viewing_key",
+                        error = %other,
+                        "storage error fetching public key"
+                    );
                     (
                         StatusCode::SERVICE_UNAVAILABLE,
                         ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),
@@ -236,6 +283,11 @@ pub async fn validate_viewing_key<S: StorageSnapshot>(
     let derived_public_key = starknet_crypto::get_public_key(viewing_key);
 
     if derived_public_key != registered_public_key {
+        info!(
+            validator = "viewing_key",
+            user_address = %format!("{:#x}", user_address),
+            "rejected request: viewing_key does not match registered public key"
+        );
         return Err((
             StatusCode::BAD_REQUEST,
             ApiErrorResponse::new(
