@@ -129,8 +129,17 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.
+- `proof_interceptor_process_crashes_total{source}` — `uncaught_exception` / `unhandled_rejection`. Non-zero means the process died and was restarted.
 
 Plus default Node.js process metrics from `prom-client`.
+
+## Process lifecycle
+
+An uncaught exception or unhandled rejection is logged as JSON with its stack trace,
+counted in `proof_interceptor_process_crashes_total`, and then the process exits `1`
+rather than dying silently. `SIGTERM`/`SIGINT` close the listener and log
+`shutdown_started` then `shutdown_complete` (or `shutdown_error`); repeated signals
+while a shutdown is already running are logged and ignored.
 
 ## Verifying a deployment
 
