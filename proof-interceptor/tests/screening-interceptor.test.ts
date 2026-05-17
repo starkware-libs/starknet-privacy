@@ -5,6 +5,7 @@ import { createServer, type Server } from "node:http";
 import {
   ScreeningInterceptor,
   getScreenedAddresses,
+  isSinglePoolCall,
   type ScreeningConfig,
 } from "../src/screening-interceptor.js";
 import type { ProveTxnV3 } from "../src/types.js";
@@ -161,6 +162,50 @@ describe("getScreenedAddresses", () => {
       POOL_ADDR
     );
     expect(addresses).toEqual([]);
+  });
+
+  // Attackers must not be able to dodge the single-pool-call check by
+  // submitting equivalent encodings of 1 (uppercase prefix, leading zeros,
+  // bare "1" with no prefix). All of these are the same felt value.
+  it.each([["0X1"], ["0x01"], ["0x001"], ["0x0001"], ["1"]])(
+    "treats %s as a single-call count (no normalization bypass)",
+    (callCount) => {
+      const addresses = getScreenedAddresses(
+        sampleTransaction([
+          callCount,
+          POOL_ADDR,
+          "0xselector",
+          "0x6",
+          USER_ADDR,
+          PRIVATE_KEY,
+          "0x1",
+          "0x5",
+          TOKEN,
+          AMOUNT,
+        ]),
+        POOL_ADDR
+      );
+      expect(addresses).toEqual(["0xaaa111"]);
+    }
+  );
+
+  it("matches pool address regardless of 0X vs 0x prefix casing", () => {
+    const addresses = getScreenedAddresses(
+      sampleTransaction([
+        "0x1",
+        "0XABC",
+        "0xselector",
+        "0x6",
+        USER_ADDR,
+        PRIVATE_KEY,
+        "0x1",
+        "0x5",
+        TOKEN,
+        AMOUNT,
+      ]),
+      "0xabc"
+    );
+    expect(addresses).toEqual(["0xaaa111"]);
   });
 
   describe("deposit-only screening", () => {
@@ -321,9 +366,61 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: POOL_ADDR,
+    blockNonPoolTx: false,
     ...overrides,
   };
 }
+
+describe("isSinglePoolCall", () => {
+  it("returns true for a single-call INVOKE targeting the pool", () => {
+    expect(isSinglePoolCall(sampleTransaction(), POOL_ADDR)).toBe(true);
+  });
+
+  it("returns false when the target contract is not the pool", () => {
+    expect(isSinglePoolCall(sampleTransaction(), "0xother")).toBe(false);
+  });
+
+  it("returns false for multi-call transactions", () => {
+    const transaction = sampleTransaction([
+      "0x2", // 2 calls
+      POOL_ADDR,
+      "0xsel",
+      "0x0",
+      "0xother",
+      "0xsel",
+      "0x0",
+    ]);
+    expect(isSinglePoolCall(transaction, POOL_ADDR)).toBe(false);
+  });
+
+  it("returns false for short calldata", () => {
+    expect(
+      isSinglePoolCall(
+        sampleTransaction(["0x1", POOL_ADDR, "0xsel"]),
+        POOL_ADDR
+      )
+    ).toBe(false);
+  });
+
+  it.each([["0X1"], ["0x01"], ["0x001"]])(
+    "returns true when call_count is %s (normalized to 0x1)",
+    (callCount) => {
+      const transaction = sampleTransaction([
+        callCount,
+        POOL_ADDR,
+        "0xsel",
+        "0x6",
+        USER_ADDR,
+        PRIVATE_KEY,
+        "0x1",
+        "0x5",
+        TOKEN,
+        AMOUNT,
+      ]);
+      expect(isSinglePoolCall(transaction, POOL_ADDR)).toBe(true);
+    }
+  );
+});
 
 describe("ScreeningInterceptor", () => {
   it("returns continue when elliptic-proxy says not blocked", async () => {
@@ -499,6 +596,7 @@ describe("ScreeningInterceptor", () => {
   });
 
   it("allows transactions whose contract address does not match the pool", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(
       makeConfig({
         ellipticProxyUrl: "http://127.0.0.1:1",
@@ -507,5 +605,113 @@ describe("ScreeningInterceptor", () => {
     );
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict).toEqual({ action: "allow" });
+
+    const logEntry = findLogEntry(
+      logSpy,
+      (entry) => entry.screening === "non_pool_tx"
+    );
+    expect(logEntry).toEqual({
+      screening: "non_pool_tx",
+      action: "allow",
+      blockNonPoolTx: false,
+    });
+    logSpy.mockRestore();
+  });
+
+  describe("blockNonPoolTx flag", () => {
+    it("blocks transactions whose target is not the pool", async () => {
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({
+          ellipticProxyUrl: "http://127.0.0.1:1",
+          poolAddress: "0xdifferent",
+          blockNonPoolTx: true,
+        })
+      );
+      const verdict = await interceptor.intercept(sampleTransaction());
+      expect(verdict.action).toBe("block");
+      if (verdict.action === "block") {
+        expect(verdict.reason).toContain(
+          "not a direct call to the privacy pool"
+        );
+      }
+
+      const logEntry = findLogEntry(
+        logSpy,
+        (entry) => entry.screening === "non_pool_tx"
+      );
+      expect(logEntry).toEqual({
+        screening: "non_pool_tx",
+        action: "block",
+        blockNonPoolTx: true,
+      });
+      logSpy.mockRestore();
+    });
+
+    it("blocks multi-call transactions even if a call targets the pool", async () => {
+      const transaction = sampleTransaction([
+        "0x2", // 2 calls
+        POOL_ADDR,
+        "0xsel",
+        "0x0",
+        "0xother",
+        "0xsel",
+        "0x0",
+      ]);
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({
+          ellipticProxyUrl: "http://127.0.0.1:1",
+          blockNonPoolTx: true,
+        })
+      );
+      const verdict = await interceptor.intercept(transaction);
+      expect(verdict.action).toBe("block");
+
+      const logEntry = findLogEntry(
+        logSpy,
+        (entry) => entry.screening === "non_pool_tx"
+      );
+      expect(logEntry?.action).toBe("block");
+      logSpy.mockRestore();
+    });
+
+    it("still screens single-call pool deposits when flag is set", async () => {
+      await startMockEllipticProxy((_req, res) => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ blocked: false }));
+      });
+
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({ blockNonPoolTx: true })
+      );
+      const verdict = await interceptor.intercept(sampleTransaction());
+      expect(verdict).toEqual({ action: "allow" });
+
+      // Pool deposits should not emit the "non_pool_tx" log line — they go
+      // through the screening path instead.
+      const nonPoolLog = findLogEntry(
+        logSpy,
+        (entry) => entry.screening === "non_pool_tx"
+      );
+      expect(nonPoolLog).toBeUndefined();
+      logSpy.mockRestore();
+    });
   });
 });
+
+function findLogEntry(
+  logSpy: ReturnType<typeof vi.spyOn<typeof console, "log">>,
+  predicate: (entry: Record<string, unknown>) => boolean
+): Record<string, unknown> | undefined {
+  for (const call of logSpy.mock.calls) {
+    try {
+      const parsed = JSON.parse(call[0] as string) as Record<string, unknown>;
+      if (predicate(parsed)) return parsed;
+    } catch {
+      // not JSON, skip
+    }
+  }
+  return undefined;
+}
