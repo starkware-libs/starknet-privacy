@@ -3,6 +3,7 @@
 mod access_log;
 pub mod block_id_serde;
 pub mod handlers;
+mod request_span;
 pub mod types;
 pub mod validators;
 
@@ -11,6 +12,7 @@ use std::io::BufReader;
 use std::sync::Arc;
 
 use axum::extract::DefaultBodyLimit;
+use axum::http::HeaderName;
 use axum::routing::{get, post};
 use axum::Router;
 use discovery_core::events_backend::RawEventAccess;
@@ -18,6 +20,7 @@ use discovery_core::storage_backend::StorageBackend;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
 use tower_http::cors::CorsLayer;
+use tower_http::request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer};
 use tower_http::timeout::TimeoutLayer;
 use tracing::info;
 
@@ -131,6 +134,11 @@ where
             api_router
         };
 
+        // Layer ordering: in axum, the LAST `.layer()` call is the OUTERMOST.
+        // Request-id layers sit closest to the wire so every downstream layer
+        // (span binding, access log, handlers) sees the id on the request and
+        // the response carries it back to the client.
+        let request_id_header = HeaderName::from_static("x-request-id");
         let app = app
             .layer(CorsLayer::permissive())
             .layer(DefaultBodyLimit::max(
@@ -140,7 +148,10 @@ where
                 axum::http::StatusCode::REQUEST_TIMEOUT,
                 self.config.request_timeout,
             ))
-            .layer(axum::middleware::from_fn(access_log::access_log));
+            .layer(axum::middleware::from_fn(access_log::access_log))
+            .layer(axum::middleware::from_fn(request_span::request_span))
+            .layer(PropagateRequestIdLayer::new(request_id_header.clone()))
+            .layer(SetRequestIdLayer::new(request_id_header, MakeRequestUuid));
 
         let tcp_listener = TcpListener::bind(&self.config.host)
             .await
