@@ -1,6 +1,6 @@
 // tests/config.test.ts
 import { describe, it, expect, beforeEach } from "vitest";
-import { loadConfig } from "../src/config.js";
+import { loadConfig, redactConfig, type Config } from "../src/config.js";
 
 describe("loadConfig", () => {
   const originalEnv = process.env;
@@ -139,5 +139,72 @@ describe("loadConfig", () => {
     delete process.env.SCREENING_POOL_ADDRESS;
 
     expect(() => loadConfig()).toThrow("SCREENING_POOL_ADDRESS");
+  });
+});
+
+describe("redactConfig", () => {
+  const baseConfig: Config = {
+    host: "0.0.0.0",
+    port: 8080,
+    maxBodyBytes: 5 * 1024 * 1024,
+  };
+
+  it("returns plain config untouched when no screening or TLS is set", () => {
+    expect(redactConfig(baseConfig)).toEqual(baseConfig);
+  });
+
+  it("masks partnerSecret but preserves other screening fields", () => {
+    const config: Config = {
+      ...baseConfig,
+      screening: {
+        ellipticProxyUrl: "http://elliptic-proxy:3000",
+        partnerName: "test-partner",
+        partnerSecret: "supersecret",
+        timeoutMs: 1000,
+        failOpen: false,
+        maxRetries: 0,
+        totalTimeoutMs: 5000,
+        poolAddress: "0xabc",
+        blockNonPoolTx: true,
+      },
+    };
+    const redacted = redactConfig(config);
+    const screening = (redacted.screening ?? {}) as Record<string, unknown>;
+    expect(screening.partnerSecret).toBe("[REDACTED]");
+    expect(screening.partnerName).toBe("test-partner");
+    expect(screening.ellipticProxyUrl).toBe("http://elliptic-proxy:3000");
+    expect(JSON.stringify(redacted)).not.toContain("supersecret");
+  });
+
+  it("marks an empty partnerSecret as [EMPTY] so misconfiguration stays visible", () => {
+    const config: Config = {
+      ...baseConfig,
+      screening: {
+        ellipticProxyUrl: "http://elliptic-proxy:3000",
+        partnerName: "test-partner",
+        partnerSecret: "",
+        timeoutMs: 1000,
+        failOpen: false,
+        maxRetries: 0,
+        totalTimeoutMs: 5000,
+        poolAddress: "0xabc",
+        blockNonPoolTx: false,
+      },
+    };
+    const redacted = redactConfig(config);
+    expect((redacted.screening as Record<string, unknown>).partnerSecret).toBe(
+      "[EMPTY]"
+    );
+  });
+
+  it("collapses TLS to {enabled: true} so cert/key paths don't appear", () => {
+    const config: Config = {
+      ...baseConfig,
+      tls: { certPath: "/etc/cert.pem", keyPath: "/etc/key.pem" },
+    };
+    const redacted = redactConfig(config);
+    expect(redacted.tls).toEqual({ enabled: true });
+    expect(JSON.stringify(redacted)).not.toContain("/etc/cert.pem");
+    expect(JSON.stringify(redacted)).not.toContain("/etc/key.pem");
   });
 });
