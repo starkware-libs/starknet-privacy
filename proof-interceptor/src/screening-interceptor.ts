@@ -2,7 +2,11 @@
 import { createHmac } from "node:crypto";
 import { CallData } from "starknet";
 import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
-import type { TransactionInterceptor, Verdict } from "./interceptor.js";
+import type {
+  InterceptorHealth,
+  TransactionInterceptor,
+  Verdict,
+} from "./interceptor.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
   screeningResults,
@@ -23,6 +27,10 @@ export interface ScreeningConfig {
   // `poolAddress` are blocked outright. When false (default), such transactions
   // bypass screening and are allowed through.
   blockNonPoolTx: boolean;
+  // Maximum duration the upstream may stay unreachable before /health reports
+  // 503 (only when `failOpen` is false — when fail-open is on, an unreachable
+  // upstream is operationally tolerated, so health stays green).
+  healthMaxUnavailableMs: number;
 }
 
 const ACTIONS_TYPE =
@@ -122,7 +130,27 @@ type ScreenResult = "allowed" | "blocked" | "unavailable";
 export class ScreeningInterceptor implements TransactionInterceptor {
   readonly name = "screening";
 
+  // Reachability tracking for /health. `null` means the upstream is healthy
+  // (either no failures yet, or the most recent call succeeded). When a call
+  // fails and this field is null, it's set to `Date.now()`. The /health
+  // endpoint flips to 503 once the window exceeds `healthMaxUnavailableMs`.
+  // Only relevant when `failOpen` is false — see `health()`.
+  private consecutiveFailureStartAt: number | null = null;
+
   constructor(private readonly config: ScreeningConfig) {}
+
+  health(): InterceptorHealth {
+    // Fail-open means the operator has accepted that we ship transactions
+    // through even when screening is down, so unreachability does not make
+    // the *service* unhealthy.
+    if (this.config.failOpen) return { healthy: true };
+    if (this.consecutiveFailureStartAt === null) return { healthy: true };
+    const unavailableMs = Date.now() - this.consecutiveFailureStartAt;
+    if (unavailableMs > this.config.healthMaxUnavailableMs) {
+      return { healthy: false, reason: "screening_unreachable" };
+    }
+    return { healthy: true };
+  }
 
   async intercept(transaction: ProveTxnV3): Promise<Verdict> {
     if (!isSinglePoolCall(transaction, this.config.poolAddress)) {
@@ -194,6 +222,8 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         const screeningLatencyMs = Date.now() - callStart;
         screeningResults.inc({ result });
         screeningDuration.observe({ result }, screeningLatencyMs / 1000);
+        // A successful call clears the unreachability window.
+        this.consecutiveFailureStartAt = null;
         console.log(
           JSON.stringify({
             screening: "complete",
@@ -205,6 +235,10 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         return result;
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        // Start (or extend) the unreachability window for /health.
+        if (this.consecutiveFailureStartAt === null) {
+          this.consecutiveFailureStartAt = Date.now();
+        }
       }
     }
 

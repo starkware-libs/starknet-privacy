@@ -8,9 +8,26 @@ import {
 
 export type Verdict = { action: "allow" } | { action: "block"; reason: string };
 
+/**
+ * Optional health snapshot exposed by an interceptor. Returned by the
+ * /health endpoint when any interceptor implements `health()`. The body
+ * intentionally contains no internal state (timestamps, error counts) —
+ * /health is a load-balancer probe, not a debug endpoint.
+ */
+export interface InterceptorHealth {
+  healthy: boolean;
+  /** Short, opaque code summarizing why the interceptor is unhealthy. */
+  reason?: string;
+}
+
 export interface TransactionInterceptor {
   name: string;
   intercept(transaction: ProveTxnV3): Promise<Verdict>;
+  /**
+   * Optional. When provided, /health calls it for each registered interceptor.
+   * /health returns 503 if any interceptor reports `healthy: false`.
+   */
+  health?(): InterceptorHealth;
 }
 
 /**

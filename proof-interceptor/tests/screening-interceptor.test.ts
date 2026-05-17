@@ -367,6 +367,7 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     totalTimeoutMs: 10000,
     poolAddress: POOL_ADDR,
     blockNonPoolTx: false,
+    healthMaxUnavailableMs: 30000,
     ...overrides,
   };
 }
