@@ -17,6 +17,7 @@ export { IndexerDiscoveryProvider } from "./internal/indexer-discovery.js";
 export type { DiscoveryHealthResponse } from "./internal/indexer-discovery.js";
 export { OhttpClient } from "./internal/ohttp-client.js";
 export type { OhttpOption } from "./internal/ohttp-client.js";
+export { installOhttpWebCryptoFallback } from "./internal/ohttp-webcrypto-fallback.js";
 export { buildHistoryCursor } from "./internal/history.js";
 export { classifyTransaction } from "./internal/action-classifier.js";
 export type { ClassifyOptions } from "./internal/action-classifier.js";
