@@ -6,8 +6,10 @@
  */
 
 import { OHTTPClient, KeyConfig } from "ohttp-ts";
-import { CipherSuite, KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM } from "hpke";
+import { CipherSuite } from "hpke";
+import { AEAD_AES_128_GCM, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256 } from "@panva/hpke-noble";
 import { ReorgError } from "./errors.js";
+import { installOhttpWebCryptoFallback } from "./ohttp-webcrypto-fallback.js";
 
 /** HTTP 409 — the discovery service returns this exclusively for block reorgs (BLOCK_REORGED). */
 const REORG_STATUS = 409;
@@ -52,6 +54,7 @@ export class OhttpClient {
     private readonly gatewayUrl: string,
     options?: { relayUrl?: string; publicKeyConfig?: Uint8Array }
   ) {
+    installOhttpWebCryptoFallback();
     this.pinnedKeyConfig = options?.publicKeyConfig;
     if (options?.relayUrl) {
       this.relayUrl = options.relayUrl;

@@ -65,7 +65,7 @@ describe("OhttpClient", () => {
     globalThis.fetch = originalFetch;
   });
 
-  describe("outer URL construction (Finding 3)", () => {
+  describe("OHTTP URL construction", () => {
     function mockFetch() {
       const fetchMock = vi.fn().mockResolvedValue({
         ok: true,
