@@ -6,7 +6,11 @@
  */
 
 import { OHTTPClient, KeyConfig } from "ohttp-ts";
-import { CipherSuite, KEM_DHKEM_X25519_HKDF_SHA256, KDF_HKDF_SHA256, AEAD_AES_128_GCM } from "hpke";
+import { CipherSuite } from "hpke";
+import { AEAD_AES_128_GCM, KDF_HKDF_SHA256, KEM_DHKEM_X25519_HKDF_SHA256 } from "@panva/hpke-noble";
+import { hmac } from "@noble/hashes/hmac.js";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { gcm } from "@noble/ciphers/aes.js";
 import { ReorgError } from "./errors.js";
 
 /** HTTP 409 — the discovery service returns this exclusively for block reorgs (BLOCK_REORGED). */
@@ -20,6 +24,114 @@ const REORG_STATUS = 409;
 // includes a reverse-proxy path prefix (e.g. `/discovery`) leaks into the
 // inner path and produces a 404 when the gateway server tries to route it.
 const INNER_REQUEST_ORIGIN = "https://ohttp-target.invalid";
+
+/**
+ * Polyfill crypto.subtle for HMAC and AES-GCM on React Native.
+ *
+ * ohttp-ts uses crypto.subtle internally for OHTTP response decryption
+ * (extractPrk / expandPrk / openWithRawAead), but React Native's
+ * react-native-quick-crypto doesn't implement HMAC or AES-GCM through
+ * the SubtleCrypto interface. This patches them using noble as a
+ * transparent fallback — on platforms where native WebCrypto works
+ * (Chrome, Node), the original functions succeed and the fallback
+ * never triggers.
+ */
+let didPolyfillSubtle = false;
+function polyfillSubtleIfNeeded(): void {
+  if (didPolyfillSubtle) return;
+  didPolyfillSubtle = true;
+  if (typeof globalThis.crypto?.subtle?.importKey !== "function") return;
+
+  /* eslint-disable @typescript-eslint/no-explicit-any */
+  const subtle = globalThis.crypto.subtle as any;
+  const originalImportKey = subtle.importKey.bind(subtle);
+  const originalSign = subtle.sign?.bind(subtle);
+  const originalEncrypt = subtle.encrypt?.bind(subtle);
+  const originalDecrypt = subtle.decrypt?.bind(subtle);
+
+  const hmacKeys = new WeakMap<object, { keyData: Uint8Array }>();
+  const aesKeys = new WeakMap<object, { keyData: Uint8Array }>();
+
+  subtle.importKey = async function patchedImportKey(
+    format: string,
+    keyData: any,
+    algorithm: any,
+    extractable: boolean,
+    keyUsages: string[]
+  ): Promise<any> {
+    const algName = (algorithm?.name ?? "").toUpperCase();
+    const hashName = typeof algorithm?.hash === "string" ? algorithm.hash : algorithm?.hash?.name;
+    const raw = keyData instanceof Uint8Array ? keyData : new Uint8Array(keyData);
+
+    if (format === "raw" && algName === "HMAC" && hashName) {
+      try {
+        return await originalImportKey(format, keyData, algorithm, extractable, keyUsages);
+      } catch {
+        const h = {} as any;
+        hmacKeys.set(h, { keyData: raw });
+        return h;
+      }
+    }
+    if (format === "raw" && algName === "AES-GCM") {
+      try {
+        return await originalImportKey(format, keyData, algorithm, extractable, keyUsages);
+      } catch {
+        const h = {} as any;
+        aesKeys.set(h, { keyData: raw });
+        return h;
+      }
+    }
+    return originalImportKey(format, keyData, algorithm, extractable, keyUsages);
+  };
+
+  subtle.sign = async function patchedSign(algorithm: any, key: any, data: any): Promise<any> {
+    const hk = hmacKeys.get(key);
+    if (hk) {
+      const d = data instanceof Uint8Array ? data : new Uint8Array(data);
+      return hmac(sha256, hk.keyData, d).buffer;
+    }
+    return originalSign!(algorithm, key, data);
+  };
+
+  subtle.encrypt = async function patchedEncrypt(
+    algorithm: any,
+    key: any,
+    data: any
+  ): Promise<any> {
+    const ak = aesKeys.get(key);
+    if (ak) {
+      const iv = algorithm.iv instanceof Uint8Array ? algorithm.iv : new Uint8Array(algorithm.iv);
+      const aad = algorithm.additionalData
+        ? algorithm.additionalData instanceof Uint8Array
+          ? algorithm.additionalData
+          : new Uint8Array(algorithm.additionalData)
+        : undefined;
+      const pt = data instanceof Uint8Array ? data : new Uint8Array(data);
+      return gcm(ak.keyData, iv, aad).encrypt(pt).buffer;
+    }
+    return originalEncrypt!(algorithm, key, data);
+  };
+
+  subtle.decrypt = async function patchedDecrypt(
+    algorithm: any,
+    key: any,
+    data: any
+  ): Promise<any> {
+    const ak = aesKeys.get(key);
+    if (ak) {
+      const iv = algorithm.iv instanceof Uint8Array ? algorithm.iv : new Uint8Array(algorithm.iv);
+      const aad = algorithm.additionalData
+        ? algorithm.additionalData instanceof Uint8Array
+          ? algorithm.additionalData
+          : new Uint8Array(algorithm.additionalData)
+        : undefined;
+      const ct = data instanceof Uint8Array ? data : new Uint8Array(data);
+      return gcm(ak.keyData, iv, aad).decrypt(ct).buffer;
+    }
+    return originalDecrypt!(algorithm, key, data);
+  };
+  /* eslint-enable @typescript-eslint/no-explicit-any */
+}
 
 /** Configuration for enabling OHTTP. `true` uses defaults; an object allows custom relay/key config. */
 export type OhttpOption = boolean | { relayUrl?: string; publicKeyConfig?: Uint8Array };
@@ -52,6 +164,7 @@ export class OhttpClient {
     private readonly gatewayUrl: string,
     options?: { relayUrl?: string; publicKeyConfig?: Uint8Array }
   ) {
+    polyfillSubtleIfNeeded();
     this.pinnedKeyConfig = options?.publicKeyConfig;
     if (options?.relayUrl) {
       this.relayUrl = options.relayUrl;
