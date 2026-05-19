@@ -176,6 +176,30 @@ describe("handler", () => {
     );
   });
 
+  it("drops hostile x-request-id and generates a fresh one", async () => {
+    await startProxy();
+    // Whitespace and oversize values must be rejected — either would be
+    // unsafe to echo into a response header or to embed in a structured
+    // log field. CR/LF are already blocked by Node's HTTP parser before
+    // `req.headers` even sees them, so we don't need to test those here.
+    const hostile = ["with space", "tab\there", "a".repeat(2048)];
+    for (const value of hostile) {
+      const response = await fetch(proxyUrl("/"), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": value,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+      });
+      const echoed = response.headers.get("x-request-id") ?? "";
+      expect(echoed).not.toBe(value);
+      expect(echoed).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
+  });
+
   it("includes status and request_id in the per-request log line", async () => {
     await startProxy();
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});

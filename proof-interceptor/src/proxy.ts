@@ -40,13 +40,13 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // Generate or accept a request id. UUIDv4 is used when no upstream id is
-    // provided so log lines emitted while handling this request can be
-    // correlated end-to-end. The id is echoed on the response so a caller
-    // can quote it when reporting a failure.
+    // Generate or accept a request id. Caller-supplied ids are accepted
+    // only when short and printable-ASCII — CR/LF would let a client
+    // smuggle headers into the response via `res.setHeader`, and very
+    // long values would balloon every log line for the request.
     const incomingId = req.headers[REQUEST_ID_HEADER];
-    const requestId =
-      (Array.isArray(incomingId) ? incomingId[0] : incomingId) ?? randomUUID();
+    const candidate = Array.isArray(incomingId) ? incomingId[0] : incomingId;
+    const requestId = isSafeRequestId(candidate) ? candidate : randomUUID();
     res.setHeader(REQUEST_ID_HEADER, requestId);
 
     await withRequestId(requestId, () =>
@@ -216,4 +216,17 @@ function readBody(req: IncomingMessage, maxBytes: number): Promise<Buffer> {
 function isJsonContent(req: IncomingMessage): boolean {
   const contentType = req.headers["content-type"] ?? "";
   return contentType.includes("application/json");
+}
+
+const MAX_REQUEST_ID_LEN = 128;
+// Printable ASCII excluding whitespace — same allow-list the prover uses.
+const REQUEST_ID_RE = /^[\x21-\x7e]+$/;
+
+function isSafeRequestId(value: string | undefined): value is string {
+  return (
+    typeof value === "string" &&
+    value.length > 0 &&
+    value.length <= MAX_REQUEST_ID_LEN &&
+    REQUEST_ID_RE.test(value)
+  );
 }
