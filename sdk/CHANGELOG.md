@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.2-RC.6
+
 ### Changed
 
 - `createPrivateTransfers()` `account` parameter type relaxed from `Account` to `{ address, signer }`. A full starknet.js `Account` is structurally assignable, so existing callers compile unchanged. Smart wallets that need account-formatted signatures (e.g. owner + guardian merge) can now pass `{ address: account.address, signer: customProofSigner }` to override the signer used for proof invocations. Closes #718.
