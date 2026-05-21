@@ -1,5 +1,5 @@
 [package]
-name = "ekubo_swap_helper"
+name = "ekubo_swap_anonymizer"
 version.workspace = true
 edition.workspace = true
 license-file.workspace = true
@@ -26,10 +26,10 @@ test_utils = []
 [lib]
 
 [[test]]
-name = "ekubo_swap_helper_unittest"
+name = "ekubo_swap_anonymizer_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
+    "ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
 ]
 
 [scripts]

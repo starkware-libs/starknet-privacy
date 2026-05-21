@@ -43,23 +43,39 @@ re-reads it according to `configCacheTtlSeconds`.
   "partners": {
     "partner-a": "issued-hmac-secret-base64",
     "partner-b": "issued-hmac-secret-base64"
-  }
+  },
+  "skipElliptic": false,
+  "additionalBlockedAddresses": [],
+  "blockOverrideAddresses": []
 }
 ```
 
 ### Configuration fields
 
-| Field                    | Description                                                                       |
-| ------------------------ | --------------------------------------------------------------------------------- |
-| `elliptic.url`           | Elliptic API base URL                                                             |
-| `elliptic.key`           | Real Elliptic API key                                                             |
-| `elliptic.secret`        | Real Elliptic HMAC secret (base64)                                                |
-| `elliptic.timeoutMs`     | Timeout for upstream Elliptic requests (ms)                                       |
-| `rateLimitPerMinute`     | Global per-partner rate limit                                                     |
-| `maxBodyBytes`           | Max request body size                                                             |
-| `configCacheTtlSeconds`  | How often the proxy re-reads config from Secret Manager (seconds)                 |
-| `blockedCacheTtlSeconds` | How long to cache blocked address verdicts (seconds)                              |
-| `partners.<name>`        | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key` |
+| Field                                 | Description                                                                                                                                                              |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `elliptic.url`                        | Elliptic API base URL                                                                                                                                                    |
+| `elliptic.key`                        | Real Elliptic API key                                                                                                                                                    |
+| `elliptic.secret`                     | Real Elliptic HMAC secret (base64)                                                                                                                                       |
+| `elliptic.timeoutMs`                  | Timeout for upstream Elliptic requests (ms)                                                                                                                              |
+| `rateLimitPerMinute`                  | Global per-partner rate limit                                                                                                                                            |
+| `maxBodyBytes`                        | Max request body size                                                                                                                                                    |
+| `configCacheTtlSeconds`               | How often the proxy re-reads config from Secret Manager (seconds)                                                                                                        |
+| `blockedCacheTtlSeconds`              | How long to cache blocked address verdicts (seconds)                                                                                                                     |
+| `partners.<name>`                     | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key`                                                                                        |
+| `skipElliptic` _(optional)_           | When `true`, the proxy never calls Elliptic. Use for non-mainnet deployments where Elliptic has no data coverage, or as a kill switch. Operator lists below still apply. |
+| `additionalBlockedAddresses` _(opt.)_ | Lowercase hex addresses always treated as blocked. Wins over Elliptic and the cache. Tagged `source: "blocklist"`.                                                       |
+| `blockOverrideAddresses` _(opt.)_     | Lowercase hex addresses always treated as allowed. Wins over `additionalBlockedAddresses`, Elliptic, and the cache. Tagged `source: "allowlist"`.                        |
+
+### Verdict precedence
+
+For each request the proxy evaluates sources in this order, first match wins:
+
+1. `blockOverrideAddresses` → `{ blocked: false, source: "allowlist" }`
+2. `additionalBlockedAddresses` → `{ blocked: true, source: "blocklist" }`
+3. `skipElliptic` set → `{ blocked: false, source: "skip" }`
+4. blocked-address cache hit → `{ blocked: true, source: "cache" }`
+5. Live Elliptic call → `{ blocked, source: "elliptic" }`
 
 ## Authentication
 
@@ -105,7 +121,8 @@ The proxy:
 | Body exceeds `maxBodyBytes`            | `413 Payload Too Large`   |
 | Config unavailable from Secret Manager | `503 Service Unavailable` |
 | Elliptic network error                 | `503 Service Unavailable` |
-| Elliptic non-2xx response              | `502 Upstream Error`      |
+| Elliptic 404 (subject not on chain)    | `200 { blocked: false }`  |
+| Elliptic other non-2xx response        | `502 Upstream Error`      |
 
 ## Project Structure
 

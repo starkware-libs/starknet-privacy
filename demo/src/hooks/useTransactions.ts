@@ -53,7 +53,7 @@ async function fetchPaymasterFee(
  * - With paymaster (`feeAction` defined): the paymaster forwarder is the
  *   caller and handles its own allowance. Nothing to do.
  * - Without paymaster: the user account is the caller and must approve STRK
- *   to the pool for `feeAmount` before submitting. This helper issues that
+ *   to the pool for `feeAmount` before submitting. This anonymizer issues that
  *   approve and waits for its receipt.
  *
  * `alreadyCovered` is set by `deposit` when depositing STRK — it folds the
@@ -657,7 +657,7 @@ export function useTransactions(
         if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
         if (!config.vesu) throw new Error("Vesu config not set");
         const rawAmount = scaleAmount(token, amount);
-        const { helperAddress } = config.vesu;
+        const { anonymizerAddress } = config.vesu;
 
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
         await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
@@ -672,13 +672,13 @@ export function useTransactions(
           })
           .surplusTo(activeAddress)
           .with(token)
-          .withdraw({ recipient: helperAddress, amount: rawAmount })
+          .withdraw({ recipient: anonymizerAddress, amount: rawAmount })
           .surplusTo(activeAddress, false)
           .with(vTokenAddress)
           .transfer({ recipient: activeAddress, amount: Open })
           .done()
           .invoke((args) => ({
-            contractAddress: helperAddress,
+            contractAddress: anonymizerAddress,
             calldata: [
               0n, // LendingOperation::Deposit
               token, // in_token (underlying)
@@ -719,9 +719,9 @@ export function useTransactions(
         // `amount` is in vToken shares (matches the displayed balance). Two
         // different denominations are needed downstream:
         //   - rawShares: privacy-pool `.with(vTokenAddress).withdraw(amount)`
-        //     moves vTokens from the pool to the helper, so `amount` there is
+        //     moves vTokens from the pool to the anonymizer, so `amount` there is
         //     in vToken raw units (18 decimals).
-        //   - rawAssets: the helper's `assets` calldata field is interpreted
+        //   - rawAssets: the anonymizer's `assets` calldata field is interpreted
         //     as underlying raw units (e.g. USDC 6 decimals) by Vesu. Compute
         //     it via preview_redeem(shares) → assets. Using rawShares here
         //     asks Vesu for 10^(18-6)× too much underlying and triggers
@@ -730,7 +730,7 @@ export function useTransactions(
         const rawAssets = await tl.step("Preview redeem", () =>
           previewRedeem(provider, vTokenAddress, rawShares)
         );
-        const { helperAddress } = config.vesu;
+        const { anonymizerAddress } = config.vesu;
 
         const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
         await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
@@ -745,13 +745,13 @@ export function useTransactions(
           })
           .surplusTo(activeAddress)
           .with(vTokenAddress)
-          .withdraw({ recipient: helperAddress, amount: rawShares })
+          .withdraw({ recipient: anonymizerAddress, amount: rawShares })
           .surplusTo(activeAddress, false)
           .with(token)
           .transfer({ recipient: activeAddress, amount: Open })
           .done()
           .invoke((args) => ({
-            contractAddress: helperAddress,
+            contractAddress: anonymizerAddress,
             calldata: [
               1n, // LendingOperation::Withdraw
               vTokenAddress, // in_token (vToken)

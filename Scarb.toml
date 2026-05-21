@@ -1,8 +1,8 @@
 [workspace]
 members = [
-    "packages/ekubo_swap_helper",
+    "packages/ekubo_swap_anonymizer",
     "packages/privacy",
-    "packages/vesu_lending_helper",
+    "packages/vesu_lending_anonymizer",
 ]
 
 [workspace.package]

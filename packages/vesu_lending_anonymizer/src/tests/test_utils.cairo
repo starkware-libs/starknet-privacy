@@ -4,20 +4,20 @@ use snforge_std::{CustomToken, DeclareResultTrait, Token, TokenTrait, declare};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
-use vesu_lending_helper::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
-use vesu_lending_helper::vesu_lending_helper::{
-    IVesuLendingHelperDispatcher, IVesuLendingHelperDispatcherTrait,
-    IVesuLendingHelperSafeDispatcher, IVesuLendingHelperSafeDispatcherTrait, LendingOperation,
-    VesuLendingHelper,
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
+use vesu_lending_anonymizer::vesu_lending_anonymizer::{
+    IVesuLendingAnonymizerDispatcher, IVesuLendingAnonymizerDispatcherTrait,
+    IVesuLendingAnonymizerSafeDispatcher, IVesuLendingAnonymizerSafeDispatcherTrait,
+    LendingOperation, VesuLendingAnonymizer,
 };
 
 #[derive(Drop, Copy)]
 pub struct Vesu {
     pub underlying_token: Token,
     pub vault: ContractAddress,
-    pub lending_helper: ContractAddress,
+    pub lending_anonymizer: ContractAddress,
 }
 
 #[generate_trait]
@@ -25,7 +25,7 @@ pub impl VesuImpl of VesuTrait {
     fn privacy_invoke_deposit(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
-        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
@@ -38,7 +38,7 @@ pub impl VesuImpl of VesuTrait {
     fn privacy_invoke_withdraw(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
-        IVesuLendingHelperDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
@@ -52,7 +52,7 @@ pub impl VesuImpl of VesuTrait {
     fn safe_privacy_invoke_deposit(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
@@ -66,7 +66,7 @@ pub impl VesuImpl of VesuTrait {
     fn safe_privacy_invoke_withdraw(
         self: @Vesu, amount: u128, note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
@@ -85,7 +85,7 @@ pub impl VesuImpl of VesuTrait {
         assets: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IVesuLendingHelperSafeDispatcher { contract_address: *self.lending_helper }
+        IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
             .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
     }
 
@@ -97,20 +97,20 @@ pub impl VesuImpl of VesuTrait {
 pub fn deploy_vesu_components() -> Vesu {
     let underlying_token = deploy_test_erc20_token();
     let vault = deploy_mock_vesu_vault(underlying_token: underlying_token.contract_address());
-    let lending_helper = deploy_vesu_lending_helper();
-    Vesu { underlying_token, vault, lending_helper }
+    let lending_anonymizer = deploy_vesu_lending_anonymizer();
+    Vesu { underlying_token, vault, lending_anonymizer }
 }
 
-pub fn deploy_vesu_lending_helper() -> ContractAddress {
-    let class_hash = declare(contract: "VesuLendingHelper")
+pub fn deploy_vesu_lending_anonymizer() -> ContractAddress {
+    let class_hash = declare(contract: "VesuLendingAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (address, _) = VesuLendingHelper::deploy_for_test(
+    let (address, _) = VesuLendingAnonymizer::deploy_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('VesuLendingHelper deploy failed');
+        .expect('VesuLending deploy failed');
     address
 }
 

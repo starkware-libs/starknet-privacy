@@ -8,7 +8,7 @@
     "test:e2e": "vitest run",
     "test:devnet": "vitest run tests/devnet",
     "test:integration": "vitest run tests/integration",
-    "scarb:build": "cd .. && SCARB_IGNORE_CAIRO_VERSION=true scarb build -p privacy -p vesu_lending_helper -p ekubo_swap_helper",
+    "scarb:build": "cd .. && SCARB_IGNORE_CAIRO_VERSION=true scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer",
     "scarb:build:vesu": "cd contracts/vesu && asdf exec scarb build",
     "build:contracts": "npm run scarb:build && npm run scarb:build:vesu",
 "declare-class": "tsx --env-file=.env scripts/declare-class.ts",

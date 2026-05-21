@@ -191,10 +191,28 @@ export function createHandler(
         address,
       });
     } catch (error) {
+      // Node's fetch masks transport errors behind a generic "fetch failed"
+      // TypeError; the underlying DNS/TCP/TLS reason lives in error.cause.
+      const details =
+        error instanceof Error
+          ? {
+              message: error.message,
+              name: error.name,
+              cause:
+                error.cause instanceof Error
+                  ? {
+                      message: error.cause.message,
+                      name: error.cause.name,
+                      code: (error.cause as NodeJS.ErrnoException).code,
+                    }
+                  : error.cause,
+            }
+          : { message: String(error) };
       console.error(
         JSON.stringify({
           error: "upstream_request_failed",
-          message: error instanceof Error ? error.message : String(error),
+          url: config.elliptic.url,
+          ...details,
         })
       );
       sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
@@ -205,6 +223,26 @@ export function createHandler(
       return;
     }
 
+    // Elliptic documents 404 as "Requested subject not found on the
+    // blockchain" — e.g. a freshly derived StarkNet address with no on-chain
+    // history. There is no exposure to score, so allow the address.
+    if (result.status === 404) {
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: false, source: "elliptic" }),
+        {
+          partner: partnerName,
+          ellipticStatus: result.status,
+          ellipticLatencyMs: result.durationMs,
+          result: "allowed",
+          source: "elliptic",
+          scoringReason: "not_in_blockchain",
+          cacheSize: blockedCache.size,
+        }
+      );
+      return;
+    }
+
     // Only score successful Elliptic responses — non-2xx indicates an upstream
     // error and must not be interpreted as a screening result.
     if (result.status < 200 || result.status >= 300) {
@@ -212,6 +250,7 @@ export function createHandler(
         JSON.stringify({
           error: "upstream_error",
           ellipticStatus: result.status,
+          ellipticBody: result.body.slice(0, 2000),
         })
       );
       sendResponse(502, JSON.stringify({ error: "upstream error" }), {

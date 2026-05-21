@@ -1,16 +1,16 @@
-# Vesu Lending Helper
+# Vesu Lending Anonymizer
 
 Cairo smart contract for privacy-preserving deposit and withdraw operations on the [Vesu](https://vesu.xyz) lending protocol.
 
 ## Overview
 
-`VesuLendingHelper` is an invoke helper contract called by the privacy pool contract via the `privacy_invoke` selector. It executes a Vesu lending operation on behalf of the privacy contract and returns a span of `OpenNoteDeposit` values for the privacy contract to apply.
+`VesuLendingAnonymizer` is an invoke anonymizer contract called by the privacy pool contract via the `privacy_invoke` selector. It executes a Vesu lending operation on behalf of the privacy contract and returns a span of `OpenNoteDeposit` values for the privacy contract to apply.
 
 Vesu uses ERC-4626 / SNIP-22 compatible tokenized vaults: depositing underlying assets mints share tokens (vTokens); withdrawing burns shares and returns underlying.
 
 ## Interface
 
-### IVesuLendingHelper
+### IVesuLendingAnonymizer
 
 ```
 fn privacy_invoke(
@@ -64,12 +64,12 @@ Subset of the Vesu vToken interface used internally: `deposit` and `withdraw`.
 
 | File | Purpose |
 |------|---------|
-| [`vesu_lending_helper.cairo`](src/vesu_lending_helper.cairo) | `IVToken`, `IVesuLendingHelper`, `LendingOperation`, `errors`, `VesuLendingHelper` contract |
+| [`vesu_lending_anonymizer.cairo`](src/vesu_lending_anonymizer.cairo) | `IVToken`, `IVesuLendingAnonymizer`, `LendingOperation`, `errors`, `VesuLendingAnonymizer` contract |
 
 ## Build and test
 
 ```bash
-scarb build --package vesu_lending_helper
+scarb build --package vesu_lending_anonymizer
 scarb test   # wraps snforge test
 ```
 
@@ -84,8 +84,8 @@ snforge version: `0.59.0`
 ```bash
 scarb --profile release build
 sncast --account <ACCOUNT_NAME> declare \
-  --contract-name VesuLendingHelper \
-  --package vesu_lending_helper \
+  --contract-name VesuLendingAnonymizer \
+  --package vesu_lending_anonymizer \
   --network <mainnet|sepolia|devnet>
 ```
 

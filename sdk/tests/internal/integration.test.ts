@@ -10,7 +10,7 @@ import { Open } from "../../src/interfaces.js";
 import { debugHint, isDebugEnabled, toBigInt } from "../../src/utils/index.js";
 import { debugLog } from "../../src/utils/logging.js";
 import { toHex } from "../../src/utils/convert.js";
-import { MockSwapHelper } from "../../src/testing/contracts.js";
+import { MockSwapAnonymizer } from "../../src/testing/contracts.js";
 import { Mocknet } from "../../src/testing/mocknet.js";
 
 describe("Private Transfers Integration", () => {
@@ -387,16 +387,20 @@ describe("Private Transfers Integration", () => {
   // ============================================================================
   // Swap Scenario (separate describe to use different setup)
   // ============================================================================
-  const SWAP_HELPER_ADDRESS = "0x53A2";
+  const SWAP_ANONYMIZER_ADDRESS = "0x53A2";
 
-  it("swaps ACE for BEE via swap helper and open note", async () => {
+  it("swaps ACE for BEE via swap anonymizer and open note", async () => {
     const { env, transfers } = testEnv;
     const { alice } = transfers;
     const ace = toBigInt(env.ace);
     const bee = toBigInt(env.bee);
 
-    const swapHelper = new MockSwapHelper(SWAP_HELPER_ADDRESS, env.contracts, POOL_ADDRESS);
-    env.contracts.register(swapHelper);
+    const swapAnonymizer = new MockSwapAnonymizer(
+      SWAP_ANONYMIZER_ADDRESS,
+      env.contracts,
+      POOL_ADDRESS
+    );
+    env.contracts.register(swapAnonymizer);
 
     // 1. Setup self-channel and deposit ACE (autoSetup handles token subchannel setup)
     // prettier-ignore
@@ -405,7 +409,7 @@ describe("Private Transfers Integration", () => {
         .build(AUTO_ALL)
         .with(env.ace)
           .deposit({ amount: 100n })
-          .withdraw({ recipient: swapHelper.address, amount: 10n })
+          .withdraw({ recipient: swapAnonymizer.address, amount: 10n })
         .with(env.bee)
           .transfer({ recipient: env.alice.address, amount: Open })
         .done()
@@ -413,7 +417,7 @@ describe("Private Transfers Integration", () => {
           expect(openNotes.length).toBe(1);
           expect(openNotes[0].token).toBe(bee);
           return {
-            contractAddress: toHex(swapHelper.address),
+            contractAddress: toHex(swapAnonymizer.address),
             calldata: [ace, bee, 10n, openNotes[0].noteId],
           };
         })
@@ -425,7 +429,7 @@ describe("Private Transfers Integration", () => {
     expect(aceNotes.length).toBe(1);
     expect(aceNotes[0].amount).toBe(90n);
 
-    // Alice has 20n BEE note (swap helper gives 2x)
+    // Alice has 20n BEE note (swap anonymizer gives 2x)
     const beeNotes = (await alice.discoverNotes()).notes.get(bee) ?? [];
     expect(beeNotes.length).toBe(1);
     expect(beeNotes[0].amount).toBe(20n);

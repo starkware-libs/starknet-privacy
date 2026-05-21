@@ -3,10 +3,10 @@ use privacy::objects::OpenNoteDeposit;
 use snforge_std::TokenTrait;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
-use vesu_lending_helper::tests::test_utils::{
+use vesu_lending_anonymizer::tests::test_utils::{
     VesuTrait, deploy_mock_vesu_vault_noop, deploy_mock_vesu_vault_overflow, deploy_vesu_components,
 };
-use vesu_lending_helper::vesu_lending_helper::{LendingOperation, errors};
+use vesu_lending_anonymizer::vesu_lending_anonymizer::{LendingOperation, errors};
 
 const DEFAULT_AMOUNT: u128 = 1_000_000_000_000_000_000;
 
@@ -20,13 +20,13 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
 
     vesu
         .underlying_token
-        .supply(address: vesu.lending_helper, amount: preexisting_balance + amount);
+        .supply(address: vesu.lending_anonymizer, amount: preexisting_balance + amount);
 
     assert_eq!(
-        vesu.underlying_token.balance_of(address: vesu.lending_helper),
+        vesu.underlying_token.balance_of(address: vesu.lending_anonymizer),
         (preexisting_balance + amount).into(),
     );
-    assert_eq!(vesu.vault_balance_of(address: vesu.lending_helper), 0);
+    assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), 0);
 
     let deposits = vesu.privacy_invoke_deposit(:amount, :note_id);
     assert_eq!(deposits.len(), 1);
@@ -38,10 +38,11 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
     assert_eq!(ret_out_token, vesu.vault);
     assert_eq!(ret_out_amount, amount);
     assert_eq!(
-        vesu.underlying_token.balance_of(address: vesu.lending_helper), preexisting_balance.into(),
+        vesu.underlying_token.balance_of(address: vesu.lending_anonymizer),
+        preexisting_balance.into(),
     );
     assert_eq!(vesu.underlying_token.balance_of(address: vesu.vault), amount.into());
-    assert_eq!(vesu.vault_balance_of(address: vesu.lending_helper), amount.into());
+    assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), amount.into());
     assert_eq!(vesu.vault_balance_of(address: vesu.vault), 0);
 
     let deposits = vesu.privacy_invoke_withdraw(:amount, :note_id);
@@ -53,10 +54,10 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
     assert_eq!(ret_note_id, note_id);
     assert_eq!(ret_out_token, vesu.underlying_token.contract_address());
     assert_eq!(ret_out_amount, amount);
-    assert_eq!(vesu.vault_balance_of(address: vesu.lending_helper), 0);
+    assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), 0);
     assert_eq!(vesu.vault_balance_of(address: vesu.vault), 0);
     assert_eq!(
-        vesu.underlying_token.balance_of(address: vesu.lending_helper),
+        vesu.underlying_token.balance_of(address: vesu.lending_anonymizer),
         (preexisting_balance + amount).into(),
     );
     assert_eq!(vesu.underlying_token.balance_of(address: vesu.vault), 0);
@@ -68,7 +69,7 @@ fn test_privacy_invoke_deposit_insufficient_balance() {
     let amount = DEFAULT_AMOUNT;
     let note_id: felt252 = 'NOTE_ID';
 
-    // Do not fund helper.
+    // Do not fund anonymizer.
 
     let result = vesu.safe_privacy_invoke_deposit(:amount, :note_id);
     assert_panic_with_felt_error(:result, expected_error: 'ERC20: insufficient balance');

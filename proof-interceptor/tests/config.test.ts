@@ -91,7 +91,30 @@ describe("loadConfig", () => {
       maxRetries: 2,
       totalTimeoutMs: 10000,
       poolAddress: "0xpool",
+      blockNonPoolTx: false,
     });
+  });
+
+  it("enables blockNonPoolTx when SCREENING_BLOCK_NON_POOL_TX is 'true'", () => {
+    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
+    process.env.SCREENING_PARTNER_NAME = "test-partner";
+    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
+    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    process.env.SCREENING_BLOCK_NON_POOL_TX = "true";
+
+    const config = loadConfig();
+    expect(config.screening?.blockNonPoolTx).toBe(true);
+  });
+
+  it("leaves blockNonPoolTx false for any value other than 'true'", () => {
+    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
+    process.env.SCREENING_PARTNER_NAME = "test-partner";
+    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
+    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    process.env.SCREENING_BLOCK_NON_POOL_TX = "1";
+
+    const config = loadConfig();
+    expect(config.screening?.blockNonPoolTx).toBe(false);
   });
 
   it("screening is undefined when SCREENING_URL is not set", () => {

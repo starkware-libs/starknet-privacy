@@ -2,11 +2,13 @@
 
 ## Prohibited
 
-**NEVER** perform any git or graphite commands that modify repository state:
+**NEVER** perform any git or graphite commands that modify repository state, unless the user explicitly asks for the specific action in the current turn:
 - No commits (add, commit, amend)
 - No pushing or pulling
 - No rebasing, merging, cherry-picking
 - No branch creation/deletion
+
+**Exception — opening pull requests:** Allowed *only* when the user explicitly asks for it (e.g., "open a PR", "create a PR"). A general approval to act autonomously does not count; the request must be specific to this action. Even when allowed, do not push to `main`/`master` and do not force-push.
 
 **Allowed:** Read-only commands for context retrieval and debugging (status, log, diff, show, blame, etc.)
 

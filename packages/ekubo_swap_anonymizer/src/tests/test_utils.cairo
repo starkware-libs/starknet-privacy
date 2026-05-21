@@ -2,11 +2,11 @@ use core::num::traits::Zero;
 use ekubo::interfaces::router::TokenAmount;
 use ekubo::types::i129::i129;
 use ekubo::types::keys::PoolKey;
-use ekubo_swap_helper::ekubo_swap_helper::{
-    EkuboSwapHelper, IEkuboSwapHelperDispatcher, IEkuboSwapHelperDispatcherTrait,
-    IEkuboSwapHelperSafeDispatcher, IEkuboSwapHelperSafeDispatcherTrait,
+use ekubo_swap_anonymizer::ekubo_swap_anonymizer::{
+    EkuboSwapAnonymizer, IEkuboSwapAnonymizerDispatcher, IEkuboSwapAnonymizerDispatcherTrait,
+    IEkuboSwapAnonymizerSafeDispatcher, IEkuboSwapAnonymizerSafeDispatcherTrait,
 };
-use ekubo_swap_helper::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
+use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use privacy::objects::OpenNoteDeposit;
 use snforge_std::{CustomToken, DeclareResultTrait, Token, declare};
 use starknet::deployment::DeploymentParams;
@@ -23,16 +23,16 @@ pub fn deploy_mock_ekubo_amm() -> ContractAddress {
     contract_address
 }
 
-pub fn deploy_ekubo_swap_helper() -> ContractAddress {
-    let class_hash = declare(contract: "EkuboSwapHelper")
+pub fn deploy_ekubo_swap_anonymizer() -> ContractAddress {
+    let class_hash = declare(contract: "EkuboSwapAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (contract_address, _) = EkuboSwapHelper::deploy_for_test(
+    let (contract_address, _) = EkuboSwapAnonymizer::deploy_for_test(
         class_hash: *class_hash, :deployment_params,
     )
-        .expect('EkuboSwapHelper deploy failed');
+        .expect('EkuboSwap deploy failed');
     contract_address
 }
 
@@ -69,22 +69,22 @@ pub fn make_token_amount(token: ContractAddress, amount: u128) -> TokenAmount {
 }
 
 #[derive(Copy, Drop)]
-pub struct EkuboSwapHelperCfg {
+pub struct EkuboSwapAnonymizerCfg {
     pub address: ContractAddress,
     pub router: ContractAddress,
 }
 
 #[generate_trait]
-pub impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
+pub impl EkuboSwapAnonymizerCfgImpl of EkuboSwapAnonymizerCfgTrait {
     fn privacy_invoke(
-        self: @EkuboSwapHelperCfg,
+        self: @EkuboSwapAnonymizerCfg,
         token_amount: TokenAmount,
         pool_key: PoolKey,
         minimum_received: u256,
         skip_ahead: u128,
         note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
-        IEkuboSwapHelperDispatcher { contract_address: *self.address }
+        IEkuboSwapAnonymizerDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 router_addr: *self.router,
                 :token_amount,
@@ -97,7 +97,7 @@ pub impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
 
     #[feature("safe_dispatcher")]
     fn safe_privacy_invoke(
-        self: @EkuboSwapHelperCfg,
+        self: @EkuboSwapAnonymizerCfg,
         router_addr: ContractAddress,
         token_amount: TokenAmount,
         pool_key: PoolKey,
@@ -105,15 +105,15 @@ pub impl EkuboSwapHelperCfgImpl of EkuboSwapHelperCfgTrait {
         skip_ahead: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
-        IEkuboSwapHelperSafeDispatcher { contract_address: *self.address }
+        IEkuboSwapAnonymizerSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 :router_addr, :token_amount, :pool_key, :minimum_received, :skip_ahead, :note_id,
             )
     }
 }
 
-pub fn deploy_helper_with_router() -> EkuboSwapHelperCfg {
+pub fn deploy_anonymizer_with_router() -> EkuboSwapAnonymizerCfg {
     let mock_router = deploy_mock_ekubo_amm();
-    let helper_address = deploy_ekubo_swap_helper();
-    EkuboSwapHelperCfg { address: helper_address, router: mock_router }
+    let anonymizer_address = deploy_ekubo_swap_anonymizer();
+    EkuboSwapAnonymizerCfg { address: anonymizer_address, router: mock_router }
 }

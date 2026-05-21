@@ -42,7 +42,7 @@ export class ERC20 implements MockContract {
   }
 }
 
-export class MockSwapHelper implements MockContract {
+export class MockSwapAnonymizer implements MockContract {
   // Allow dynamic access for MockContract interface
   [key: string]: unknown;
 
