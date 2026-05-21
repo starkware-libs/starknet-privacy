@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
 import { TransactionFinalityStatus, transaction, type Account, type RpcProvider } from "starknet";
-import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "starknet-sdk";
+import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "@starkware-libs/starknet-privacy-sdk";
 import { getQuotes, quoteToCalls } from "../avnu.ts";
 import { findEkuboPool, type AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";

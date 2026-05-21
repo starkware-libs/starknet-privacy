@@ -6,7 +6,7 @@ import {
   type HistoryCursor,
   type HistoryAction,
   type HistoryTransaction,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 import type { RpcProvider } from "starknet";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { createDiscoveryProvider } from "../starknet.ts";

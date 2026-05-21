@@ -3,10 +3,10 @@ import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
   type PrivateTransfersInterface,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
-import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
+import { IndexerDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/dist/internal/indexer-discovery.js";
 import type { AppConfig } from "./config.ts";
 import { NoValidateProofProvider } from "./proof-provider.ts";
 

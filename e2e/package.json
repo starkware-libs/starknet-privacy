@@ -26,7 +26,7 @@
   },
   "dependencies": {
     "starknet": "10.0.0-beta.6",
-    "@starkware-libs/starknet-privacy-sdk": "file:../sdk"
+    "@starkware-libs/starknet-privacy-sdk": "0.14.2-rc.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

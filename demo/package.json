@@ -19,7 +19,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "starknet": "10.0.0-beta.6",
-    "starknet-sdk": "file:../sdk"
+    "@starkware-libs/starknet-privacy-sdk": "0.14.2-rc.6"
   },
   "overrides": {
     "starknet": "$starknet",

@@ -14,11 +14,11 @@ export default defineConfig({
     dedupe: ["starknet"],
     alias: {
       // Remap testing imports to avoid pulling in Node-only devnet module
-      "starknet-sdk/dist/testing/mock-proving.js": resolve(
+      "@starkware-libs/starknet-privacy-sdk/dist/testing/mock-proving.js": resolve(
         sdkDist,
         "testing/mock-proving.js",
       ),
-      "starknet-sdk/dist/internal/indexer-discovery.js": resolve(
+      "@starkware-libs/starknet-privacy-sdk/dist/internal/indexer-discovery.js": resolve(
         sdkDist,
         "internal/indexer-discovery.js",
       ),

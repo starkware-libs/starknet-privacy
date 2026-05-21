@@ -1,13 +1,13 @@
 import type { RpcProvider, constants } from "starknet";
 // Direct import avoids pulling in Node-only modules from the testing barrel
 // @ts-expect-error — deep import into dist, not part of the declared exports
-import { CallMockProofProvider } from "starknet-sdk/dist/testing/mock-proving.js";
+import { CallMockProofProvider } from "@starkware-libs/starknet-privacy-sdk/dist/testing/mock-proving.js";
 import type {
   Proof,
   ProofInvocation,
   ProofInvocationFactoryDetails,
   ProofProviderInterface,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 
 /**
  * Proof provider that calls execute_view directly (view function, no signature).

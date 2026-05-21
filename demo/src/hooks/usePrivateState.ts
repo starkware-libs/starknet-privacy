@@ -6,7 +6,7 @@ import {
   type Note,
   type Channel,
   type PrivateRegistry,
-} from "starknet-sdk";
+} from "@starkware-libs/starknet-privacy-sdk";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { createDiscoveryProvider, getErc20Balance } from "../starknet.ts";
 

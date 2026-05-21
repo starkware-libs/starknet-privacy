@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ProvingService, OhttpClient } from "starknet-sdk";
+import { ProvingService, OhttpClient } from "@starkware-libs/starknet-privacy-sdk";
 import type { RpcProvider } from "starknet";
 import type { AppConfig } from "../config.ts";
 import { createDiscoveryProvider } from "../starknet.ts";

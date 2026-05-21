@@ -1,5 +1,5 @@
 import { constants, ec, hash } from "starknet";
-import { MAX_VIEWING_KEY } from "starknet-sdk";
+import { MAX_VIEWING_KEY } from "@starkware-libs/starknet-privacy-sdk";
 import type { AccountConfig } from "./config.ts";
 
 export function isMainnet(chainId: string): boolean {

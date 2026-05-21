@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, type RefObject } from "react";
 import { TransactionFinalityStatus, hash, type Account, type RpcProvider } from "starknet";
-import type { PrivateTransfersInterface } from "starknet-sdk";
+import type { PrivateTransfersInterface } from "@starkware-libs/starknet-privacy-sdk";
 import type { AppConfig } from "../config.ts";
 import { type TransactionStatus, waitForProvingBlock } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";

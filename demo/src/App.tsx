@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Account } from "starknet";
-import { createEmptyRegistry } from "starknet-sdk";
+import { createEmptyRegistry } from "@starkware-libs/starknet-privacy-sdk";
 import { formatChainId } from "./format.ts";
 import {
   loadConfig,
