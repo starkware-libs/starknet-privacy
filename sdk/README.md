@@ -57,7 +57,7 @@ const provider = new RpcProvider({ nodeUrl: "http://localhost:5050" });
 const account = new Account(provider, accountAddress, privateKey);
 
 const transfers = createPrivateTransfers({
-  account,
+  account, // or { address, signer } if you don't have a full Account
   viewingKeyProvider: { getViewingKey: () => viewingKey },
   provingProvider,
   discoveryProvider: new IndexerDiscoveryProvider(discoveryUrl, poolContractAddress),
@@ -201,14 +201,14 @@ Rule of thumb: any on-chain state that the pool proof reads — account viewing 
 
 ### `createPrivateTransfers(params)`
 
-| Parameter                 | Type                              | Description                                                     |
-| ------------------------- | --------------------------------- | --------------------------------------------------------------- |
-| `account`                 | `Account`                         | Starknet account for signing transactions                       |
-| `viewingKeyProvider`      | `ViewingKeyProvider`              | Provides the private viewing key used for encryption/decryption |
-| `provingProvider`         | `ProofProviderInterface`          | Backend that generates validity proofs                          |
-| `discoveryProvider`       | `DiscoveryProviderInterface`      | Backend for discovering notes and channels                      |
-| `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                   |
-| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction             |
+| Parameter                 | Type                              | Description                                                                                  |
+| ------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------- |
+| `account`                 | `PrivateTransfersUser`            | `{ address, signer }` used to sign proof invocations. A full `Account` is also assignable.   |
+| `viewingKeyProvider`      | `ViewingKeyProvider`              | Provides the private viewing key used for encryption/decryption                              |
+| `provingProvider`         | `ProofProviderInterface`          | Backend that generates validity proofs                                                       |
+| `discoveryProvider`       | `DiscoveryProviderInterface`      | Backend for discovering notes and channels                                                   |
+| `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                                                |
+| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction                                          |
 
 ### Discovery providers
 

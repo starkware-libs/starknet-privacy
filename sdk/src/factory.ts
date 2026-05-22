@@ -10,8 +10,8 @@ import type {
   DiscoveryProviderInterface,
   DiscoveryProviderConfig,
   StarknetAddress,
+  PrivateTransfersUser,
 } from "./interfaces.js";
-import type { Account } from "starknet";
 import { PrivateTransfers } from "./internal/private-transfers.js";
 import {
   ProofInvocationFactory,
@@ -32,6 +32,23 @@ function isDiscoveryProviderConfig(
   return typeof x === "object" && x !== null && "url" in x && !("discoverNotes" in x);
 }
 
+export interface CreatePrivateTransfersParams {
+  /**
+   * Identity used to sign proof invocations. Only `address` and `signer` are
+   * read, so a full starknet.js `Account` is structurally assignable here as
+   * well as a minimal `{ address, signer }` object. For smart wallets where
+   * account-level signature wrapping (e.g. owner + guardian merge) lives
+   * outside the signer, supply a custom `signer` implementation rather than
+   * passing the full `Account`.
+   */
+  account: PrivateTransfersUser;
+  viewingKeyProvider: ViewingKeyProvider;
+  proofInvocationFactory?: ProofInvocationFactoryInterface;
+  provingProvider: ProofProviderInterface | ProofProviderConfig;
+  discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
+  poolContractAddress: StarknetAddress;
+}
+
 /**
  * Creates a new PrivateTransfers instance for interacting with the privacy pool.
  *
@@ -43,36 +60,32 @@ function isDiscoveryProviderConfig(
  * @param params - Configuration object containing account, providers (or configs), and pool address
  * @returns A PrivateTransfers instance
  *
- * @example With instances (e.g. mocks)
+ * @example With a full Account
  * ```typescript
+ * const account = new Account(provider, address, privateKey);
  * const privateTransfers = createPrivateTransfers({
- *   account: myAccount,
- *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
- *   provingProvider: new MockProofProvider(pool),
- *   discoveryProvider: new ContractDiscoveryProvider(pool),
- *   poolContractAddress: poolAddress,
- * });
- * ```
- *
- * @example With production configs
- * ```typescript
- * const privateTransfers = createPrivateTransfers({
- *   account: myAccount,
+ *   account,
  *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
  *   provingProvider: { url: "https://prover.example.com", chainId: constants.StarknetChainId.SN_MAIN },
  *   discoveryProvider: { url: "https://indexer.example.com" },
  *   poolContractAddress: poolAddress,
  * });
  * ```
+ *
+ * @example With a minimal `{ address, signer }` (e.g. smart wallets that wrap signing)
+ * ```typescript
+ * const privateTransfers = createPrivateTransfers({
+ *   account: { address: myAddress, signer: customProofSigner },
+ *   viewingKeyProvider: { getViewingKey: async () => myPrivateKey },
+ *   provingProvider: new MockProofProvider(pool),
+ *   discoveryProvider: new ContractDiscoveryProvider(pool),
+ *   poolContractAddress: poolAddress,
+ * });
+ * ```
  */
-export function createPrivateTransfers(params: {
-  account: Account;
-  viewingKeyProvider: ViewingKeyProvider;
-  proofInvocationFactory?: ProofInvocationFactoryInterface;
-  provingProvider: ProofProviderInterface | ProofProviderConfig;
-  discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
-  poolContractAddress: StarknetAddress;
-}): PrivateTransfersInterface {
+export function createPrivateTransfers(
+  params: CreatePrivateTransfersParams
+): PrivateTransfersInterface {
   const provingProvider: ProofProviderInterface = isProofProviderConfig(params.provingProvider)
     ? new ProvingServiceProofProvider(params.provingProvider.url, params.provingProvider.chainId, {
         requestTimeoutMs: params.provingProvider.requestTimeoutMs,
@@ -90,9 +103,11 @@ export function createPrivateTransfers(params: {
     : params.discoveryProvider;
 
   return new PrivateTransfers({
-    ...params,
+    account: params.account,
+    viewingKeyProvider: params.viewingKeyProvider,
     provingProvider,
     discoveryProvider,
     proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
+    poolContractAddress: params.poolContractAddress,
   });
 }

@@ -5,6 +5,7 @@
  * Wires together MockPoolContract, MockProofProvider, and the factory abstractions.
  */
 
+import type { SignerInterface } from "starknet";
 import type { ExecuteResult, PrivateRegistry, ViewingKey } from "../interfaces.js";
 import { PrivateTransfers } from "../internal/private-transfers.js";
 import { MockContracts } from "./contracts.js";
@@ -135,8 +136,11 @@ export class Mocknet {
     const pool = this.pool;
 
     return new PrivateTransfers({
-      // Mock account - only address is used
-      account: { address: `0x${userAddress.toString(16)}` } as any, // eslint-disable-line @typescript-eslint/no-explicit-any
+      // Mock factory does not sign, but PrivateTransfers needs the minimal account shape.
+      account: {
+        address: `0x${userAddress.toString(16)}`,
+        signer: {} as SignerInterface,
+      },
       viewingKeyProvider: { getViewingKey: async () => viewingKey },
       provingProvider: new MockProofProvider(pool),
       discoveryProvider: new ContractDiscoveryProvider(pool),

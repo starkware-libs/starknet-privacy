@@ -7,6 +7,7 @@ import type {
   Call,
   CallDetails,
   constants,
+  SignerInterface,
 } from "starknet";
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
@@ -33,6 +34,18 @@ export type All = typeof All;
 export type ViewingKey = BigNumberish;
 
 export type StarknetAddress = BigNumberish;
+
+/**
+ * Minimal user identity required by private transfers.
+ *
+ * The SDK only needs the user's Starknet address and a signer capable of
+ * signing proof invocations. A full `Account` instance is accepted by the
+ * factory for backwards compatibility, but is not required.
+ */
+export interface PrivateTransfersUser {
+  address: StarknetAddress;
+  signer: SignerInterface;
+}
 
 /**
  * Result of setupRequirement - indicates what setup is needed before a transfer.

@@ -1,7 +1,11 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { constants, type Account } from "starknet";
+import { constants, type SignerInterface } from "starknet";
 import { createPrivateTransfers } from "../src/factory.js";
-import type { ProofProviderConfig, DiscoveryProviderConfig } from "../src/interfaces.js";
+import type {
+  PrivateTransfersUser,
+  ProofProviderConfig,
+  DiscoveryProviderConfig,
+} from "../src/interfaces.js";
 import { Mocknet } from "../src/testing/mocknet.js";
 import { MockProofProvider } from "../src/testing/mock-proof-provider.js";
 import { MockProofInvocationFactory } from "../src/testing/mock-proof-invocation-factory.js";
@@ -11,9 +15,9 @@ const DISCOVERY_URL = "https://indexer.test";
 const PROVER_URL = "https://prover.test";
 const POOL_ADDRESS = 0x1n;
 
-/** Minimal account for tests; MockProofInvocationFactory does not use signer for signing. */
-function mockAccount(address: string): Account {
-  return { address, signer: {} } as Account;
+/** Minimal user for tests; MockProofInvocationFactory does not use signer for signing. */
+function mockUser(address: string): PrivateTransfersUser {
+  return { address, signer: {} as SignerInterface };
 }
 
 describe("createPrivateTransfers", () => {
@@ -24,7 +28,7 @@ describe("createPrivateTransfers", () => {
       const pool = mocknet.pool;
 
       const transfers = createPrivateTransfers({
-        account: mockAccount(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: new MockProofProvider(pool),
         discoveryProvider: new ContractDiscoveryProvider(pool),
@@ -54,7 +58,7 @@ describe("createPrivateTransfers", () => {
       const discoveryConfig: DiscoveryProviderConfig = { url: DISCOVERY_URL };
 
       const transfers = createPrivateTransfers({
-        account: mockAccount("0xabc"),
+        account: mockUser("0xabc"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: provingConfig,
         discoveryProvider: discoveryConfig,
@@ -91,7 +95,7 @@ describe("createPrivateTransfers", () => {
       globalThis.fetch = mockFetch;
 
       const transfers = createPrivateTransfers({
-        account: mockAccount("0xabc"),
+        account: mockUser("0xabc"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: {
           url: PROVER_URL,
@@ -115,7 +119,7 @@ describe("createPrivateTransfers", () => {
       const env = mocknet.initialize();
 
       const transfers = createPrivateTransfers({
-        account: mockAccount(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: {
           url: PROVER_URL,
@@ -154,7 +158,7 @@ describe("createPrivateTransfers", () => {
       const env = mocknet.initialize();
 
       const transfers = createPrivateTransfers({
-        account: mockAccount(`0x${env.alice.address.toString(16)}`),
+        account: mockUser(`0x${env.alice.address.toString(16)}`),
         viewingKeyProvider: { getViewingKey: async () => env.alice.privateKey },
         provingProvider: new MockProofProvider(mocknet.pool),
         discoveryProvider: { url: DISCOVERY_URL },
@@ -173,7 +177,7 @@ describe("createPrivateTransfers", () => {
   describe("config resolution", () => {
     it("ProofProviderConfig with optional fields is passed to ProvingServiceProofProvider", () => {
       const transfers = createPrivateTransfers({
-        account: mockAccount("0x1"),
+        account: mockUser("0x1"),
         viewingKeyProvider: { getViewingKey: async () => 0n },
         provingProvider: {
           url: PROVER_URL,
