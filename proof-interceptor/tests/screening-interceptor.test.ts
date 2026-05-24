@@ -457,7 +457,11 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("0xaaa111");
+      // Reason must be an opaque code — the depositor address (taken from
+      // private-pool calldata) is forwarded to the caller as JSON-RPC error
+      // `data` and would otherwise leak.
+      expect(verdict.reason).toBe("address_blocked");
+      expect(verdict.reason).not.toContain("0xaaa111");
     }
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -516,7 +520,7 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
 
     const errorCall = errorSpy.mock.calls.find((call) => {
@@ -553,7 +557,7 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
     spy.mockRestore();
   });

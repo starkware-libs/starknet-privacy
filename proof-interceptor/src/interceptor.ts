@@ -4,6 +4,7 @@ import { logger } from "./logger.js";
 import {
   interceptorVerdicts,
   interceptorDuration,
+  interceptorErrors,
   errorsTotal,
 } from "./metrics.js";
 
@@ -38,6 +39,7 @@ export async function runInterceptors(
         message,
       });
       errorsTotal.inc({ type: "interceptor_error" });
+      interceptorErrors.inc({ interceptor: interceptor.name });
       verdict = { action: "block", reason: message };
     }
     const durationSeconds = (Date.now() - startTime) / 1000;

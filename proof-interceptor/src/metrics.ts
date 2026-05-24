@@ -41,8 +41,40 @@ export const interceptorVerdicts = new Counter({
 
 export const screeningResults = new Counter({
   name: "proof_interceptor_screening_results_total",
-  help: "Total screening outcomes",
+  help: "Total screening verdicts (allowed/blocked/unavailable)",
   labelNames: ["result"] as const,
+  registers: [registry],
+});
+
+/**
+ * Upstream screening-service availability, split by outcome of each call.
+ * Separate from `screeningResults` (which tracks verdicts) — this metric is
+ * the input dashboards use to track elliptic-proxy availability without
+ * conflating fail-open allowed verdicts with successful screening.
+ *
+ * Label values:
+ * - `success` — elliptic-proxy returned 2xx
+ * - `timeout` — request exceeded per-call timeout (AbortSignal.timeout)
+ * - `http_error` — elliptic-proxy returned non-2xx
+ * - `network_error` — TCP / DNS / TLS failure before any HTTP response
+ */
+export const screeningAvailability = new Counter({
+  name: "proof_interceptor_screening_availability_total",
+  help: "Upstream screening-service call outcomes",
+  labelNames: ["outcome"] as const,
+  registers: [registry],
+});
+
+/**
+ * Per-interceptor error counter, so a failure can be attributed to a
+ * specific interceptor (currently only `screening`, but designed to scale)
+ * rather than the single global `errors_total{type="interceptor_error"}`
+ * bucket. Increments on any thrown error inside `interceptor.intercept(...)`.
+ */
+export const interceptorErrors = new Counter({
+  name: "proof_interceptor_interceptor_errors_total",
+  help: "Per-interceptor errors raised during transaction screening",
+  labelNames: ["interceptor"] as const,
   registers: [registry],
 });
 
