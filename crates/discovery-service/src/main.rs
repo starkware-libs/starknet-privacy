@@ -6,13 +6,13 @@ use clap::Parser;
 use std::sync::Arc;
 
 use discovery_service::api::ApiServer;
-use discovery_service::config::ServiceConfig;
+use discovery_service::config::{LogFormat, ServiceConfig};
 use discovery_service::indexer::Indexer;
 use discovery_service::rpc_backend::RpcBackend;
 use discovery_service::shutdown::Shutdown;
 use tokio::task::JoinHandle;
 use tower_ohttp::OhttpGateway;
-use tracing::{error, info, subscriber::set_global_default};
+use tracing::{error, info, subscriber::set_global_default, Subscriber};
 use tracing_subscriber::filter::EnvFilter;
 
 #[derive(Parser)]
@@ -24,18 +24,24 @@ struct Cli {
     config: Option<PathBuf>,
 }
 
-fn init_tracing(log_level: Option<&str>) {
+fn init_tracing(log_level: Option<&str>, format: LogFormat) {
     let env_filter = match log_level {
         Some(level) => EnvFilter::new(level),
         None => EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
     };
 
-    let subscriber = tracing_subscriber::fmt()
+    let builder = tracing_subscriber::fmt()
         .with_env_filter(env_filter)
-        .with_writer(std::io::stderr)
-        .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
-        .finish();
+        .with_writer(std::io::stderr);
 
+    let subscriber: Box<dyn Subscriber + Send + Sync> = match format {
+        LogFormat::Text => Box::new(
+            builder
+                .with_ansi(std::io::IsTerminal::is_terminal(&std::io::stderr()))
+                .finish(),
+        ),
+        LogFormat::Json => Box::new(builder.with_ansi(false).json().finish()),
+    };
     set_global_default(subscriber).expect("Failed to set tracing subscriber");
 }
 
@@ -59,9 +65,10 @@ async fn main() {
         std::process::exit(1);
     });
 
-    // Extract log level before build_configs() consumes the config
+    // Extract logging settings before build_configs() consumes the config
     let log_level = config.logging.level.clone();
-    init_tracing(log_level.as_deref());
+    let log_format = config.logging.format;
+    init_tracing(log_level.as_deref(), log_format);
 
     info!("Discovery service is launching...");
 
