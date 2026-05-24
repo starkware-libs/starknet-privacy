@@ -7,6 +7,7 @@ import type {
   TransactionInterceptor,
   Verdict,
 } from "./interceptor.js";
+import { logger } from "./logger.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
   screeningResults,
@@ -141,13 +142,11 @@ export class ScreeningInterceptor implements TransactionInterceptor {
   async intercept(transaction: ProveTxnV3): Promise<Verdict> {
     if (!isSinglePoolCall(transaction, this.config.poolAddress)) {
       const action = this.config.blockNonPoolTx ? "block" : "allow";
-      console.log(
-        JSON.stringify({
-          screening: "non_pool_tx",
-          action,
-          blockNonPoolTx: this.config.blockNonPoolTx,
-        })
-      );
+      logger.info({
+        event: "screening_non_pool_tx",
+        action,
+        blockNonPoolTx: this.config.blockNonPoolTx,
+      });
       if (action === "block") {
         return {
           action: "block",
@@ -207,14 +206,12 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         const screeningLatencyMs = Date.now() - callStart;
         screeningResults.inc({ result });
         screeningDuration.observe({ result }, screeningLatencyMs / 1000);
-        console.log(
-          JSON.stringify({
-            screening: "complete",
-            result,
-            attempts: attempt + 1,
-            screeningLatencyMs,
-          })
-        );
+        logger.info({
+          event: "screening_complete",
+          result,
+          attempts: attempt + 1,
+          screeningLatencyMs,
+        });
         if (signResult.verdict === "allowed") {
           signaturesIssued.inc();
           return { result: "allowed", signature: signResult.signature };
@@ -225,13 +222,11 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       }
     }
 
-    console.error(
-      JSON.stringify({
-        error: "screening_failed",
-        message: lastError?.message,
-        attempts: finalAttempt + 1,
-      })
-    );
+    logger.error({
+      event: "screening_failed",
+      message: lastError?.message,
+      attempts: finalAttempt + 1,
+    });
 
     // Fail-closed: a deposit with no signature cannot proceed on-chain, so a
     // signing failure always blocks — failOpen does not apply to the sign path.
