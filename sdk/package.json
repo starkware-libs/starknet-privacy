@@ -70,6 +70,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@panva/hpke-noble": "^1.1.0",
     "@starknet-io/starknet-types-0101": "npm:@starknet-io/types-js@~0.10.2",
     "ohttp-ts": "^0.3.0",
     "starknet": "^10.0.0-beta.6",
