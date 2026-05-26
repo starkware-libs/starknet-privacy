@@ -75,8 +75,12 @@ Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. O
 | Path       | Method | Description                                                                                                           |
 | ---------- | ------ | --------------------------------------------------------------------------------------------------------------------- |
 | `/`        | POST   | JSON-RPC entrypoint. Only `starknet_checkTransaction` is accepted; everything else returns `-32601 Method not found`. |
-| `/health`  | GET    | Liveness/readiness. Returns `200 {"status":"ok"}`.                                                                    |
-| `/metrics` | GET    | Prometheus metrics.                                                                                                   |
+| `/health`  | GET    | Liveness/readiness. Returns `200 {"status":"ok"}` when healthy, `503 {"status":"unhealthy","interceptors":[{"name":"...","reason":"..."}]}` when any registered interceptor reports `healthy: false`. See [Health checks](#health-checks). |
+| `/metrics` | GET    | Prometheus metrics. See [Metrics](#metrics). |
+
+Every HTTP response carries an `x-request-id` header. Inbound `x-request-id` is accepted only when
+it's a short printable-ASCII token; otherwise a fresh UUID is generated. The id appears in every
+log line for the request so failures can be correlated by quoting a single id.
 
 ### Request
 
@@ -113,17 +117,59 @@ The body mirrors `starknet_proveTransaction` exactly (object or positional param
 - **ABI drift.** Pool-contract upgrades that aren't reflected in the SDK pin cause `hasDepositAction` to silently `catch` and return `false` — every Deposit during the mismatch window is allowed without screening. Bump `@starkware-libs/starknet-privacy-sdk` in lock-step with pool-contract upgrades; consider a CI check that decodes a known-good Deposit fixture against the SDK on every deploy.
 - **Fail-open layering.** Two independent fail-open knobs: `SCREENING_FAIL_OPEN` here (default false; blocks when this service can't reach the proxy), and `blocking_check_fail_open` in the prover's `config.json` (default false; covers the case where the prover can't reach this service at all). Both default fail-closed. Fail-open allowances increment the same `result="allowed"` counter as real allows; the only signal is the `screening_failed` log line.
 
+## Health checks
+
+`/health` is unauthenticated and reports the screening pipeline's reachability — not just that
+the process is running. Each registered interceptor may implement an optional `health()` method;
+`/health` calls it for every interceptor on every probe.
+
+| Status | Trigger |
+|---|---|
+| `200 OK` | All interceptors return `healthy: true`, or none implement `health()`. |
+| `503 Service Unavailable` | At least one interceptor returns `healthy: false`. The response body lists the unhealthy interceptors by name and an opaque `reason` code; no timestamps, error counts, or upstream URLs are exposed. |
+
+The screening interceptor reports unhealthy when the Elliptic proxy has been continuously
+unreachable for `SCREENING_HEALTH_MAX_UNAVAILABLE_MS` (default 30 seconds). A short blip in
+reachability does not flip `/health` to 503 — load balancers should only drain a pod when the
+window has held. A single successful screening call clears the window immediately.
+
+`/health` is intended for load-balancer probes; it must remain safe to expose without
+authentication, which is why the body is opaque.
+
 ## Metrics
 
 Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.ts`):
 
+- `proof_interceptor_build_info{version,git_sha}` — always `1`. Used to identify the running build from a scrape, paired with the redacted startup banner.
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
+- `proof_interceptor_screening_availability_total{outcome}` — Elliptic-proxy call outcomes, bucketed by category: `success`, `timeout`, `network_error`, `http_4xx`, `http_5xx`, `screening_error`. Distinguishes the *kind* of upstream failure rather than just counting unavailable verdicts.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
+- `proof_interceptor_interceptor_errors_total{interceptor}` — per-interceptor error counter. Tagged with the interceptor name so per-interceptor failure rates are visible.
+- `proof_interceptor_process_crashes_total{source}` — process-level crash counter incremented from `uncaughtException` / `unhandledRejection` handlers. Source is the originating event so logs and metrics agree on the crash class.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.
 
-Plus default Node.js process metrics from `prom-client`.
+Label cardinality is bounded — no user-controlled values become labels. Plus default Node.js
+process metrics from `prom-client`.
+
+## Logging
+
+Every HTTP request produces a single structured log line at `info` level with `event="request"`,
+including `request_id`, `method`, `path`, `status`, and `latency_ms`. Request bodies are never
+inspected — `user_addr` and pool-contract calldata are private user data, and the log stream is
+treated as a potentially-untrusted sink.
+
+The startup banner emits version + git SHA + redacted upstream URLs once at process start.
+Credentials embedded in `SCREENING_URL` (e.g. `https://user:secret@elliptic.example.com/`) are
+stripped down to `scheme://host[:port]` before logging.
+
+`uncaughtException` and `unhandledRejection` are caught at process level and logged as
+`event="uncaught_exception"` / `event="unhandled_rejection"` with the crash source, then the
+process exits with code `1` — silent crashes are turned into noisy ones so the orchestrator
+sees them. Graceful shutdown on `SIGTERM` / `SIGINT` logs `event="shutdown_started"` and
+`event="shutdown_complete"` (or `event="shutdown_error"`) and ignores repeated signals while
+shutdown is in flight.
 
 ## Verifying a deployment
 
