@@ -66,13 +66,14 @@ Every HTTP request emits exactly one structured log line at response time. Field
 - `path` — matched route template (e.g. `/v1/sync/incoming_state`), or the fixed literal `<unmatched>` when no route matched. Using the template (and a stable placeholder for misses) keeps log cardinality bounded: logging the raw URI on 404s would let an attacker send arbitrarily long paths and spam logs or metrics backends.
 - `status` — HTTP status code as a number.
 - `latency_ms` — wall-clock latency in milliseconds, measured outside CORS / body-limit / timeout layers.
+- `request_id` — value of the `x-request-id` header bound to this request. The server reuses a client-supplied `x-request-id` when it is non-empty, printable ASCII (bytes `0x20`–`0x7E`), and no longer than 36 bytes (the length of the canonical UUID v4 fallback); otherwise it generates a fresh UUID. The same id is echoed on the response header and on every error body for this request, so a single error report ties together the client log, the access-log line, and any handler-level logs emitted inside the request span.
 
 Level selection:
 
 - `/health` logs at `DEBUG` so readiness probes don't flood steady-state output.
 - All other routes log at `INFO`.
 
-The middleware sits as the outermost router layer, so it observes every request — including OHTTP envelope requests (`POST /`) — and reports their wall-clock latency.
+The access-log middleware runs outside the CORS, body-limit, and timeout layers, so it observes every request and reports wall-clock latency. Request-id and span layers wrap it from the outside; their per-request cost is negligible.
 
 ## 16.5 Future Enhancements
 
