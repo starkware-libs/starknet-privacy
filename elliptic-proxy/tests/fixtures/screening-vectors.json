@@ -1,0 +1,56 @@
+{
+  "scheme": {
+    "standard": "SNIP-12 revision 1 typed-data message; STARK-curve ECDSA, deterministic (RFC6979)",
+    "message_hash": "poseidon_hash_span(['StarkNet Message', domain_hash, signer_public_key, message_struct_hash])",
+    "domain": {
+      "name": "Screening",
+      "version": 2,
+      "revision": 1
+    },
+    "message_type": "\"DepositorValidation\"(\"depositor\":\"ContractAddress\",\"issued_at\":\"u128\")",
+    "account_slot": "signer_public_key — the trusted signer's x-only stark key fills the SNIP-12 account slot (OZ get_message_hash(signer))",
+    "public_key_note": "public_key is the x-only stark key consumed by the on-chain check_ecdsa_signature, and also the account-slot value",
+    "regenerate": "node scripts/gen-screening-vectors.mjs"
+  },
+  "starknet_message": "0x537461726b4e6574204d657373616765",
+  "domain_name": "Screening",
+  "domain_version": 2,
+  "domain_revision": 1,
+  "starknet_domain_type_hash": "0x1ff2f602e42168014d405a94f75e8a93d640751d71d16311266e140d8b0a210",
+  "depositor_validation_type_hash": "0x32d43b7372c9ea8a35daf12b02c5f6f74837910ecbaf2a3ecfe71fec901913d",
+  "private_key": "0x03e1f1d2c3b4a5968778695a4b3c2d1e0f00112233445566778899aabbccddee",
+  "public_key": "0x5d7c3a7081f40b2288e241606356742129ed4469846ecdfa7a3325e9a0edb15",
+  "full_public_key": "0x0405d7c3a7081f40b2288e241606356742129ed4469846ecdfa7a3325e9a0edb15028f3087069c1bf159bb8c9f5fac16e35fe4b129f4a5df79dc238e4fd91994bc",
+  "vectors": [
+    {
+      "name": "sepolia_allowed",
+      "chain_id_str": "SN_SEPOLIA",
+      "chain_id": "0x534e5f5345504f4c4941",
+      "depositor": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "issued_at": 1716579600,
+      "message_hash": "0x25564539d264de87ae64bf3e641ea6e81bfb7e5a9017257618681716cf51a23",
+      "sig_r": "0x3199611254d442e8d4be05432a4522a141bf081bd7cd7e53fc27cc9cf8a4583",
+      "sig_s": "0x263506d4530e96cafaa1dd2e3ff255bd7138c2234d3eb7099c11806f6882192"
+    },
+    {
+      "name": "mainnet_allowed",
+      "chain_id_str": "SN_MAIN",
+      "chain_id": "0x534e5f4d41494e",
+      "depositor": "0x06f3a1e2c5d40b9a78e2417b3c2d1e0f00112233445566778899aabbccddeeff",
+      "issued_at": 1716580000,
+      "message_hash": "0x1b3b3f82b648d5bfcc071b7bab0dc98d3a419cbb1cab67cd29d3076e43e76a4",
+      "sig_r": "0x67386484ded6efd091897a08416f235c9ca2cacddff6d02424c423088cbb4f3",
+      "sig_s": "0x6e9af9192152d945dbb354e5b5c77e79d094df44d672dcce06120f336bb6df9"
+    },
+    {
+      "name": "sepolia_other_address",
+      "chain_id_str": "SN_SEPOLIA",
+      "chain_id": "0x534e5f5345504f4c4941",
+      "depositor": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+      "issued_at": 1716579600,
+      "message_hash": "0x78846ba24e8f4632e72e5852aed9f3c4da340d90574c55a49642c056fa8981",
+      "sig_r": "0x73ff37e6110fbc958b12a961c4e2b77a86b0a0aa77199dd982950b39302089c",
+      "sig_s": "0x29ae0ee3ff6cdee60365e679b22c9e12c6782008754979f07157712ddd67ded"
+    }
+  ]
+}
