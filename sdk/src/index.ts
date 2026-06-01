@@ -7,6 +7,8 @@ export type {
   MessageToL1,
   ProvingServiceConfig,
   ProveTransactionResult,
+  AdditionalData,
+  ScreeningSignature,
 } from "./internal/proving-service.js";
 export type { BlockIdentifier } from "starknet";
 export { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
