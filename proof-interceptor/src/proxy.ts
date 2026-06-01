@@ -129,17 +129,23 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // All interceptors allowed the transaction
+    // All interceptors allowed the transaction. On a screened deposit the
+    // verdict carries a signature to relay to the prover (attached under
+    // additional_data.signature on the prove response); otherwise allowed-only.
     finishRequest("check_with_interceptors", {
       rpcAction: "check_with_interceptors",
       interceptorVerdict: "allow",
+      signed: interceptorVerdict.signature !== undefined,
     });
+    const result = interceptorVerdict.signature
+      ? { allowed: true, signature: interceptorVerdict.signature }
+      : { allowed: true };
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
         jsonrpc: "2.0",
         id: verdict.requestId,
-        result: { allowed: true },
+        result,
       })
     );
   };
