@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+### Breaking (only affects pre-release users of 0.14.2-RC.7)
+
+- `ForgeYieldsAnonymizer::privacy_invoke` now takes a single `ForgeOperation` enum-with-payload argument instead of `(operation, in_token, out_token, assets, note_id)`. The SDK helper `buildForgeDepositInvoke` keeps its TypeScript signature, but the underlying calldata layout changed (variant tag + struct payload). Old hand-rolled calldata won't deserialize against the new contract.
+
+### Added
+
+- ForgeYields anonymizer now supports the full private redemption lifecycle with a **query-based claim** that uses the gateway as the authoritative oracle for amounts. New SDK helpers under `@starkware-libs/starknet-privacy-sdk/anonymizers/forge`:
+  - `buildForgeRequestRedeemInvoke({ anonymizer, gateway, shares, commitment })` — queues a redemption; wallet computes `commitment = forgeRedemptionCommitment(secret)` and persists `secret` locally.
+  - `buildForgeClaimRedeemInvoke({ anonymizer, gateway, underlying, redemptionId, secret, noteId })` — settles the queued redemption into a private underlying note. The anonymizer opportunistically calls `gateway.claim_redeem` atomically if the NFT is still alive, otherwise it routes funds already settled by an external party. In both cases the amount is read via `gateway.due_assets_from_id(id)`, so per-epoch gains/losses are reflected automatically.
+  - `forgeRedemptionCommitment(secret)` — `poseidon([secret])` helper, matching the Cairo side.
+  - `decodeRedemptionId(eventData)` — extracts the redemption id from a `RedemptionRequested` event's data array. Use with `REDEMPTION_REQUESTED_EVENT_SELECTOR` on a tx receipt.
+- See `packages/forge_yields_anonymizer/docs/REDEMPTION_DESIGN.md` for the architecture (no front-run DoS, no anonymizer-side amount bookkeeping).
+
+## 0.14.2-RC.7
+
+### Added
+
+- New `@starkware-libs/starknet-privacy-sdk/anonymizers/forge` subpath export. `buildForgeDepositInvoke(...)` returns a `Call` ready to pass to the `.invoke()` builder for `ForgeYieldsAnonymizer::privacy_invoke(Deposit, ...)`. Encoder is ABI-bound (uses `new CallData(abi).compile(...)` with `CairoCustomEnum`), so Cairo Serde rules apply automatically (`u256` → low/high, enum → variant index). Pairs with the `forge_yields_anonymizer` Cairo package.
+
 ## 0.14.2-RC.6
 
 ### Changed
