@@ -1,0 +1,47 @@
+{
+  "_spec": {
+    "description": "Screening v2 signing reference vectors. Source of truth for the off-chain signer (O2) and on-chain verifier (C3).",
+    "digest": "poseidonHashMany([domain_tag, chain_id, from_addr, signature_timestamp])",
+    "poseidon": "matches Cairo core::poseidon::poseidon_hash_span (NOT PoseidonTrait builder)",
+    "signature": "STARK-curve ECDSA, deterministic (RFC6979)",
+    "public_key_note": "public_key is the x-only stark key consumed by Cairo check_ecdsa_signature",
+    "regenerate": "node scripts/gen-screening-vectors.mjs"
+  },
+  "domain_tag_str": "screening_v2",
+  "domain_tag": "0x73637265656e696e675f7632",
+  "private_key": "0x03e1f1d2c3b4a5968778695a4b3c2d1e0f00112233445566778899aabbccddee",
+  "public_key": "0x5d7c3a7081f40b2288e241606356742129ed4469846ecdfa7a3325e9a0edb15",
+  "full_public_key": "0x0405d7c3a7081f40b2288e241606356742129ed4469846ecdfa7a3325e9a0edb15028f3087069c1bf159bb8c9f5fac16e35fe4b129f4a5df79dc238e4fd91994bc",
+  "vectors": [
+    {
+      "name": "sepolia_allowed",
+      "chain_id_str": "SN_SEPOLIA",
+      "chain_id": "0x534e5f5345504f4c4941",
+      "from_addr": "0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7",
+      "signature_timestamp": 1716579600,
+      "digest": "0x60853a2c532b3e056f0b9932c2b22b90d1796f5e3223de84047ad8c165d6c57",
+      "sig_r": "0x6e6f63c878a2fdebb3934de2344fbd4bc04ae47b73561f2a5a170cd0c8a0cb",
+      "sig_s": "0x58a68a71ca79df6cc71d5b4b4813685f590ede2c686b9096fb350f11298429f"
+    },
+    {
+      "name": "mainnet_allowed",
+      "chain_id_str": "SN_MAIN",
+      "chain_id": "0x534e5f4d41494e",
+      "from_addr": "0x06f3a1e2c5d40b9a78e2417b3c2d1e0f00112233445566778899aabbccddeeff",
+      "signature_timestamp": 1716580000,
+      "digest": "0x622f767c314e7e9c8095da3557e784204126075414099e3f9d4b7b3a2d7d524",
+      "sig_r": "0x4b957dd3d51f30aa42c4092af01a9e0da075f7d5dc186b699c159244fe72aed",
+      "sig_s": "0x25c5646dcba6c58b5ff43680e5eb1e679af2eb55e157b4bc6903fcdfdc9f08d"
+    },
+    {
+      "name": "sepolia_other_address",
+      "chain_id_str": "SN_SEPOLIA",
+      "chain_id": "0x534e5f5345504f4c4941",
+      "from_addr": "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcde",
+      "signature_timestamp": 1716579600,
+      "digest": "0x43973003414f9ffd0d65fc8eed32d610019a8525e30fa386097796fa78b890a",
+      "sig_r": "0x72a38d8b6239dab76276a77259920a5751d281a79b30ec74260e4b32f370790",
+      "sig_s": "0x45f3ffe2a9215b7935cf02d6f2e408e60e8c77af5106f9530b46b634345a7af"
+    }
+  ]
+}
