@@ -24,6 +24,16 @@ export interface Config {
   // Elliptic's verdict and regardless of additionalBlockedAddresses.
   // Operator override for addresses we believe were wrongly flagged.
   blockOverrideAddresses?: string[];
+  // Screening v2 signing. Present only on deployments that serve POST /sign.
+  // The /screen path ignores it entirely.
+  signing?: {
+    // STARK-curve private key (felt hex, 1 <= key < curve order) used to sign
+    // screening attestations. Managed by the FPI cloud function in production.
+    privateKey: string;
+    // Optional allowlist of chain_id felts (lowercase hex) the signer will
+    // sign for. When set, /sign rejects any other chain_id with 400.
+    allowedChainIds?: string[];
+  };
 }
 
 type SecretFetcher = () => Promise<string>;
@@ -120,6 +130,22 @@ function validateConfig(raw: unknown): Config {
     skipElliptic = root.skipElliptic;
   }
 
+  let signing: Config["signing"];
+  if (root.signing !== undefined) {
+    if (
+      typeof root.signing !== "object" ||
+      root.signing === null ||
+      Array.isArray(root.signing)
+    ) {
+      throw new Error("config: signing must be a non-null object");
+    }
+    const signingRaw = root.signing as Record<string, unknown>;
+    signing = {
+      privateKey: requireString(signingRaw, "privateKey"),
+      allowedChainIds: parseLowercaseHexList(signingRaw, "allowedChainIds"),
+    };
+  }
+
   return {
     elliptic: {
       url: requireString(elliptic, "url"),
@@ -144,6 +170,7 @@ function validateConfig(raw: unknown): Config {
       root,
       "blockOverrideAddresses"
     ),
+    signing,
   };
 }
 
@@ -153,8 +180,20 @@ function parseLowercaseHexList(
 ): string[] | undefined {
   const value = object[key];
   if (value === undefined) return undefined;
-  if (!Array.isArray(value) || !value.every((a) => typeof a === "string")) {
+  if (
+    !Array.isArray(value) ||
+    !value.every((entry) => typeof entry === "string")
+  ) {
     throw new Error(`config: ${key} must be string[]`);
   }
-  return (value as string[]).map((a) => a.toLowerCase());
+  // Entries are felts (addresses / chain ids). Validate the format at load so
+  // the /sign path can compare them numerically (BigInt) without guarding, and
+  // so a malformed entry fails fast instead of silently never matching.
+  const HEX_FELT = /^0x[0-9a-fA-F]+$/;
+  return (value as string[]).map((entry) => {
+    if (!HEX_FELT.test(entry)) {
+      throw new Error(`config: ${key} entries must be 0x-prefixed hex felts`);
+    }
+    return entry.toLowerCase();
+  });
 }

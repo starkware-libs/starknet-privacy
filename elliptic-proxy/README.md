@@ -40,24 +40,29 @@ The secret value must be a JSON string with this structure:
   },
   "skipElliptic": false,
   "additionalBlockedAddresses": [],
-  "blockOverrideAddresses": []
+  "blockOverrideAddresses": [],
+  "signing": {
+    "privateKey": "<stark-curve-private-key-hex>",
+    "allowedChainIds": ["0x534e5f5345504f4c4941"]
+  }
 }
 ```
 
-| Field                                     | Description                                                                                                                                                                                                                                                                                                                                      |
-| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `elliptic.url`                            | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`).                                                                                                                                                                                                                                                    |
-| `elliptic.key`                            | Real Elliptic API key                                                                                                                                                                                                                                                                                                                            |
+| Field                                     | Description                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elliptic.url`                            | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`).                                                                                                                                                                                                                                                                   |
+| `elliptic.key`                            | Real Elliptic API key                                                                                                                                                                                                                                                                                                                                           |
 | `elliptic.secret`                         | Real Elliptic HMAC secret. Paste the value Elliptic provides exactly as-is. **Caution**: a base64 secret can look identical to hex — any 32-character string drawn entirely from `[0-9a-f]` is valid in both alphabets. Don't run a value through `xxd -r -p \| base64` just because it "looks like hex" — trust Elliptic's label, not the string's appearance. |
-| `elliptic.timeoutMs`                      | Timeout for upstream Elliptic requests (ms)                                                                                                                                                                                                                                                                                                      |
-| `rateLimitPerMinute`                      | Per-partner rate limit (requests per minute)                                                                                                                                                                                                                                                                                                     |
-| `maxBodyBytes`                            | Max request body size                                                                                                                                                                                                                                                                                                                            |
-| `configCacheTtlSeconds`                   | How long to cache the config before re-reading from Secret Manager (seconds)                                                                                                                                                                                                                                                                     |
-| `blockedCacheTtlSeconds`                  | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                             |
-| `partners.<name>`                         | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                        |
-| `skipElliptic` _(optional)_               | When `true`, the proxy never calls Elliptic. Intended for non-mainnet deployments where Elliptic has no data coverage (Elliptic does not index testnets, and at the time of writing has no Starknet coverage at all), or as a kill switch on mainnet. Operator-policy lists below still apply. Defaults to `false`.                              |
-| `additionalBlockedAddresses` _(optional)_ | Lowercase hex addresses to always treat as blocked, regardless of Elliptic's verdict (or in lieu of it when `skipElliptic` is set). Operator-curated supplemental deny list — surfaces as `{blocked: true, source: "blocklist"}`.                                                                                                                |
-| `blockOverrideAddresses` _(optional)_     | Lowercase hex addresses to always treat as allowed. Wins over both `additionalBlockedAddresses` and Elliptic — use to rescue addresses we believe were wrongly flagged. Surfaces as `{blocked: false, source: "allowlist"}`.                                                                                                                     |
+| `elliptic.timeoutMs`                      | Timeout for upstream Elliptic requests (ms)                                                                                                                                                                                                                                                                                                                     |
+| `rateLimitPerMinute`                      | Per-partner rate limit (requests per minute)                                                                                                                                                                                                                                                                                                                    |
+| `maxBodyBytes`                            | Max request body size                                                                                                                                                                                                                                                                                                                                           |
+| `configCacheTtlSeconds`                   | How long to cache the config before re-reading from Secret Manager (seconds)                                                                                                                                                                                                                                                                                    |
+| `blockedCacheTtlSeconds`                  | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                                            |
+| `partners.<name>`                         | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                                       |
+| `skipElliptic` _(optional)_               | When `true`, the proxy never calls Elliptic. Intended for non-mainnet deployments where Elliptic has no data coverage (Elliptic does not index testnets, and at the time of writing has no Starknet coverage at all), or as a kill switch on mainnet. Operator-policy lists below still apply. Defaults to `false`.                                             |
+| `additionalBlockedAddresses` _(optional)_ | Lowercase hex addresses to always treat as blocked, regardless of Elliptic's verdict (or in lieu of it when `skipElliptic` is set). Operator-curated supplemental deny list — surfaces as `{blocked: true, source: "blocklist"}`.                                                                                                                               |
+| `blockOverrideAddresses` _(optional)_     | Lowercase hex addresses to always treat as allowed. Wins over both `additionalBlockedAddresses` and Elliptic — use to rescue addresses we believe were wrongly flagged. Surfaces as `{blocked: false, source: "allowlist"}`.                                                                                                                                    |
+| `signing` _(optional)_                    | Screening v2 (`POST /sign`) config. `privateKey` is the STARK-curve key (felt hex, `1 <= key < curve order`) used to sign attestations; the production key is FPI-managed. `allowedChainIds` (optional, lowercase hex felts) restricts which `chain_id`s `/sign` will sign for. Omit the whole block on `/screen`-only deployments.                             |
 
 ### Generating partner secrets
 
@@ -106,6 +111,37 @@ field that names which code path produced the verdict:
 Precedence (first match wins): `allowlist` → `blocklist` → `skip` → `cache` → `elliptic`.
 
 Errors (HTTP 4xx/5xx) return `{ "error": "<reason>" }` with no `source` field.
+
+## Screening v2 — `POST /sign`
+
+The `/sign` route (Screening v2) screens the deposit's source address and, when
+allowed, returns a STARK-curve signature the privacy-pool contract verifies
+on-chain. It shares partner auth, rate-limiting, and the operator allow/deny
+lists with `/screen`; the HMAC must be signed for path `/sign`. Requires the
+`signing` config block.
+
+Request body:
+
+```json
+{ "address": "0x049d…", "chain_id": "0x534e5f5345504f4c4941" }
+```
+
+The signed message is a SNIP-12 (revision 1) typed-data attestation binding the
+deposit's `from_addr` and `signature_timestamp`, with `chain_id` in the domain.
+The exact construction and golden values are the reference vectors in
+`tests/fixtures/screening-vectors.json` (regenerate with
+`node scripts/gen-screening-vectors.mjs`).
+
+| Status | Body                                                              | Meaning                                                   |
+| ------ | ----------------------------------------------------------------- | --------------------------------------------------------- |
+| `200`  | `{ "signature_timestamp": 171…, "sig_r": "0x…", "sig_s": "0x…" }` | Allowed and signed.                                       |
+| `403`  | `{ "code": "sanctioned", "reason": "OFAC sanctions match" }`      | Address is on the deny list. No signature.                |
+| `400`  | `{ "error": "invalid address" \| "invalid chain_id" \| … }`       | Bad request (also `unsupported chain_id` if allowlisted). |
+| `401`  | `{ "error": "…" }`                                                | Partner auth failed.                                      |
+| `503`  | `{ "error": "signing not configured" \| "signing failed" }`       | Signing unavailable — deposits fail closed.               |
+
+> Screening on `/sign` uses the operator allow/deny lists
+> (`blockOverrideAddresses` / `additionalBlockedAddresses`).
 
 ## Deployment
 

@@ -138,8 +138,20 @@ elliptic-proxy/
 │   ├── elliptic.ts       # HMAC re-signing + forwarding to Elliptic
 │   ├── rate-limit.ts     # In-memory per-partner rate limiter
 │   ├── scoring.ts        # (planned) Rule-based response scoring (blocked/allowed)
-│   └── cache.ts          # (planned) In-memory blocked address cache
+│   ├── cache.ts          # (planned) In-memory blocked address cache
+│   └── signing.ts        # Screening v2: STARK-curve attestation signer (POST /sign)
 ```
+
+## Screening v2 — `POST /sign`
+
+In addition to the `/screen` verdict path, the function exposes `/sign`: it
+screens the deposit's source address against the operator allow/deny lists and,
+when allowed, returns a STARK-curve ECDSA signature over a SNIP-12 (revision 1)
+typed-data attestation binding `from_addr` and `signature_timestamp` (with
+`chain_id` in the domain) that the privacy-pool contract verifies on-chain.
+`/sign` reuses partner auth, rate-limiting, and the operator lists; it fails
+closed (sanctioned → 403, no signature; signing fault → 503). The message and
+signature scheme is pinned by `tests/fixtures/screening-vectors.json`.
 
 ## Deployment
 

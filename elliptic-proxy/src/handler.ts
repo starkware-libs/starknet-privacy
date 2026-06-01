@@ -10,14 +10,24 @@ import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
 import { scoreResponse, type ScoringResult } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
+import { signScreening, type ScreeningSignature } from "./signing.js";
 
 export interface ConfigSource {
   get(): Promise<Config>;
 }
 
+type SendResponse = (status: number, body: string, logFields?: object) => void;
+
 // StarkNet addresses: "0x" + up to 64 hex chars.
 const MAX_ADDRESS_LENGTH = 66;
+// Any felt252 fits in "0x" + 63 hex chars; cap chain_id with the same bound as
+// addresses so an authenticated partner can't hand us an unbounded string.
+const MAX_FELT_HEX_LENGTH = 66;
 const HEX_FELT = /^0x[0-9a-fA-F]+$/;
+// A StarkNet ContractAddress is < 2**251. The contract can only ever recompute
+// the screening digest over such a value, so signing a larger "address" would
+// yield a signature the on-chain verifier can never match — reject it up front.
+const ADDRESS_UPPER_BOUND = 2n ** 251n;
 
 export type Forwarder = (request: {
   ellipticUrl: string;
@@ -104,6 +114,14 @@ export function createHandler(
         partner: partnerName,
         reason: "rate_limited",
       });
+      return;
+    }
+
+    // Screening v2: the signing endpoint shares auth + rate-limiting with the
+    // legacy /screen path but produces a signed attestation instead of a
+    // blocked/allowed verdict. All other paths fall through to /screen.
+    if (req.path === "/sign") {
+      handleSign(req, config, partnerName, sendResponse);
       return;
     }
 
@@ -302,4 +320,118 @@ export function createHandler(
       }
     );
   };
+}
+
+/**
+ * POST /sign: screen the deposit's source address and, if allowed, return a
+ * STARK-curve signature the privacy pool verifies on-chain. Fail-closed — a
+ * sanctioned address gets 403 (no signature) and any signing fault gets 503.
+ *
+ * Screening uses the operator lists: an address is sanctioned iff it is on the
+ * deny list (`additionalBlockedAddresses`) and not on the allow list
+ * (`blockOverrideAddresses`).
+ */
+function handleSign(
+  req: Request,
+  config: Config,
+  partnerName: string,
+  sendResponse: SendResponse
+): void {
+  if (!config.signing) {
+    sendResponse(503, JSON.stringify({ error: "signing not configured" }), {
+      partner: partnerName,
+      reason: "signing_unconfigured",
+    });
+    return;
+  }
+
+  const body =
+    typeof req.body === "object" && req.body !== null ? req.body : {};
+
+  const rawAddress = body.address;
+  if (
+    typeof rawAddress !== "string" ||
+    rawAddress.length === 0 ||
+    rawAddress.length > MAX_ADDRESS_LENGTH ||
+    !HEX_FELT.test(rawAddress) ||
+    BigInt(rawAddress) >= ADDRESS_UPPER_BOUND
+  ) {
+    sendResponse(400, JSON.stringify({ error: "invalid address" }), {
+      partner: partnerName,
+    });
+    return;
+  }
+  const address = rawAddress.toLowerCase();
+
+  const chainId = body.chain_id;
+  if (
+    typeof chainId !== "string" ||
+    chainId.length > MAX_FELT_HEX_LENGTH ||
+    !HEX_FELT.test(chainId)
+  ) {
+    sendResponse(400, JSON.stringify({ error: "invalid chain_id" }), {
+      partner: partnerName,
+    });
+    return;
+  }
+  if (
+    config.signing.allowedChainIds &&
+    !config.signing.allowedChainIds.includes(chainId.toLowerCase())
+  ) {
+    sendResponse(400, JSON.stringify({ error: "unsupported chain_id" }), {
+      partner: partnerName,
+      reason: "chain_id_not_allowed",
+    });
+    return;
+  }
+
+  // Compare on the canonical felt, not the raw string. The interceptor sends
+  // addresses normalized (leading zeros stripped) while operators commonly
+  // write deny/allow entries zero-padded to 64 hex — a string compare would
+  // silently never match a padded entry and sign a sanctioned address, even
+  // though the SAME felt is bound into the digest. Config entries are validated
+  // as hex felts at load, so BigInt() here cannot throw.
+  const target = BigInt(address);
+  const matchesFelt = (list: string[] | undefined): boolean =>
+    list?.some((entry) => BigInt(entry) === target) ?? false;
+  const allowlisted = matchesFelt(config.blockOverrideAddresses);
+  const denylisted = matchesFelt(config.additionalBlockedAddresses);
+  if (!allowlisted && denylisted) {
+    sendResponse(
+      403,
+      JSON.stringify({ code: "sanctioned", reason: "OFAC sanctions match" }),
+      { partner: partnerName, result: "blocked", source: "blocklist" }
+    );
+    return;
+  }
+
+  const signatureTimestamp = Math.floor(Date.now() / 1000);
+  let signature: ScreeningSignature;
+  try {
+    signature = signScreening(
+      config.signing.privateKey,
+      BigInt(chainId),
+      BigInt(address),
+      signatureTimestamp
+    );
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        error: "signing_failed",
+        message: error instanceof Error ? error.message : String(error),
+      })
+    );
+    sendResponse(503, JSON.stringify({ error: "signing failed" }), {
+      partner: partnerName,
+      result: "error",
+      errorType: "signing",
+    });
+    return;
+  }
+
+  sendResponse(200, JSON.stringify(signature), {
+    partner: partnerName,
+    result: "allowed",
+    source: "signed",
+  });
 }
