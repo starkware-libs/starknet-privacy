@@ -2,12 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Account } from "starknet";
 import { createEmptyRegistry } from "starknet-sdk";
 import { formatChainId } from "./format.ts";
-import {
-  loadConfig,
-  initPaymasterForwarder,
-  initFeeConfig,
-  type AccountConfig,
-} from "./config.ts";
+import { loadConfig, initPaymasterForwarder, initFeeConfig, type AccountConfig } from "./config.ts";
 import { createProvider, createTransfers } from "./starknet.ts";
 import { useAccounts } from "./hooks/useAccounts.ts";
 import { usePoolSelector } from "./hooks/usePoolSelector.ts";
@@ -272,19 +267,23 @@ export function App() {
     avnuSwap,
     vesuSupply,
     vesuWithdraw,
+    forgeDeposit,
+    forgeRequestRedeem,
+    forgeClaimRedeem,
+    loadPendingRedemptions,
   } = useTransactions(
-      provider,
-      transfers,
-      userAccount,
-      adminAccount,
-      activeAccount?.address,
-      poolAddress,
-      txConfig,
-      refreshAll,
-      refreshBalances,
-      lastTxBlockNumberRef,
-      updateLastTxBlockNumber
-    );
+    provider,
+    transfers,
+    userAccount,
+    adminAccount,
+    activeAccount?.address,
+    poolAddress,
+    txConfig,
+    refreshAll,
+    refreshBalances,
+    lastTxBlockNumberRef,
+    updateLastTxBlockNumber
+  );
 
   const { status: builderStatus, executeBatch } = useTransactionBuilder(
     provider,
@@ -374,7 +373,7 @@ export function App() {
                 >
                   Builder
                 </button>
-                {(config.ekubo || config.vesu) && (
+                {(config.ekubo || config.vesu || config.forge) && (
                   <button
                     className={activeView === "defi" ? "active" : ""}
                     onClick={() => setActiveView("defi")}
@@ -421,11 +420,16 @@ export function App() {
                   provider={provider}
                   ekubo={config.ekubo}
                   vesu={config.vesu}
+                  forge={config.forge}
                   paymasterAvailable={Boolean(txConfig.paymasterUrl)}
                   onSwap={swap}
                   onAvnuSwap={avnuSwap}
                   onVesuSupply={vesuSupply}
                   onVesuWithdraw={vesuWithdraw}
+                  onForgeDeposit={forgeDeposit}
+                  onForgeRequestRedeem={forgeRequestRedeem}
+                  onForgeClaimRedeem={forgeClaimRedeem}
+                  forgePendingRedemptions={loadPendingRedemptions}
                 />
               )}
               <div className="config-island">
@@ -444,41 +448,42 @@ export function App() {
                   {config.backendIndexerUrl && <span className="chip">relay</span>}
                   {isMainnetChain && <span className="chip">enforced</span>}
                 </label>
-                {config.paymasterUrl && (() => {
-                  const tokensWithBalance = state.tokenBalances.filter((tb) => tb.private > 0n);
-                  const hasPrivateBalance = tokensWithBalance.length > 0;
-                  return (
-                    <label className="builder-checkbox">
-                      <input
-                        type="checkbox"
-                        checked={paymasterEnabled && hasPrivateBalance}
-                        onChange={(e) => togglePaymaster(e.target.checked)}
-                        disabled={!hasPrivateBalance}
-                      />
-                      Paymaster
-                      {hasPrivateBalance ? (
-                        <select
-                          value={feeToken ?? ""}
-                          onChange={(e) => selectFeeToken(e.target.value)}
-                          disabled={!paymasterEnabled}
-                        >
-                          {tokensWithBalance.map((tb) => {
-                            const name =
-                              config.tokens.find((t) => BigInt(t.address) === BigInt(tb.address))
-                                ?.name ?? "?";
-                            return (
-                              <option key={tb.address} value={tb.address}>
-                                {name}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      ) : (
-                        <span className="chip">no private balance</span>
-                      )}
-                    </label>
-                  );
-                })()}
+                {config.paymasterUrl &&
+                  (() => {
+                    const tokensWithBalance = state.tokenBalances.filter((tb) => tb.private > 0n);
+                    const hasPrivateBalance = tokensWithBalance.length > 0;
+                    return (
+                      <label className="builder-checkbox">
+                        <input
+                          type="checkbox"
+                          checked={paymasterEnabled && hasPrivateBalance}
+                          onChange={(e) => togglePaymaster(e.target.checked)}
+                          disabled={!hasPrivateBalance}
+                        />
+                        Paymaster
+                        {hasPrivateBalance ? (
+                          <select
+                            value={feeToken ?? ""}
+                            onChange={(e) => selectFeeToken(e.target.value)}
+                            disabled={!paymasterEnabled}
+                          >
+                            {tokensWithBalance.map((tb) => {
+                              const name =
+                                config.tokens.find((t) => BigInt(t.address) === BigInt(tb.address))
+                                  ?.name ?? "?";
+                              return (
+                                <option key={tb.address} value={tb.address}>
+                                  {name}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        ) : (
+                          <span className="chip">no private balance</span>
+                        )}
+                      </label>
+                    );
+                  })()}
               </div>
             </div>
           </div>

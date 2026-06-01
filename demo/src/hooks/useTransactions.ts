@@ -1,6 +1,14 @@
 import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
 import { TransactionFinalityStatus, transaction, type Account, type RpcProvider } from "starknet";
 import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "starknet-sdk";
+import {
+  buildForgeDepositInvoke,
+  buildForgeRequestRedeemInvoke,
+  buildForgeClaimRedeemInvoke,
+  forgeRedemptionCommitment,
+  decodeRedemptionId,
+  REDEMPTION_REQUESTED_EVENT_SELECTOR,
+} from "starknet-sdk/anonymizers/forge";
 import { getQuotes, quoteToCalls } from "../avnu.ts";
 import { findEkuboPool, type AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";
@@ -15,7 +23,10 @@ import {
 } from "../paymaster.ts";
 
 const WAIT_OPTIONS = {
-  successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
+  successStates: [
+    TransactionFinalityStatus.PRE_CONFIRMED,
+    TransactionFinalityStatus.ACCEPTED_ON_L2,
+  ],
   retryInterval: 100,
 };
 
@@ -784,6 +795,284 @@ export function useTransactions(
     ]
   );
 
+  const forgeDeposit = useCallback(
+    (token: string, gateway: string, amount: string) =>
+      execute("Forge Deposit", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress) throw new Error("Not ready");
+        if (!config.forge) throw new Error("Forge config not set");
+        const rawAmount = scaleAmount(token, amount);
+        const { anonymizerAddress } = config.forge;
+
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(userAccount, provider, feeAction, config, poolAddress, tl);
+
+        const lastTxBlockNumber = lastTxBlockNumberRef.current;
+
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(token)
+          .withdraw({ recipient: anonymizerAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .with(gateway)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) =>
+            buildForgeDepositInvoke({
+              anonymizer: anonymizerAddress,
+              underlying: token,
+              gateway,
+              assets: rawAmount,
+              noteId: args.openNotes[0].noteId,
+            })
+          );
+        return buildProveSubmit(
+          builder,
+          feeAction,
+          transfers,
+          config,
+          tl,
+          userAccount,
+          provider,
+          lastTxBlockNumber
+        );
+      }),
+    [
+      userAccount,
+      transfers,
+      provider,
+      activeAddress,
+      config,
+      poolAddress,
+      execute,
+      lastTxBlockNumberRef,
+    ]
+  );
+
+  // ─── Forge redemption: local storage for pending (id, secret) ──────────────
+
+  /** Key under which pending redemptions are stored per (user, pool). */
+  function forgeRedemptionStorageKey(gateway: string) {
+    return `forge-redemptions-${activeAddress ?? "anon"}-${poolAddress}-${gateway}`;
+  }
+
+  type PendingRedemption = { redemptionId: string; secret: string };
+
+  function loadPendingRedemptions(gateway: string): PendingRedemption[] {
+    try {
+      return JSON.parse(
+        localStorage.getItem(forgeRedemptionStorageKey(gateway)) ?? "[]"
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  function savePendingRedemption(
+    gateway: string,
+    redemptionId: bigint,
+    secret: string
+  ) {
+    const existing = loadPendingRedemptions(gateway);
+    existing.push({ redemptionId: redemptionId.toString(), secret });
+    localStorage.setItem(
+      forgeRedemptionStorageKey(gateway),
+      JSON.stringify(existing)
+    );
+  }
+
+  function removePendingRedemption(gateway: string, redemptionId: bigint) {
+    const existing = loadPendingRedemptions(gateway).filter(
+      (r) => r.redemptionId !== redemptionId.toString()
+    );
+    localStorage.setItem(
+      forgeRedemptionStorageKey(gateway),
+      JSON.stringify(existing)
+    );
+  }
+
+  /** Generate a cryptographically random secret as a hex felt252. */
+  function generateSecret(): string {
+    const bytes = crypto.getRandomValues(new Uint8Array(31));
+    return (
+      "0x" +
+      Array.from(bytes)
+        .map((b) => b.toString(16).padStart(2, "0"))
+        .join("")
+    );
+  }
+
+  // ─── RequestRedeem ──────────────────────────────────────────────────────────
+
+  const forgeRequestRedeem = useCallback(
+    (shareToken: string, gateway: string, amount: string) =>
+      execute("Forge Request Redeem", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress)
+          throw new Error("Not ready");
+        if (!config.forge) throw new Error("Forge config not set");
+        const rawAmount = scaleAmount(shareToken, amount);
+        const { anonymizerAddress } = config.forge;
+
+        const secret = generateSecret();
+        const commitment = forgeRedemptionCommitment(secret);
+
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(
+          userAccount,
+          provider,
+          feeAction,
+          config,
+          poolAddress,
+          tl
+        );
+
+        const lastTxBlockNumber = lastTxBlockNumberRef.current;
+
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(shareToken)
+          .withdraw({ recipient: anonymizerAddress, amount: rawAmount })
+          .surplusTo(activeAddress, false)
+          .done()
+          .invoke(() =>
+            buildForgeRequestRedeemInvoke({
+              anonymizer: anonymizerAddress,
+              gateway,
+              shares: rawAmount,
+              commitment,
+            })
+          );
+
+        const result = await buildProveSubmit(
+          builder,
+          feeAction,
+          transfers,
+          config,
+          tl,
+          userAccount,
+          provider,
+          lastTxBlockNumber
+        );
+
+        // Extract redemption id from the on-chain receipt
+        const receipt = await provider.getTransactionReceipt(result.txHash);
+        type ReceiptEvent = { from_address: string; keys: string[]; data: string[] };
+        const events: ReceiptEvent[] =
+          "events" in receipt ? (receipt.events as ReceiptEvent[]) : [];
+        const ev = events.find(
+          (e) =>
+            BigInt(e.from_address) === BigInt(anonymizerAddress) &&
+            BigInt(e.keys[0]) === BigInt(REDEMPTION_REQUESTED_EVENT_SELECTOR)
+        );
+        if (!ev) throw new Error("RedemptionRequested event not found in receipt");
+        const redemptionId = decodeRedemptionId(ev.data);
+
+        // Persist (id, secret) locally — this is the wallet's bearer instrument
+        savePendingRedemption(gateway, redemptionId, secret);
+
+        return result;
+      }),
+    [
+      userAccount,
+      transfers,
+      provider,
+      activeAddress,
+      config,
+      poolAddress,
+      execute,
+      lastTxBlockNumberRef,
+    ]
+  );
+
+  // ─── ClaimRedeem ────────────────────────────────────────────────────────────
+
+  const forgeClaimRedeem = useCallback(
+    (gateway: string, underlying: string, redemptionId: bigint) =>
+      execute("Forge Claim Redeem", async (tl) => {
+        if (!userAccount || !transfers || !provider || !activeAddress)
+          throw new Error("Not ready");
+        if (!config.forge) throw new Error("Forge config not set");
+        const { anonymizerAddress } = config.forge;
+
+        const pending = loadPendingRedemptions(gateway);
+        const entry = pending.find(
+          (r) => r.redemptionId === redemptionId.toString()
+        );
+        if (!entry)
+          throw new Error(
+            `No secret found for redemption id ${redemptionId}. Was RequestRedeem done on this browser?`
+          );
+        const { secret } = entry;
+
+        const feeAction = await fetchPaymasterFee(config, tl, poolAddress);
+        await ensureFeeApproval(
+          userAccount,
+          provider,
+          feeAction,
+          config,
+          poolAddress,
+          tl
+        );
+
+        const lastTxBlockNumber = lastTxBlockNumberRef.current;
+
+        const builder = transfers
+          .build({
+            autoSetup: true,
+            autoSelectNotes: "all",
+            autoDiscover: { notes: "refresh", channels: "refresh" },
+          })
+          .surplusTo(activeAddress)
+          .with(underlying)
+          .transfer({ recipient: activeAddress, amount: Open })
+          .done()
+          .invoke((args) =>
+            buildForgeClaimRedeemInvoke({
+              anonymizer: anonymizerAddress,
+              gateway,
+              underlying,
+              redemptionId,
+              secret,
+              noteId: args.openNotes[0].noteId,
+            })
+          );
+
+        const result = await buildProveSubmit(
+          builder,
+          feeAction,
+          transfers,
+          config,
+          tl,
+          userAccount,
+          provider,
+          lastTxBlockNumber
+        );
+
+        // Clear the pending redemption now that it's claimed
+        removePendingRedemption(gateway, redemptionId);
+        return result;
+      }),
+    [
+      userAccount,
+      transfers,
+      provider,
+      activeAddress,
+      config,
+      poolAddress,
+      execute,
+      lastTxBlockNumberRef,
+    ]
+  );
+
   return {
     status,
     register,
@@ -795,5 +1084,9 @@ export function useTransactions(
     avnuSwap,
     vesuSupply,
     vesuWithdraw,
+    forgeDeposit,
+    forgeRequestRedeem,
+    forgeClaimRedeem,
+    loadPendingRedemptions,
   };
 }
