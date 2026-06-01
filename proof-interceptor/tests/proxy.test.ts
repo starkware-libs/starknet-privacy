@@ -162,6 +162,27 @@ describe("handler with interceptors", () => {
     expect(body.result).toEqual({ allowed: true });
   });
 
+  it("relays the screening signature inside additional_data on the allow response when present", async () => {
+    const signature = {
+      issued_at: 1716579600,
+      sig_r: "0x6e6f63c8",
+      sig_s: "0x58a68a71",
+    };
+    const allowSigned: TransactionInterceptor = {
+      name: "test",
+      intercept: async () => ({ action: "allow", signature }),
+    };
+    await startProxy({ interceptors: [allowSigned] });
+
+    const response = await rpcPost(proxyUrl("/"), checkRequest());
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.result).toEqual({
+      allowed: true,
+      additional_data: { signature },
+    });
+  });
+
   it("returns 10000 when interceptor blocks", async () => {
     const blocker: TransactionInterceptor = {
       name: "test",
