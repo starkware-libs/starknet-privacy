@@ -9,6 +9,12 @@
   (`ScreeningSignature`). Backward-compatible: responses without it parse
   unchanged; unknown fields are still rejected by the strict schema. Exported
   `AdditionalData` / `ScreeningSignature` types.
+- Screening v2: `ScreeningRejected` (terminal — sanctioned address) and
+  `ScreeningUnavailable` (transient — screener unreachable) error classes, plus
+  `screeningErrorFromProvingError()` mapping the interceptor's opaque
+  `address_blocked` / `screening_unavailable` reasons (JSON-RPC code 10000).
+  Other code-10000 errors return `undefined` so the caller rethrows the
+  original rather than mislabeling a transient fault as terminal.
 
 ## 0.14.2-RC.6
 
