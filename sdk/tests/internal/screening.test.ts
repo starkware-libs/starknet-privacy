@@ -1,5 +1,10 @@
 import { describe, expect, it, vi, afterEach } from "vitest";
-import { ProvingService } from "../../src/internal/proving-service.js";
+import { ProvingService, ProvingServiceError } from "../../src/internal/proving-service.js";
+import {
+  ScreeningRejected,
+  ScreeningUnavailable,
+  screeningErrorFromProvingError,
+} from "../../src/internal/errors.js";
 
 const PROVER_URL = "https://prover.test";
 
@@ -99,5 +104,50 @@ describe("prove response additional_data parsing", () => {
     await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
       /invalid result/
     );
+  });
+});
+
+describe("screeningErrorFromProvingError", () => {
+  it("maps code 10000 + screening_unavailable to ScreeningUnavailable", () => {
+    const mapped = screeningErrorFromProvingError(
+      new ProvingServiceError(10000, "Transaction rejected", "screening_unavailable")
+    );
+    expect(mapped).toBeInstanceOf(ScreeningUnavailable);
+  });
+
+  it("maps code 10000 + address_blocked to ScreeningRejected", () => {
+    const mapped = screeningErrorFromProvingError(
+      new ProvingServiceError(10000, "Transaction rejected", "address_blocked")
+    );
+    expect(mapped).toBeInstanceOf(ScreeningRejected);
+  });
+
+  it("returns undefined for code 10000 with no data (not a screening verdict)", () => {
+    const mapped = screeningErrorFromProvingError(
+      new ProvingServiceError(10000, "Transaction rejected")
+    );
+    expect(mapped).toBeUndefined();
+  });
+
+  it("returns undefined for code 10000 from a non-screening block or interceptor fault", () => {
+    // The interceptor reuses 10000 for non-pool blocks and unexpected
+    // exceptions; those must NOT be misclassified as a terminal sanctions
+    // rejection, or the caller would never retry a transient fault.
+    for (const data of [
+      "transaction is not a direct call to the privacy pool",
+      "network timeout",
+    ]) {
+      const mapped = screeningErrorFromProvingError(
+        new ProvingServiceError(10000, "Transaction rejected", data)
+      );
+      expect(mapped).toBeUndefined();
+    }
+  });
+
+  it("returns undefined for a non-screening error code", () => {
+    const mapped = screeningErrorFromProvingError(
+      new ProvingServiceError(55, "Account validation failed")
+    );
+    expect(mapped).toBeUndefined();
   });
 });

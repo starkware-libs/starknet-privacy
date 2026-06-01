@@ -10,6 +10,11 @@ export type {
   AdditionalData,
   ScreeningSignature,
 } from "./internal/proving-service.js";
+export {
+  ScreeningRejected,
+  ScreeningUnavailable,
+  screeningErrorFromProvingError,
+} from "./internal/errors.js";
 export type { BlockIdentifier } from "starknet";
 export { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
 export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";
