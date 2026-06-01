@@ -15,6 +15,10 @@ export interface ConfigSource {
   get(): Promise<Config>;
 }
 
+// StarkNet addresses: "0x" + up to 64 hex chars.
+const MAX_ADDRESS_LENGTH = 66;
+const HEX_FELT = /^0x[0-9a-fA-F]+$/;
+
 export type Forwarder = (request: {
   ellipticUrl: string;
   ellipticKey: string;
@@ -115,12 +119,7 @@ export function createHandler(
       return;
     }
 
-    // StarkNet addresses: "0x" + up to 64 hex chars
-    const MAX_ADDRESS_LENGTH = 66;
-    if (
-      address.length > MAX_ADDRESS_LENGTH ||
-      !/^0x[0-9a-fA-F]+$/.test(address)
-    ) {
+    if (address.length > MAX_ADDRESS_LENGTH || !HEX_FELT.test(address)) {
       sendResponse(400, JSON.stringify({ error: "invalid address format" }), {
         partner: partnerName,
       });
