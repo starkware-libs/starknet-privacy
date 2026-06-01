@@ -16,6 +16,12 @@ import type { Config } from "../../elliptic-proxy/src/config.js";
 const PARTNER_NAME = "proof-interceptor";
 const PARTNER_SECRET = Buffer.from("e2e-secret").toString("base64");
 
+// The elliptic-proxy signs every allowed /screen verdict, so the e2e config
+// must supply a signing key and chain id even though this relay-only stage's
+// interceptor does not yet surface the signature.
+const SIGNING_KEY = "0xcafebabe";
+const CHAIN_ID = "0x534e5f5345504f4c4941"; // SN_SEPOLIA
+
 // Rule ID for SANCTIONED_ENTITY
 const SANCTIONED_RULE = "1f86dce1-166a-4749-a5df-3972fae7635a";
 
@@ -68,6 +74,8 @@ async function startEllipticProxy(): Promise<void> {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { [PARTNER_NAME]: PARTNER_SECRET },
+    signingPrivateKey: SIGNING_KEY,
+    chainId: CHAIN_ID,
   };
 
   const handler = createEllipticHandler(

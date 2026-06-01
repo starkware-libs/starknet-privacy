@@ -6,7 +6,20 @@ import {
   errorsTotal,
 } from "./metrics.js";
 
-export type Verdict = { action: "allow" } | { action: "block"; reason: string };
+/**
+ * Screening attestation relayed from the FPI cloud function on an allowed
+ * deposit. Snake_case mirrors the wire shape end-to-end: elliptic-proxy /screen
+ * → this verdict → the prover's `additional_data.signature` → the SDK.
+ */
+export interface ScreeningSignature {
+  issued_at: number;
+  sig_r: string;
+  sig_s: string;
+}
+
+export type Verdict =
+  | { action: "allow"; signature?: ScreeningSignature }
+  | { action: "block"; reason: string };
 
 export interface TransactionInterceptor {
   name: string;
@@ -57,9 +70,15 @@ export async function runInterceptors(
     return new Promise<Verdict>(() => {});
   });
 
-  const allAllow = Promise.all(promises).then(
-    (): Verdict => ({ action: "allow" })
-  );
+  // When every interceptor allows, preserve any signature one of them attached
+  // (only the screening interceptor does, on a deposit). All verdicts here are
+  // allows — a block would have won the race below before this resolves.
+  const allAllow = Promise.all(promises).then((verdicts): Verdict => {
+    const signed = verdicts.find(
+      (verdict) => verdict.action === "allow" && verdict.signature !== undefined
+    );
+    return signed ?? { action: "allow" };
+  });
 
   return Promise.race([...blockPromises, allAllow]);
 }
