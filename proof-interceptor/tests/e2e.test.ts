@@ -1,6 +1,8 @@
 // tests/e2e.test.ts
 //
-// End-to-end test: proof-interceptor → elliptic-proxy → mock Elliptic API
+// End-to-end test: proof-interceptor → elliptic-proxy /screen. A deposit is
+// screened and signed in one /screen call; an allowed deposit relays a
+// signature, a sanctioned one is rejected with JSON-RPC 10000.
 //
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
@@ -15,14 +17,15 @@ import type { Config } from "../../elliptic-proxy/src/config.js";
 
 const PARTNER_NAME = "proof-interceptor";
 const PARTNER_SECRET = Buffer.from("e2e-secret").toString("base64");
-
-// The elliptic-proxy signs every allowed /screen verdict, so the e2e config
-// must supply a signing key and chain id even though this relay-only stage's
-// interceptor does not yet surface the signature.
-const SIGNING_KEY = "0xcafebabe";
-const CHAIN_ID = "0x534e5f5345504f4c4941"; // SN_SEPOLIA
-
-// Rule ID for SANCTIONED_ENTITY
+// SN_MAIN, so the proxy runs the live Elliptic path (against the mock API)
+// rather than mock mode.
+const CHAIN_ID = "0x534e5f4d41494e";
+// Dev signing key (1 <= key < STARK curve order). Test-only.
+const SIGNING_KEY =
+  "0x03e1f1d2c3b4a5968778695a4b3c2d1e0f00112233445566778899aabbccddee";
+const BLOCKED_ADDRESS = "0xbad0";
+// Rule ID for SANCTIONED_ENTITY — the mock Elliptic API returns this for the
+// blocked address, exercising the scored-block path end to end.
 const SANCTIONED_RULE = "1f86dce1-166a-4749-a5df-3972fae7635a";
 
 let mockEllipticApi: Server;
@@ -74,6 +77,8 @@ async function startEllipticProxy(): Promise<void> {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { [PARTNER_NAME]: PARTNER_SECRET },
+    // Deposits are screened (live Elliptic, against the mock API) and signed in
+    // one /screen call.
     signingPrivateKey: SIGNING_KEY,
     chainId: CHAIN_ID,
   };
@@ -190,8 +195,8 @@ afterEach(async () => {
   );
 });
 
-describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () => {
-  it("clean address: transaction allowed", async () => {
+describe("e2e: proof-interceptor → elliptic-proxy /screen", () => {
+  it("clean address: allowed, with a screening signature relayed", async () => {
     await startMockEllipticApi({});
     await startEllipticProxy();
     await startInterceptor();
@@ -199,21 +204,31 @@ describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () =
     const response = await rpcPost(interceptorPort, checkRequest("0xc1ea0"));
     const body = await response.json();
 
-    expect(body.result).toEqual({ allowed: true });
+    expect(body.result.allowed).toBe(true);
+    expect(body.result.additional_data.signature).toMatchObject({
+      issued_at: expect.any(Number),
+      sig_r: expect.any(String),
+      sig_s: expect.any(String),
+    });
   }, 15000);
 
-  it("blocked address: transaction rejected with 10000", async () => {
+  it("blocked address: rejected with 10000 and an opaque reason", async () => {
     await startMockEllipticApi({
-      "0xbad0": blockedEllipticResponse(),
+      [BLOCKED_ADDRESS]: blockedEllipticResponse(),
     });
     await startEllipticProxy();
     await startInterceptor();
 
-    const response = await rpcPost(interceptorPort, checkRequest("0xbad0"));
+    const response = await rpcPost(
+      interceptorPort,
+      checkRequest(BLOCKED_ADDRESS)
+    );
     const body = await response.json();
 
     expect(body.error.code).toBe(10000);
     expect(body.error.message).toBe("Transaction rejected");
-    expect(body.error.data).toContain("0xbad0");
+    // Opaque reason — must not leak the depositor address.
+    expect(body.error.data).toBe("address_blocked");
+    expect(body.error.data).not.toContain(BLOCKED_ADDRESS);
   }, 15000);
 });
