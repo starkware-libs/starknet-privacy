@@ -80,6 +80,7 @@ describe("loadConfig", () => {
     process.env.SCREENING_PARTNER_NAME = "test-partner";
     process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
     process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    process.env.SCREENING_CHAIN_ID = "0x534e5f5345504f4c4941";
 
     const config = loadConfig();
     expect(config.screening).toEqual({
@@ -91,8 +92,19 @@ describe("loadConfig", () => {
       maxRetries: 2,
       totalTimeoutMs: 10000,
       poolAddress: "0xpool",
+      chainId: "0x534e5f5345504f4c4941",
       blockNonPoolTx: false,
     });
+  });
+
+  it("throws when SCREENING_CHAIN_ID is missing", () => {
+    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
+    process.env.SCREENING_PARTNER_NAME = "test-partner";
+    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
+    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    delete process.env.SCREENING_CHAIN_ID;
+
+    expect(() => loadConfig()).toThrow(/SCREENING_CHAIN_ID/);
   });
 
   it("enables blockNonPoolTx when SCREENING_BLOCK_NON_POOL_TX is 'true'", () => {
@@ -100,6 +112,7 @@ describe("loadConfig", () => {
     process.env.SCREENING_PARTNER_NAME = "test-partner";
     process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
     process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    process.env.SCREENING_CHAIN_ID = "0x534e5f5345504f4c4941";
     process.env.SCREENING_BLOCK_NON_POOL_TX = "true";
 
     const config = loadConfig();
@@ -111,6 +124,7 @@ describe("loadConfig", () => {
     process.env.SCREENING_PARTNER_NAME = "test-partner";
     process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
     process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    process.env.SCREENING_CHAIN_ID = "0x534e5f5345504f4c4941";
     process.env.SCREENING_BLOCK_NON_POOL_TX = "1";
 
     const config = loadConfig();

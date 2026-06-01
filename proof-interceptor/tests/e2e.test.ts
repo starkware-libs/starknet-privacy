@@ -1,6 +1,8 @@
 // tests/e2e.test.ts
 //
-// End-to-end test: proof-interceptor → elliptic-proxy → mock Elliptic API
+// End-to-end test: proof-interceptor → elliptic-proxy /sign. A deposit is
+// screened and signed in one /sign call; an allowed deposit relays a signature,
+// a sanctioned one is rejected with JSON-RPC 10000.
 //
 import { describe, it, expect, afterEach } from "vitest";
 import { createServer, type Server } from "node:http";
@@ -15,9 +17,11 @@ import type { Config } from "../../elliptic-proxy/src/config.js";
 
 const PARTNER_NAME = "proof-interceptor";
 const PARTNER_SECRET = Buffer.from("e2e-secret").toString("base64");
-
-// Rule ID for SANCTIONED_ENTITY
-const SANCTIONED_RULE = "1f86dce1-166a-4749-a5df-3972fae7635a";
+const CHAIN_ID = "0x534e5f5345504f4c4941"; // SN_SEPOLIA felt
+// Dev signing key (1 <= key < STARK curve order). Test-only.
+const SIGNING_KEY =
+  "0x03e1f1d2c3b4a5968778695a4b3c2d1e0f00112233445566778899aabbccddee";
+const BLOCKED_ADDRESS = "0xbad0";
 
 let mockEllipticApi: Server;
 let ellipticProxyServer: Server;
@@ -68,6 +72,10 @@ async function startEllipticProxy(): Promise<void> {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { [PARTNER_NAME]: PARTNER_SECRET },
+    // Deposits are screened and signed in one /sign call; screening here is
+    // the operator deny list.
+    additionalBlockedAddresses: [BLOCKED_ADDRESS],
+    signing: { privateKey: SIGNING_KEY },
   };
 
   const handler = createEllipticHandler(
@@ -92,6 +100,7 @@ async function startInterceptor(): Promise<void> {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: "0xpool",
+    chainId: CHAIN_ID,
   });
 
   const handler = createHandler({ interceptors: [interceptor] });
@@ -104,28 +113,6 @@ function cleanEllipticResponse(): object {
   return {
     process_status: "complete",
     evaluation_detail: { source: [], destination: [] },
-  };
-}
-
-function blockedEllipticResponse(): object {
-  return {
-    process_status: "complete",
-    evaluation_detail: {
-      source: [
-        {
-          rule_id: SANCTIONED_RULE,
-          risk_score: 10,
-          matched_elements: [
-            {
-              contribution_percentage: 10,
-              contribution_value: { usd: 500 },
-              counterparty_percentage: 50,
-              counterparty_value: { usd: 250 },
-            },
-          ],
-        },
-      ],
-    },
   };
 }
 
@@ -182,8 +169,8 @@ afterEach(async () => {
   );
 });
 
-describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () => {
-  it("clean address: transaction allowed", async () => {
+describe("e2e: proof-interceptor → elliptic-proxy /sign", () => {
+  it("clean address: allowed, with a screening signature relayed", async () => {
     await startMockEllipticApi({});
     await startEllipticProxy();
     await startInterceptor();
@@ -191,21 +178,29 @@ describe("e2e: proof-interceptor → elliptic-proxy → mock Elliptic API", () =
     const response = await rpcPost(interceptorPort, checkRequest("0xc1ea0"));
     const body = await response.json();
 
-    expect(body.result).toEqual({ allowed: true });
+    expect(body.result.allowed).toBe(true);
+    expect(body.result.signature).toMatchObject({
+      signature_timestamp: expect.any(Number),
+      sig_r: expect.any(String),
+      sig_s: expect.any(String),
+    });
   }, 15000);
 
-  it("blocked address: transaction rejected with 10000", async () => {
-    await startMockEllipticApi({
-      "0xbad0": blockedEllipticResponse(),
-    });
+  it("blocked address: rejected with 10000 and an opaque reason", async () => {
+    await startMockEllipticApi({});
     await startEllipticProxy();
     await startInterceptor();
 
-    const response = await rpcPost(interceptorPort, checkRequest("0xbad0"));
+    const response = await rpcPost(
+      interceptorPort,
+      checkRequest(BLOCKED_ADDRESS)
+    );
     const body = await response.json();
 
     expect(body.error.code).toBe(10000);
     expect(body.error.message).toBe("Transaction rejected");
-    expect(body.error.data).toContain("0xbad0");
+    // Opaque reason — must not leak the depositor address.
+    expect(body.error.data).toBe("address_blocked");
+    expect(body.error.data).not.toContain(BLOCKED_ADDRESS);
   }, 15000);
 });

@@ -42,6 +42,7 @@ export function loadConfig(): Config {
       maxRetries: parseIntEnv("SCREENING_MAX_RETRIES", 2),
       totalTimeoutMs: parseIntEnv("SCREENING_TOTAL_TIMEOUT_MS", 10000),
       poolAddress: requiredEnv("SCREENING_POOL_ADDRESS"),
+      chainId: requiredEnv("SCREENING_CHAIN_ID"),
       blockNonPoolTx: process.env.SCREENING_BLOCK_NON_POOL_TX === "true",
     };
   }

@@ -28,13 +28,13 @@ flowchart LR
 
     Client -- "starknet_<br/>proveTransaction" --> Prover
     Prover -- "starknet_checkTransaction<br/>(localhost:8080)" --> RPC
-    Screen -- "POST /screen<br/>HMAC-signed" --> EP
+    Screen -- "POST /sign<br/>HMAC-signed" --> EP
     EP --> Elliptic
 ```
 
 </div>
 
-The prover runs the screening round-trip in parallel with proving. The sidecar receives one `starknet_checkTransaction` per client `starknet_proveTransaction`, decodes the deposit action span using `PrivacyPoolABI` from `@starkware-libs/starknet-privacy-sdk`, and screens `user_addr` via HMAC-signed `POST /screen` to elliptic-proxy. This service is stateless; verdicts are cached in elliptic-proxy. The HMAC scheme (SHA-256 over `timestamp || method || path.toLowerCase() || body`, base64-decoded partner secret as the key) lives in `src/screening-interceptor.ts:computeHmacSignature` — use that as the reference if you need to verify partner credentials independently.
+The prover runs the screening round-trip in parallel with proving. The sidecar receives one `starknet_checkTransaction` per client `starknet_proveTransaction`, decodes the deposit action span using `PrivacyPoolABI` from `@starkware-libs/starknet-privacy-sdk`, and screens `user_addr` via HMAC-signed `POST /sign` to elliptic-proxy. The `/sign` call screens **and**, on allow, returns a STARK-curve signature over the depositor address; the sidecar relays that signature on the `checkTransaction` allow response, and the prover attaches it under `additional_data.signature` for the SDK to pack into the deposit's `apply_actions` calldata. This service is stateless. The HMAC scheme (SHA-256 over `timestamp || method || path.toLowerCase() || body`, base64-decoded partner secret as the key) lives in `src/screening-interceptor.ts:computeHmacSignature` — use that as the reference if you need to verify partner credentials independently.
 
 ## What gets screened
 
@@ -61,14 +61,15 @@ Defaults are deployment-friendly, not security-strict. Apply these for productio
 
 Required when screening is enabled (the production case):
 
-| Env var                    | Purpose                                                                                                                      |
-| -------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| `SCREENING_URL`            | Base URL of the elliptic-proxy. Setting this is what enables screening — leaving it unset is the silent-pass-through hazard. |
-| `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                             |
-| `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                        |
-| `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                              |
+| Env var                    | Purpose                                                                                                                                                 |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SCREENING_URL`            | Base URL of the elliptic-proxy. Setting this is what enables screening — leaving it unset is the silent-pass-through hazard.                            |
+| `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
+| `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
+| `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
+| `SCREENING_CHAIN_ID`       | chain_id (felt hex) of the deployed network. Sent to `/sign` and bound into the signed digest; must match what the contract derives from `get_tx_info`. |
 
-Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`.
+Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
 
 ## HTTP endpoints
 
@@ -85,18 +86,25 @@ The body mirrors `starknet_proveTransaction` exactly (object or positional param
 ### Response shapes
 
 ```json
-// allow (and every bypass case)
+// allow, non-deposit / bypass case (no attestation needed)
 { "jsonrpc": "2.0", "id": 1, "result": { "allowed": true } }
 
-// block — sanction match
+// allow, screened deposit — carries the signature to relay to the prover
+// (the prover attaches it under additional_data.signature on the prove response)
 { "jsonrpc": "2.0", "id": 1,
-  "error": { "code": 10000, "message": "Transaction rejected",
-             "data": "address screening: 0x... blocked" } }
+  "result": { "allowed": true,
+              "signature": { "signature_timestamp": 1716579600,
+                             "sig_r": "0x...", "sig_s": "0x..." } } }
 
-// block — screening unavailable (fail-closed default)
+// block — sanction match. Reason is an opaque code (never the depositor address).
 { "jsonrpc": "2.0", "id": 1,
   "error": { "code": 10000, "message": "Transaction rejected",
-             "data": "screening unavailable for 0x..." } }
+             "data": "address_blocked" } }
+
+// block — screening/signing unavailable (fail-closed)
+{ "jsonrpc": "2.0", "id": 1,
+  "error": { "code": 10000, "message": "Transaction rejected",
+             "data": "screening_unavailable" } }
 
 // envelope rejection — prover treats as inconclusive, not a block
 { "jsonrpc": "2.0", "id": 1,

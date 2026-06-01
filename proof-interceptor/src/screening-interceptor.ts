@@ -2,12 +2,17 @@
 import { createHmac } from "node:crypto";
 import { CallData } from "starknet";
 import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
-import type { TransactionInterceptor, Verdict } from "./interceptor.js";
+import type {
+  ScreeningSignature,
+  TransactionInterceptor,
+  Verdict,
+} from "./interceptor.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
   screeningResults,
   screeningRetries,
   screeningDuration,
+  signaturesIssued,
 } from "./metrics.js";
 
 export interface ScreeningConfig {
@@ -15,10 +20,16 @@ export interface ScreeningConfig {
   partnerName: string;
   partnerSecret: string;
   timeoutMs: number;
+  // NOTE: fail-open is honored only for the legacy verdict; the v2 signing path
+  // is always fail-closed — a deposit without a signature cannot proceed, so a
+  // signing failure blocks regardless of this flag.
   failOpen: boolean;
   maxRetries: number;
   totalTimeoutMs: number;
   poolAddress: string;
+  // chain_id (felt hex) of the deployed network, sent to /sign and bound into
+  // the signed digest; must match what the contract derives from get_tx_info.
+  chainId: string;
   // When true, transactions that are not a single direct INVOKE call to
   // `poolAddress` are blocked outright. When false (default), such transactions
   // bypass screening and are allowed through.
@@ -117,7 +128,10 @@ function normalizeFelt(value: string): string {
   return "0x" + (hex.replace(/^0+/, "") || "0");
 }
 
-type ScreenResult = "allowed" | "blocked" | "unavailable";
+type SignOutcome =
+  | { result: "allowed"; signature: ScreeningSignature }
+  | { result: "blocked" }
+  | { result: "unavailable" };
 
 export class ScreeningInterceptor implements TransactionInterceptor {
   readonly name = "screening";
@@ -149,26 +163,22 @@ export class ScreeningInterceptor implements TransactionInterceptor {
     );
     if (addresses.length === 0) return { action: "allow" };
 
-    for (const address of addresses) {
-      const result = await this.screenAddress(address);
-      if (result === "blocked") {
-        return {
-          action: "block",
-          reason: `address screening: ${address} blocked`,
-        };
-      }
-      if (result === "unavailable") {
-        return {
-          action: "block",
-          reason: `screening unavailable for ${address}`,
-        };
-      }
+    // A deposit yields exactly one screened address: the depositor (user_addr),
+    // which the contract binds to the proven TransferFrom.from_addr. Screen and
+    // sign it in one /sign call. Reasons are opaque codes — they surface to the
+    // client as JSON-RPC error `data` and must not reveal the depositor.
+    const depositor = addresses[0];
+    const outcome = await this.screenAndSign(depositor);
+    if (outcome.result === "blocked") {
+      return { action: "block", reason: "address_blocked" };
     }
-
-    return { action: "allow" };
+    if (outcome.result === "unavailable") {
+      return { action: "block", reason: "screening_unavailable" };
+    }
+    return { action: "allow", signature: outcome.signature };
   }
 
-  private async screenAddress(address: string): Promise<ScreenResult> {
+  private async screenAndSign(address: string): Promise<SignOutcome> {
     let lastError: Error | null = null;
     let finalAttempt = 0;
     const deadline = Date.now() + this.config.totalTimeoutMs;
@@ -189,8 +199,8 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       try {
         const perCallTimeout = Math.min(this.config.timeoutMs, remainingMs);
         const callStart = Date.now();
-        const blocked = await this.callEllipticProxy(address, perCallTimeout);
-        const result: ScreenResult = blocked ? "blocked" : "allowed";
+        const signResult = await this.callSignEndpoint(address, perCallTimeout);
+        const result = signResult.verdict;
         const screeningLatencyMs = Date.now() - callStart;
         screeningResults.inc({ result });
         screeningDuration.observe({ result }, screeningLatencyMs / 1000);
@@ -202,7 +212,11 @@ export class ScreeningInterceptor implements TransactionInterceptor {
             screeningLatencyMs,
           })
         );
-        return result;
+        if (signResult.verdict === "allowed") {
+          signaturesIssued.inc();
+          return { result: "allowed", signature: signResult.signature };
+        }
+        return { result: "blocked" };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
       }
@@ -212,23 +226,25 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       JSON.stringify({
         error: "screening_failed",
         message: lastError?.message,
-        failOpen: this.config.failOpen,
         attempts: finalAttempt + 1,
       })
     );
 
-    // fail-closed by default: if we can't screen, block the transaction
-    const failResult = this.config.failOpen ? "allowed" : "unavailable";
-    screeningResults.inc({ result: failResult });
-    return failResult;
+    // Fail-closed: a deposit with no signature cannot proceed on-chain, so a
+    // signing failure always blocks — failOpen does not apply to the sign path.
+    screeningResults.inc({ result: "unavailable" });
+    return { result: "unavailable" };
   }
 
-  private async callEllipticProxy(
+  private async callSignEndpoint(
     address: string,
     timeoutMs: number
-  ): Promise<boolean> {
-    const body = JSON.stringify({ address });
-    const path = "/screen";
+  ): Promise<
+    | { verdict: "allowed"; signature: ScreeningSignature }
+    | { verdict: "blocked" }
+  > {
+    const body = JSON.stringify({ address, chain_id: this.config.chainId });
+    const path = "/sign";
     const timestamp = Date.now().toString();
     const signature = computeHmacSignature(
       this.config.partnerSecret,
@@ -250,20 +266,31 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       signal: AbortSignal.timeout(timeoutMs),
     });
 
+    // 403 is a definitive sanctioned verdict, not a transient failure — do not
+    // retry it; surface it as a block.
+    if (response.status === 403) {
+      return { verdict: "blocked" };
+    }
     if (!response.ok) {
-      throw new Error(`elliptic-proxy returned ${response.status}`);
+      throw new Error(`elliptic-proxy /sign returned ${response.status}`);
     }
 
-    const result: unknown = await response.json();
-    if (
-      typeof result !== "object" ||
-      result === null ||
-      typeof (result as Record<string, unknown>).blocked !== "boolean"
-    ) {
-      throw new Error("elliptic-proxy returned invalid response payload");
+    const payload: unknown = await response.json();
+    if (!isScreeningSignature(payload)) {
+      throw new Error("elliptic-proxy /sign returned invalid payload");
     }
-    return (result as Record<string, unknown>).blocked as boolean;
+    return { verdict: "allowed", signature: payload };
   }
+}
+
+function isScreeningSignature(value: unknown): value is ScreeningSignature {
+  if (typeof value !== "object" || value === null) return false;
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.signature_timestamp === "number" &&
+    typeof record.sig_r === "string" &&
+    typeof record.sig_s === "string"
+  );
 }
 
 function computeHmacSignature(

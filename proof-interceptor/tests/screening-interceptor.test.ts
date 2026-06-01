@@ -16,6 +16,15 @@ const PRIVATE_KEY = "0xbbb222";
 const TOKEN = "0xdead";
 const AMOUNT = "0x64";
 const POOL_ADDR = "0xpool";
+const CHAIN_ID = "0x534e5f5345504f4c4941"; // SN_SEPOLIA felt
+
+// The interceptor relays the /sign payload verbatim without verifying it, so a
+// well-shaped (not cryptographically valid) signature is enough for these tests.
+const MOCK_SIGNATURE = {
+  signature_timestamp: 1716579600,
+  sig_r: "0x6e6f63c878a2fdebb3934de2344fbd4bc04ae47b73561f2a5a170cd0c8a0cb",
+  sig_s: "0x58a68a71ca79df6cc71d5b4b4813685f590ede2c686b9096fb350f11298429f",
+};
 
 function sampleTransaction(calldataOverride?: string[]): ProveTxnV3 {
   return {
@@ -366,6 +375,7 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: POOL_ADDR,
+    chainId: CHAIN_ID,
     blockNonPoolTx: false,
     ...overrides,
   };
@@ -423,16 +433,16 @@ describe("isSinglePoolCall", () => {
 });
 
 describe("ScreeningInterceptor", () => {
-  it("returns continue when elliptic-proxy says not blocked", async () => {
+  it("attaches the signature to the verdict on an allowed deposit", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: false }));
+      res.end(JSON.stringify(MOCK_SIGNATURE));
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
@@ -446,10 +456,10 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
-  it("returns stop when elliptic-proxy says blocked", async () => {
+  it("blocks with an opaque reason when /sign returns 403 (sanctioned)", async () => {
     await startMockEllipticProxy((_req, res) => {
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: true }));
+      res.writeHead(403, { "content-type": "application/json" });
+      res.end(JSON.stringify({ code: "sanctioned" }));
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -457,7 +467,9 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("0xaaa111");
+      // Opaque code — must NOT leak the depositor address.
+      expect(verdict.reason).toBe("address_blocked");
+      expect(verdict.reason).not.toContain("0xaaa111");
     }
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -465,34 +477,39 @@ describe("ScreeningInterceptor", () => {
       return parsed.screening === "complete";
     });
     expect(logCall).toBeDefined();
-    const logData = JSON.parse(logCall![0] as string);
-    expect(logData.result).toBe("blocked");
+    expect(JSON.parse(logCall![0] as string).result).toBe("blocked");
     logSpy.mockRestore();
   });
 
-  it("sends correct HMAC-signed request", async () => {
+  it("sends a correctly HMAC-signed /sign request carrying address + chain_id", async () => {
+    let receivedUrl = "";
     let receivedHeaders: Record<string, string | string[] | undefined> = {};
     let receivedBody = "";
 
     await startMockEllipticProxy(async (req, res) => {
+      receivedUrl = req.url ?? "";
       receivedHeaders = req.headers;
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
       receivedBody = Buffer.concat(chunks).toString();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: false }));
+      res.end(JSON.stringify(MOCK_SIGNATURE));
     });
 
     const config = makeConfig();
     const interceptor = new ScreeningInterceptor(config);
     await interceptor.intercept(sampleTransaction());
 
+    expect(receivedUrl).toBe("/sign");
     expect(receivedHeaders["x-access-key"]).toBe("test-partner");
     expect(receivedHeaders["x-access-sign"]).toBeDefined();
     expect(receivedHeaders["x-access-timestamp"]).toBeDefined();
-    expect(JSON.parse(receivedBody)).toEqual({ address: "0xaaa111" });
+    expect(JSON.parse(receivedBody)).toEqual({
+      address: "0xaaa111",
+      chain_id: CHAIN_ID,
+    });
 
-    // Verify the HMAC signature is correct
+    // Verify the HMAC signature is computed over the /sign path + this body.
     const timestamp = receivedHeaders["x-access-timestamp"] as string;
     const hmac = createHmac(
       "sha256",
@@ -500,12 +517,12 @@ describe("ScreeningInterceptor", () => {
     );
     hmac.update(timestamp);
     hmac.update("POST");
-    hmac.update("/screen");
+    hmac.update("/sign");
     hmac.update(receivedBody);
     expect(receivedHeaders["x-access-sign"]).toBe(hmac.digest("base64"));
   });
 
-  it("returns stop with unavailable reason on network error (fail-closed)", async () => {
+  it("fails closed on network error (blocks, opaque unavailable reason)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -516,7 +533,7 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
 
     const errorCall = errorSpy.mock.calls.find((call) => {
@@ -528,7 +545,7 @@ describe("ScreeningInterceptor", () => {
     errorSpy.mockRestore();
   });
 
-  it("returns continue on network error when fail-open", async () => {
+  it("fails closed even when failOpen is set (a deposit needs a signature)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -538,11 +555,14 @@ describe("ScreeningInterceptor", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
     spy.mockRestore();
   });
 
-  it("returns stop with unavailable reason on non-200 response (fail-closed)", async () => {
+  it("fails closed on a non-200/403 response", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(500);
       res.end("internal error");
@@ -553,12 +573,12 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
     spy.mockRestore();
   });
 
-  it("retries on failure", async () => {
+  it("retries a transient failure then attaches the signature", async () => {
     let requestCount = 0;
     await startMockEllipticProxy((_req, res) => {
       requestCount++;
@@ -567,14 +587,14 @@ describe("ScreeningInterceptor", () => {
         res.end("error");
       } else {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ blocked: false }));
+        res.end(JSON.stringify(MOCK_SIGNATURE));
       }
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
     expect(requestCount).toBe(3);
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -586,7 +606,23 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
-  it("continues when calldata has no extractable address", async () => {
+  it("blocks (fail closed) when /sign returns a malformed signature payload", async () => {
+    await startMockEllipticProxy((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ sig_r: "0x1" })); // missing fields
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig());
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
+    spy.mockRestore();
+  });
+
+  it("allows (no signature) when there is no extractable deposit address", async () => {
     const transaction = sampleTransaction(["0x0"]);
     const interceptor = new ScreeningInterceptor(
       makeConfig({ ellipticProxyUrl: "http://127.0.0.1:1" })
@@ -679,7 +715,7 @@ describe("ScreeningInterceptor", () => {
     it("still screens single-call pool deposits when flag is set", async () => {
       await startMockEllipticProxy((_req, res) => {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ blocked: false }));
+        res.end(JSON.stringify(MOCK_SIGNATURE));
       });
 
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -687,7 +723,7 @@ describe("ScreeningInterceptor", () => {
         makeConfig({ blockNonPoolTx: true })
       );
       const verdict = await interceptor.intercept(sampleTransaction());
-      expect(verdict).toEqual({ action: "allow" });
+      expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
       // Pool deposits should not emit the "non_pool_tx" log line — they go
       // through the screening path instead.
