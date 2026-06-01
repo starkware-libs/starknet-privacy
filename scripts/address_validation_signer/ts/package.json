@@ -1,0 +1,16 @@
+{
+  "name": "validation-signer",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Reference TypeScript signer for the privacy contract's SNIP-12 DepositorValidation",
+  "scripts": {
+    "sign": "tsx validation_signer.ts"
+  },
+  "dependencies": {
+    "starknet": "^10.0.0-beta.6"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0"
+  }
+}

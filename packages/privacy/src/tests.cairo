@@ -9,6 +9,7 @@ pub mod test_ekubo_swap_anonymizer;
 pub mod test_hashes;
 pub mod test_objects;
 pub mod test_server;
+pub mod test_snip12;
 pub mod test_swap_executor;
 pub mod test_utils;
 pub mod test_views;
