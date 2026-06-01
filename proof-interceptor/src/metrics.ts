@@ -38,6 +38,12 @@ export const screeningRetries = new Counter({
   registers: [registry],
 });
 
+export const signaturesIssued = new Counter({
+  name: "proof_interceptor_screening_signatures_issued_total",
+  help: "Total screening signatures relayed to the prover on an allowed deposit",
+  registers: [registry],
+});
+
 export const errorsTotal = new Counter({
   name: "proof_interceptor_errors_total",
   help: "Total error events by type",
