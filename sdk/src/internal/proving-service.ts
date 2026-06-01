@@ -56,12 +56,37 @@ export interface ProveTransactionResult {
   proof: string;
   proof_facts: string[];
   l2_to_l1_messages: MessageToL1[];
+  /**
+   * Optional typed side-channel the prover attaches alongside the proof.
+   * For screened deposits it carries the screening signature; absent for
+   * transactions that need no attestation. Forward-compatible: new capabilities
+   * add sibling keys without breaking existing consumers.
+   */
+  additional_data?: AdditionalData;
 }
 
 export interface MessageToL1 {
   from_address: string;
   to_address: string;
   payload: string[];
+}
+
+/**
+ * Screening attestation produced by the FPI cloud function and relayed by the
+ * proof interceptor / prover. The contract verifies it against the proven
+ * deposit's `from_addr`.
+ *
+ * Felts are 0x-hex strings on the wire; `issued_at` is unix seconds.
+ */
+export interface ScreeningSignature {
+  issued_at: number;
+  sig_r: string;
+  sig_s: string;
+}
+
+/** Typed `additional_data` side-channel on a prove response. */
+export interface AdditionalData {
+  signature?: ScreeningSignature;
 }
 
 const MessageToL1Schema = z
@@ -72,11 +97,26 @@ const MessageToL1Schema = z
   })
   .strict();
 
+const ScreeningSignatureSchema = z
+  .object({
+    issued_at: z.number(),
+    sig_r: z.string(),
+    sig_s: z.string(),
+  })
+  .strict();
+
+const AdditionalDataSchema = z
+  .object({
+    signature: ScreeningSignatureSchema.optional(),
+  })
+  .strict();
+
 const ProveTransactionResultSchema = z
   .object({
     proof: z.string().min(1),
     proof_facts: z.array(z.string()),
     l2_to_l1_messages: z.array(MessageToL1Schema),
+    additional_data: AdditionalDataSchema.optional(),
   })
   .strict();
 

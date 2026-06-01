@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+### Added
+
+- Screening v2: `ProveTransactionResult.additional_data` (typed, optional)
+  parsed from the prove response, carrying an optional `signature`
+  (`ScreeningSignature`). Backward-compatible: responses without it parse
+  unchanged; unknown fields are still rejected by the strict schema. Exported
+  `AdditionalData` / `ScreeningSignature` types.
+
 ## 0.14.2-RC.6
 
 ### Changed
