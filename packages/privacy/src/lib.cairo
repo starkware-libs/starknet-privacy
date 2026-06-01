@@ -5,6 +5,7 @@ pub mod hashes;
 pub mod interface;
 pub mod objects;
 pub mod privacy;
+pub mod snip12;
 #[cfg(test)]
 pub mod test_contracts;
 #[cfg(feature: 'test_contracts')]
