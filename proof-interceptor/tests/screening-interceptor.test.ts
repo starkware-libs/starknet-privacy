@@ -17,6 +17,23 @@ const TOKEN = "0xdead";
 const AMOUNT = "0x64";
 const POOL_ADDR = "0xpool";
 
+// The interceptor relays the /screen signature verbatim without verifying it,
+// so a well-shaped (not cryptographically valid) signature is enough here.
+const MOCK_SIGNATURE = {
+  issued_at: 1716579600,
+  sig_r: "0x6e6f63c878a2fdebb3934de2344fbd4bc04ae47b73561f2a5a170cd0c8a0cb",
+  sig_s: "0x58a68a71ca79df6cc71d5b4b4813685f590ede2c686b9096fb350f11298429f",
+};
+
+// The additive /screen wire shapes the interceptor parses: an allow carries the
+// signature alongside { blocked: false }; a block is { blocked: true }.
+const ALLOW_RESPONSE = {
+  blocked: false,
+  source: "skip",
+  signature: MOCK_SIGNATURE,
+};
+const BLOCKED_RESPONSE = { blocked: true, source: "blocklist" };
+
 function sampleTransaction(calldataOverride?: string[]): ProveTxnV3 {
   return {
     type: "INVOKE",
@@ -423,16 +440,16 @@ describe("isSinglePoolCall", () => {
 });
 
 describe("ScreeningInterceptor", () => {
-  it("returns continue when elliptic-proxy says not blocked", async () => {
+  it("attaches the signature to the verdict on an allowed deposit", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: false }));
+      res.end(JSON.stringify(ALLOW_RESPONSE));
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
@@ -446,10 +463,10 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
-  it("returns stop when elliptic-proxy says blocked", async () => {
+  it("blocks with an opaque reason when /screen returns blocked:true (sanctioned)", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: true }));
+      res.end(JSON.stringify(BLOCKED_RESPONSE));
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -457,7 +474,9 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("0xaaa111");
+      // Opaque code — must NOT leak the depositor address.
+      expect(verdict.reason).toBe("address_blocked");
+      expect(verdict.reason).not.toContain("0xaaa111");
     }
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -465,34 +484,36 @@ describe("ScreeningInterceptor", () => {
       return parsed.screening === "complete";
     });
     expect(logCall).toBeDefined();
-    const logData = JSON.parse(logCall![0] as string);
-    expect(logData.result).toBe("blocked");
+    expect(JSON.parse(logCall![0] as string).result).toBe("blocked");
     logSpy.mockRestore();
   });
 
-  it("sends correct HMAC-signed request", async () => {
+  it("sends a correctly HMAC-signed /screen request carrying the address", async () => {
+    let receivedUrl = "";
     let receivedHeaders: Record<string, string | string[] | undefined> = {};
     let receivedBody = "";
 
     await startMockEllipticProxy(async (req, res) => {
+      receivedUrl = req.url ?? "";
       receivedHeaders = req.headers;
       const chunks: Buffer[] = [];
       for await (const chunk of req) chunks.push(chunk as Buffer);
       receivedBody = Buffer.concat(chunks).toString();
       res.writeHead(200, { "content-type": "application/json" });
-      res.end(JSON.stringify({ blocked: false }));
+      res.end(JSON.stringify(ALLOW_RESPONSE));
     });
 
     const config = makeConfig();
     const interceptor = new ScreeningInterceptor(config);
     await interceptor.intercept(sampleTransaction());
 
+    expect(receivedUrl).toBe("/screen");
     expect(receivedHeaders["x-access-key"]).toBe("test-partner");
     expect(receivedHeaders["x-access-sign"]).toBeDefined();
     expect(receivedHeaders["x-access-timestamp"]).toBeDefined();
     expect(JSON.parse(receivedBody)).toEqual({ address: "0xaaa111" });
 
-    // Verify the HMAC signature is correct
+    // Verify the HMAC signature is computed over the /screen path + this body.
     const timestamp = receivedHeaders["x-access-timestamp"] as string;
     const hmac = createHmac(
       "sha256",
@@ -505,7 +526,7 @@ describe("ScreeningInterceptor", () => {
     expect(receivedHeaders["x-access-sign"]).toBe(hmac.digest("base64"));
   });
 
-  it("returns stop with unavailable reason on network error (fail-closed)", async () => {
+  it("fails closed on network error (blocks, opaque unavailable reason)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -516,7 +537,7 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
 
     const errorCall = errorSpy.mock.calls.find((call) => {
@@ -528,7 +549,7 @@ describe("ScreeningInterceptor", () => {
     errorSpy.mockRestore();
   });
 
-  it("returns continue on network error when fail-open", async () => {
+  it("fails closed even when failOpen is set (a deposit needs a signature)", async () => {
     const config = makeConfig({
       ellipticProxyUrl: "http://127.0.0.1:1",
       timeoutMs: 1000,
@@ -538,11 +559,14 @@ describe("ScreeningInterceptor", () => {
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
     spy.mockRestore();
   });
 
-  it("returns stop with unavailable reason on non-200 response (fail-closed)", async () => {
+  it("fails closed on a non-2xx response", async () => {
     await startMockEllipticProxy((_req, res) => {
       res.writeHead(500);
       res.end("internal error");
@@ -553,12 +577,12 @@ describe("ScreeningInterceptor", () => {
     const verdict = await interceptor.intercept(sampleTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
-      expect(verdict.reason).toContain("screening unavailable");
+      expect(verdict.reason).toBe("screening_unavailable");
     }
     spy.mockRestore();
   });
 
-  it("retries on failure", async () => {
+  it("retries a transient failure then attaches the signature", async () => {
     let requestCount = 0;
     await startMockEllipticProxy((_req, res) => {
       requestCount++;
@@ -567,14 +591,14 @@ describe("ScreeningInterceptor", () => {
         res.end("error");
       } else {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ blocked: false }));
+        res.end(JSON.stringify(ALLOW_RESPONSE));
       }
     });
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
     const verdict = await interceptor.intercept(sampleTransaction());
-    expect(verdict).toEqual({ action: "allow" });
+    expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
     expect(requestCount).toBe(3);
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -586,7 +610,121 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
-  it("continues when calldata has no extractable address", async () => {
+  it("blocks (fail closed) when /screen allows with a malformed signature", async () => {
+    await startMockEllipticProxy((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      // Allowed, but the signature is missing required felt fields.
+      res.end(JSON.stringify({ blocked: false, signature: { sig_r: "0x1" } }));
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig());
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
+    spy.mockRestore();
+  });
+
+  it("blocks (fail closed) when /screen allows without any signature", async () => {
+    await startMockEllipticProxy((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      // An allow arrived without a signature — a signer
+      // misconfiguration; the deposit must not proceed unsigned.
+      res.end(JSON.stringify({ blocked: false, source: "skip" }));
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig());
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
+    spy.mockRestore();
+  });
+
+  it("blocks (fail closed) when /screen returns a response without a blocked field", async () => {
+    await startMockEllipticProxy((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify({ source: "skip" })); // not a screen response
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig());
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
+    spy.mockRestore();
+  });
+
+  it("blocks (fail closed) when an allowed signature is structurally garbage", async () => {
+    await startMockEllipticProxy((_req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      // Well-shaped allow, but sig_r is not a hex felt — the tightened guard
+      // must reject it rather than relay nonsense to the prover.
+      res.end(
+        JSON.stringify({
+          blocked: false,
+          source: "skip",
+          signature: { issued_at: 1, sig_r: "not-hex", sig_s: "0x1" },
+        })
+      );
+    });
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig());
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict.action).toBe("block");
+    if (verdict.action === "block") {
+      expect(verdict.reason).toBe("screening_unavailable");
+    }
+    spy.mockRestore();
+  });
+
+  it("does not retry a terminal block (blocked:true is served once)", async () => {
+    let requestCount = 0;
+    await startMockEllipticProxy((_req, res) => {
+      requestCount++;
+      res.writeHead(200, { "content-type": "application/json" });
+      res.end(JSON.stringify(BLOCKED_RESPONSE));
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict).toEqual({ action: "block", reason: "address_blocked" });
+    // A terminal block short-circuits before the signature check and is never
+    // retried, even though maxRetries allows it.
+    expect(requestCount).toBe(1);
+    logSpy.mockRestore();
+  });
+
+  it("retries a transient failure then resolves to a terminal block", async () => {
+    let requestCount = 0;
+    await startMockEllipticProxy((_req, res) => {
+      requestCount++;
+      if (requestCount < 3) {
+        res.writeHead(500);
+        res.end("error");
+      } else {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify(BLOCKED_RESPONSE));
+      }
+    });
+
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
+    const verdict = await interceptor.intercept(sampleTransaction());
+    expect(verdict).toEqual({ action: "block", reason: "address_blocked" });
+    expect(requestCount).toBe(3);
+    logSpy.mockRestore();
+  });
+
+  it("allows (no signature) when there is no extractable deposit address", async () => {
     const transaction = sampleTransaction(["0x0"]);
     const interceptor = new ScreeningInterceptor(
       makeConfig({ ellipticProxyUrl: "http://127.0.0.1:1" })
@@ -679,7 +817,7 @@ describe("ScreeningInterceptor", () => {
     it("still screens single-call pool deposits when flag is set", async () => {
       await startMockEllipticProxy((_req, res) => {
         res.writeHead(200, { "content-type": "application/json" });
-        res.end(JSON.stringify({ blocked: false }));
+        res.end(JSON.stringify(ALLOW_RESPONSE));
       });
 
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -687,7 +825,7 @@ describe("ScreeningInterceptor", () => {
         makeConfig({ blockNonPoolTx: true })
       );
       const verdict = await interceptor.intercept(sampleTransaction());
-      expect(verdict).toEqual({ action: "allow" });
+      expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
       // Pool deposits should not emit the "non_pool_tx" log line — they go
       // through the screening path instead.
