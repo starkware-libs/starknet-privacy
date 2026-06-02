@@ -44,6 +44,21 @@ python validation_signer.py \
   --chain-id SN_SEPOLIA
 ```
 
+## Cross-language fixtures
+
+```bash
+cd ts
+npm install
+npm run gen-fixtures
+```
+
+`npm run gen-fixtures` is the canonical producer of `fixtures/screening-vectors.json`
+(repo root) — the cross-language vectors the Cairo verifier tests consume (rendered to
+Cairo by `scripts/gen_cairo_screening_vectors.mjs`), and the intended vector source for
+the off-chain screening signer. Signing is deterministic (RFC6979), so regeneration is
+idempotent and CI fails if the committed fixture drifts. The Python signer remains a
+hash-only cross-check (its `(r, s)` is non-deterministic), not a fixture source.
+
 ## Output
 
 Both emit identical JSON shape on stdout:
