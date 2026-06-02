@@ -2,31 +2,10 @@
 version = 1
 
 [[package]]
-name = "ekubo"
-version = "0.1.0"
-source = "git+https://github.com/EkuboProtocol/starknet-contracts?rev=8b4de8b5701d10b101c06b786740bf45b6cf15cb#8b4de8b5701d10b101c06b786740bf45b6cf15cb"
-
-[[package]]
-name = "ekubo_swap_anonymizer"
-version = "0.1.0"
-dependencies = [
- "ekubo",
- "openzeppelin",
- "privacy",
- "snforge_std",
- "starkware_utils",
- "starkware_utils_testing",
-]
-
-[[package]]
-name = "forge_yields_anonymizer"
+name = "forge_contracts"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",
- "privacy",
- "snforge_std",
- "starkware_utils",
- "starkware_utils_testing",
 ]
 
 [[package]]
@@ -165,61 +144,4 @@ source = "registry+https://scarbs.xyz/"
 checksum = "sha256:4d5504fef1c5a6d9fee6a3ae392004a4a24b4b3ccb790c5e5217da96beb73e08"
 dependencies = [
  "openzeppelin_interfaces",
-]
-
-[[package]]
-name = "privacy"
-version = "0.1.0"
-dependencies = [
- "ekubo",
- "ekubo_swap_anonymizer",
- "openzeppelin",
- "snforge_std",
- "starkware_utils",
- "starkware_utils_testing",
- "vesu_lending_anonymizer",
-]
-
-[[package]]
-name = "snforge_scarb_plugin"
-version = "0.59.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:871fba677c03b66a1bf40815dac0ab1b385eb1b9be6e6c3cf2ad9788eeb2b6bb"
-
-[[package]]
-name = "snforge_std"
-version = "0.59.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:3620924fa08bd2d740b2b5b01ef86c8dab3d4b9c2206387c8dbdc8d2ec15133e"
-dependencies = [
- "snforge_scarb_plugin",
-]
-
-[[package]]
-name = "starkware_utils"
-version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0e12df09afe29f59a877a5b04801fedd8b31c50d#0e12df09afe29f59a877a5b04801fedd8b31c50d"
-dependencies = [
- "openzeppelin",
-]
-
-[[package]]
-name = "starkware_utils_testing"
-version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=0e12df09afe29f59a877a5b04801fedd8b31c50d#0e12df09afe29f59a877a5b04801fedd8b31c50d"
-dependencies = [
- "openzeppelin",
- "snforge_std",
- "starkware_utils",
-]
-
-[[package]]
-name = "vesu_lending_anonymizer"
-version = "0.1.0"
-dependencies = [
- "openzeppelin",
- "privacy",
- "snforge_std",
- "starkware_utils",
- "starkware_utils_testing",
 ]

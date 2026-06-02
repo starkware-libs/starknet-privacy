@@ -5,6 +5,7 @@ import {
   findEkuboPool,
   type EkuboConfig,
   type VesuConfig,
+  type ForgeConfig,
   type TokenConfig,
 } from "../config.ts";
 import { usePoolPrice } from "../hooks/usePoolPrice.ts";
@@ -42,27 +43,20 @@ type Props = {
   provider: RpcProvider;
   ekubo?: EkuboConfig;
   vesu?: VesuConfig;
+  forge?: ForgeConfig;
   paymasterAvailable?: boolean;
-  onSwap?: (
-    fromToken: string,
-    toToken: string,
-    amount: string,
-    minReceivedRaw: bigint
-  ) => void;
-  onAvnuSwap?: (
-    fromToken: string,
-    toToken: string,
-    amount: string,
-    slippageBps: number
-  ) => void;
+  onSwap?: (fromToken: string, toToken: string, amount: string, minReceivedRaw: bigint) => void;
+  onAvnuSwap?: (fromToken: string, toToken: string, amount: string, slippageBps: number) => void;
   onVesuSupply?: (token: string, vTokenAddress: string, amount: string) => void;
   onVesuWithdraw?: (token: string, vTokenAddress: string, amount: string) => void;
+  onForgeDeposit?: (token: string, gateway: string, amount: string) => void;
+  onForgeRequestRedeem?: (shareToken: string, gateway: string, amount: string) => void;
+  onForgeClaimRedeem?: (gateway: string, underlying: string, redemptionId: bigint) => void;
+  /** Load pending (id, secret) from localStorage for a given gateway. */
+  forgePendingRedemptions?: (gateway: string) => { redemptionId: string; secret: string }[];
 };
 
-function privateBalanceOf(
-  tokenBalances: TokenBalance[],
-  tokenAddress: string
-): bigint | undefined {
+function privateBalanceOf(tokenBalances: TokenBalance[], tokenAddress: string): bigint | undefined {
   if (!tokenAddress) return undefined;
   const target = BigInt(tokenAddress);
   return tokenBalances.find((tb) => BigInt(tb.address) === target)?.private;
@@ -78,11 +72,16 @@ export function DefiPanel({
   provider,
   ekubo,
   vesu,
+  forge,
   paymasterAvailable,
   onSwap,
   onAvnuSwap,
   onVesuSupply,
   onVesuWithdraw,
+  onForgeDeposit,
+  onForgeRequestRedeem,
+  onForgeClaimRedeem,
+  forgePendingRedemptions,
 }: Props) {
   const disabledTitle = sendCapable ? undefined : "View-only — connect a wallet to send";
 
@@ -95,16 +94,12 @@ export function DefiPanel({
   const [avnuQuoteLoading, setAvnuQuoteLoading] = useState(false);
   const [avnuQuoteError, setAvnuQuoteError] = useState<string | null>(null);
 
-  const avnuToTokenDecimals =
-    tokens.find((t) => t.address === avnuToToken)?.decimals ?? 18;
-  const avnuFromTokenDecimals =
-    tokens.find((t) => t.address === avnuFromToken)?.decimals ?? 18;
+  const avnuToTokenDecimals = tokens.find((t) => t.address === avnuToToken)?.decimals ?? 18;
+  const avnuFromTokenDecimals = tokens.find((t) => t.address === avnuFromToken)?.decimals ?? 18;
   // Apply slippage to the raw expected output to get the displayed "To (min)".
   // Integer math on bigint keeps precision regardless of decimals.
   const avnuMinOutRaw =
-    avnuExpectedOut !== null
-      ? (avnuExpectedOut * BigInt(10000 - avnuSlippageBps)) / 10000n
-      : null;
+    avnuExpectedOut !== null ? (avnuExpectedOut * BigInt(10000 - avnuSlippageBps)) / 10000n : null;
   const avnuMinOutDisplay =
     avnuMinOutRaw !== null ? formatTokenAmount(avnuMinOutRaw, avnuToTokenDecimals) : "";
 
@@ -187,12 +182,9 @@ export function DefiPanel({
     tokens
   );
   const swapPool = findEkuboPool(ekubo, swapFromToken, swapToToken);
-  const toTokenDecimals =
-    tokens.find((t) => t.address === swapToToken)?.decimals ?? 18;
-  const expectedOutHuman =
-    poolPrice && swapAmount ? parseFloat(swapAmount) * poolPrice.price : 0;
-  const minOutHuman =
-    expectedOutHuman > 0 ? (expectedOutHuman * (10000 - slippageBps)) / 10000 : 0;
+  const toTokenDecimals = tokens.find((t) => t.address === swapToToken)?.decimals ?? 18;
+  const expectedOutHuman = poolPrice && swapAmount ? parseFloat(swapAmount) * poolPrice.price : 0;
+  const minOutHuman = expectedOutHuman > 0 ? (expectedOutHuman * (10000 - slippageBps)) / 10000 : 0;
 
   function computeMinReceivedRaw(): bigint {
     if (minOutHuman <= 0) return 0n;
@@ -213,7 +205,7 @@ export function DefiPanel({
 
   // Only show "to" options that have a configured pool with the "from" token.
   const swapToOptions = (swapTokens ?? []).filter(
-    (t) => t.address !== swapFromToken && findEkuboPool(ekubo, swapFromToken, t.address),
+    (t) => t.address !== swapFromToken && findEkuboPool(ekubo, swapFromToken, t.address)
   );
 
   // Vesu lending state
@@ -270,6 +262,59 @@ export function DefiPanel({
       onVesuWithdraw?.(vesuVault.tokenConfig.address, vesuVault.vTokenAddress, vesuAmount);
     }
   }
+
+  // Forge Yield state — deposit only (v1). Withdraw is async/NFT-based,
+  // tracked in packages/forge_yields_anonymizer/docs/REDEMPTION_DESIGN.md.
+  const [forgeStrategyIndex, setForgeStrategyIndex] = useState(0);
+  const [forgeAmount, setForgeAmount] = useState("10");
+  const [forgePreview, setForgePreview] = useState<string | null>(null);
+  const forgeStrategy = forge?.strategies[forgeStrategyIndex];
+
+  // Forge gateway exposes ERC-4626 `preview_deposit(assets) -> shares` — same
+  // selector as Vesu's vToken, so reuse `previewDeposit` here.
+  useEffect(() => {
+    if (!forgeStrategy || !provider || !forgeAmount) {
+      setForgePreview(null);
+      return;
+    }
+    let cancelled = false;
+    try {
+      const rawAmount = toRawAmount(forgeAmount, forgeStrategy.tokenConfig.decimals);
+      previewDeposit(provider, forgeStrategy.gateway, rawAmount)
+        .then((result) => {
+          if (!cancelled) setForgePreview(formatTokenAmount(result, 18));
+        })
+        .catch(() => {
+          if (!cancelled) setForgePreview(null);
+        });
+    } catch {
+      setForgePreview(null);
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [provider, forgeStrategy, forgeAmount]);
+
+  function handleForge(event: FormEvent) {
+    event.preventDefault();
+    if (!forgeStrategy) return;
+    onForgeDeposit?.(forgeStrategy.tokenConfig.address, forgeStrategy.gateway, forgeAmount);
+  }
+
+  // ── Request Redeem state ──────────────────────────────────────────────────
+  const [forgeRedeemAmount, setForgeRedeemAmount] = useState("50");
+
+  function handleForgeRequestRedeem(event: FormEvent) {
+    event.preventDefault();
+    if (!forgeStrategy) return;
+    onForgeRequestRedeem?.(forgeStrategy.gateway, forgeStrategy.gateway, forgeRedeemAmount);
+  }
+
+  // ── Pending redemptions (from localStorage) ───────────────────────────────
+  // Re-read on each render so the list stays fresh after a claim.
+  const pendingRedemptions = forgeStrategy && forgePendingRedemptions
+    ? forgePendingRedemptions(forgeStrategy.gateway)
+    : [];
 
   return (
     <>
@@ -339,11 +384,7 @@ export function DefiPanel({
                 value={avnuQuoteLoading ? "…" : avnuMinOutDisplay}
                 placeholder={avnuQuoteError ?? "enter amount"}
               />
-              <TokenSelect
-                tokens={avnuToOptions}
-                value={avnuToToken}
-                onChange={setAvnuToToken}
-              />
+              <TokenSelect tokens={avnuToOptions} value={avnuToToken} onChange={setAvnuToToken} />
             </div>
           </div>
           <div className="slippage-row">
@@ -472,9 +513,7 @@ export function DefiPanel({
               <button
                 type="button"
                 key={bps}
-                className={
-                  "slippage-link" + (slippageBps === bps ? " slippage-link-active" : "")
-                }
+                className={"slippage-link" + (slippageBps === bps ? " slippage-link-active" : "")}
                 onClick={() => setSlippageBps(bps)}
               >
                 {bps / 100}%
@@ -535,9 +574,7 @@ export function DefiPanel({
                       : vesuVault.vTokenAddress;
                     const balance = privateBalanceOf(tokenBalances, sourceAddress);
                     if (balance == null) return;
-                    const decimals = vesuIsSupply
-                      ? vesuVault.tokenConfig.decimals
-                      : 18;
+                    const decimals = vesuIsSupply ? vesuVault.tokenConfig.decimals : 18;
                     setVesuAmount(formatAmount(balance, decimals));
                   }}
                 >
@@ -584,6 +621,163 @@ export function DefiPanel({
             {vesuIsSupply ? "Supply" : "Withdraw"}
           </button>
         </form>
+      )}
+
+      {forge && forge.strategies.length > 0 && (
+        <form onSubmit={handleForge} className="action-form">
+          <h3>Yield (Forge)</h3>
+          <div className="swap-box">
+            <label className="swap-label">From</label>
+            <div className="swap-row">
+              <span className="amount-with-max">
+                <input
+                  type="number"
+                  value={forgeAmount}
+                  onChange={(event) => setForgeAmount(event.target.value)}
+                  placeholder="0.0"
+                  min="0"
+                  step="any"
+                />
+                <button
+                  type="button"
+                  className="max-link"
+                  disabled={pending || !sendCapable || !forgeStrategy}
+                  onClick={() => {
+                    if (!forgeStrategy) return;
+                    const balance = privateBalanceOf(
+                      tokenBalances,
+                      forgeStrategy.tokenConfig.address
+                    );
+                    if (balance == null) return;
+                    setForgeAmount(formatAmount(balance, forgeStrategy.tokenConfig.decimals));
+                  }}
+                >
+                  Max
+                </button>
+              </span>
+              <select
+                value={forgeStrategyIndex}
+                onChange={(event) => setForgeStrategyIndex(Number(event.target.value))}
+              >
+                {forge.strategies.map((s, index) => (
+                  <option key={s.gateway} value={index}>
+                    {s.tokenConfig.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="swap-box">
+            <label className="swap-label">To</label>
+            <div className="swap-row">
+              <input type="text" readOnly value={forgePreview ?? ""} placeholder="0.0" />
+              <span className="swap-row-label">{forgeStrategy?.symbol ?? ""}</span>
+            </div>
+          </div>
+          <button
+            type="submit"
+            className="swap-submit"
+            disabled={pending || !sendCapable || !forgeAmount}
+            title={disabledTitle}
+          >
+            {pending && pendingAction === "Forge Deposit" && <span className="spinner" />}
+            Deposit
+          </button>
+        </form>
+      )}
+
+      {/* ── Request Redeem ── */}
+      {forge && forge.strategies.length > 0 && (
+        <form onSubmit={handleForgeRequestRedeem} className="action-form">
+          <h3>Redeem Shares (Forge)</h3>
+          <div className="swap-box">
+            <label className="swap-label">Burn shares</label>
+            <div className="swap-row">
+              <span className="amount-with-max">
+                <input
+                  type="number"
+                  value={forgeRedeemAmount}
+                  onChange={(e) => setForgeRedeemAmount(e.target.value)}
+                  placeholder="0.0"
+                  min="0"
+                  step="any"
+                />
+                <button
+                  type="button"
+                  className="max-link"
+                  disabled={pending || !sendCapable || !forgeStrategy}
+                  onClick={() => {
+                    if (!forgeStrategy) return;
+                    const bal = privateBalanceOf(tokenBalances, forgeStrategy.gateway);
+                    if (bal == null) return;
+                    setForgeRedeemAmount(formatAmount(bal, 18));
+                  }}
+                >
+                  Max
+                </button>
+              </span>
+              <span className="swap-row-label">{forgeStrategy?.symbol ?? "fyUSDC"}</span>
+            </div>
+          </div>
+          <p style={{ fontSize: "0.8em", color: "#888", margin: "4px 0 8px" }}>
+            A secret commitment is generated locally. The redemption id will be
+            saved in your browser so you can claim after the next epoch.
+          </p>
+          <button
+            type="submit"
+            className="swap-submit"
+            disabled={pending || !sendCapable || !forgeRedeemAmount}
+            title={disabledTitle}
+          >
+            {pending && pendingAction === "Forge Request Redeem" && <span className="spinner" />}
+            Request Redeem
+          </button>
+        </form>
+      )}
+
+      {/* ── Pending Redemptions (Claim) ── */}
+      {forge && forge.strategies.length > 0 && pendingRedemptions.length > 0 && (
+        <div className="action-form">
+          <h3>Pending Redemptions (Forge)</h3>
+          <p style={{ fontSize: "0.8em", color: "#888", margin: "0 0 8px" }}>
+            These redemptions are queued. Claim after the epoch has settled.
+          </p>
+          {pendingRedemptions.map((r) => (
+            <div
+              key={r.redemptionId}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: "1px solid #333",
+              }}
+            >
+              <span style={{ fontSize: "0.85em", color: "#ccc" }}>
+                id: {r.redemptionId}
+              </span>
+              <button
+                className="swap-submit"
+                style={{ width: "auto", padding: "4px 12px" }}
+                disabled={pending || !sendCapable || !forgeStrategy}
+                onClick={() => {
+                  if (!forgeStrategy) return;
+                  onForgeClaimRedeem?.(
+                    forgeStrategy.gateway,
+                    forgeStrategy.tokenConfig.address,
+                    BigInt(r.redemptionId)
+                  );
+                }}
+              >
+                {pending &&
+                  pendingAction === "Forge Claim Redeem" && (
+                    <span className="spinner" />
+                  )}
+                Claim
+              </button>
+            </div>
+          ))}
+        </div>
       )}
     </>
   );

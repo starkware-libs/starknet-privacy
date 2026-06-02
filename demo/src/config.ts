@@ -69,6 +69,19 @@ export type VesuConfig = {
   vaults: VesuVault[];
 };
 
+export type ForgeStrategy = {
+  tokenConfig: TokenConfig;
+  /** Address of the ForgeYields TokenGateway (or MockForgeYieldsGateway on devnet). */
+  gateway: string;
+  /** Share token ticker, e.g. fyUSDC. */
+  symbol: string;
+};
+
+export type ForgeConfig = {
+  anonymizerAddress: string;
+  strategies: ForgeStrategy[];
+};
+
 export type AppConfig = {
   rpcUrl: string;
   indexerUrl: string;
@@ -91,6 +104,7 @@ export type AppConfig = {
   explorerUrl?: string;
   ekubo?: EkuboConfig;
   vesu?: VesuConfig;
+  forge?: ForgeConfig;
   /** Whether OHTTP encryption is enabled for indexer and prover requests. Default true. */
   ohttpEnabled?: boolean;
   paymasterUrl?: string;
@@ -176,6 +190,28 @@ function parseVesuConfig(tokens: TokenConfig[]): VesuConfig | undefined {
   return { anonymizerAddress, vaults };
 }
 
+function parseForgeConfig(tokens: TokenConfig[]): ForgeConfig | undefined {
+  const anonymizerAddress = import.meta.env.VITE_FORGE_ANONYMIZER_ADDRESS as string | undefined;
+  if (!anonymizerAddress) return undefined;
+
+  const raw = requireEnv("VITE_FORGE");
+  let parsed: { strategies: { token: string; gateway: string; symbol: string }[] };
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error("VITE_FORGE must be valid JSON");
+  }
+
+  const tokenByName = new Map(tokens.map((t) => [t.name, t]));
+  const strategies = parsed.strategies.map((s) => {
+    const tokenConfig = tokenByName.get(s.token);
+    if (!tokenConfig) throw new Error(`VITE_FORGE strategies: unknown token "${s.token}"`);
+    return { tokenConfig, gateway: s.gateway, symbol: s.symbol };
+  });
+
+  return { anonymizerAddress, strategies };
+}
+
 export function loadConfig(): AppConfig {
   const tokensRaw = requireEnv("VITE_TOKENS");
   let tokens: TokenConfig[];
@@ -187,6 +223,7 @@ export function loadConfig(): AppConfig {
 
   const ekubo = parseEkuboConfig(tokens);
   const vesu = parseVesuConfig(tokens);
+  const forge = parseForgeConfig(tokens);
 
   // Append Vesu vTokens to the displayed token list so their balances
   // render alongside the underlying assets. Vesu vTokens are always 18
@@ -208,6 +245,23 @@ export function loadConfig(): AppConfig {
     }
   }
 
+  // Forge gateways are ERC-20 share tokens (gateway == share token). Surface
+  // their balance alongside the underlying so users see their position.
+  // Shares are always 18 decimals regardless of underlying.
+  if (forge) {
+    const known = new Set(tokens.map((t) => BigInt(t.address)));
+    for (const strat of forge.strategies) {
+      const addrBigInt = BigInt(strat.gateway);
+      if (known.has(addrBigInt)) continue;
+      tokens.push({
+        name: strat.symbol,
+        address: strat.gateway,
+        decimals: 18,
+      });
+      known.add(addrBigInt);
+    }
+  }
+
   return {
     rpcUrl: requireEnv("VITE_RPC_URL"),
     indexerUrl: requireEnv("VITE_INDEXER_URL"),
@@ -222,7 +276,7 @@ export function loadConfig(): AppConfig {
     backendProverUrl: import.meta.env.VITE_BACKEND_PROVER_URL as string | undefined,
     ohttpKeyConfig: import.meta.env.VITE_OHTTP_KEY_CONFIG
       ? Uint8Array.from(atob(import.meta.env.VITE_OHTTP_KEY_CONFIG as string), (c) =>
-          c.charCodeAt(0),
+          c.charCodeAt(0)
         )
       : undefined,
     gatewayUrl: import.meta.env.VITE_GATEWAY_URL as string | undefined,
@@ -230,6 +284,7 @@ export function loadConfig(): AppConfig {
     explorerUrl: import.meta.env.VITE_EXPLORER_URL as string | undefined,
     ekubo,
     vesu,
+    forge,
     paymasterUrl: import.meta.env.VITE_PAYMASTER_URL as string | undefined,
     paymasterFeeToken: import.meta.env.VITE_PAYMASTER_FEE_TOKEN as string | undefined,
     avnuApiKey: import.meta.env.VITE_AVNU_API_KEY as string | undefined,

@@ -1,0 +1,46 @@
+[package]
+name = "forge_yields_anonymizer"
+readme = "README.md"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[tool]
+fmt.workspace = true
+scarb.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+starkware_utils.workspace = true
+privacy = { path = "../privacy" }
+
+[dev-dependencies]
+assert_macros.workspace = true
+snforge_std.workspace = true
+starkware_utils_testing.workspace = true
+
+[features]
+test_utils = []
+
+[lib]
+
+[[test]]
+name = "forge_yields_anonymizer_unittest"
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+    "forge_yields_anonymizer::test_utils_contracts::mock_forge_gateway::MockForgeGateway",
+]
+
+[scripts]
+test = "snforge test"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+casm-add-pythonic-hints = true
+
+[profile.dev.cairo]
+unstable-add-statements-functions-debug-info = true
+unstable-add-statements-code-locations-debug-info = true
+inlining-strategy = "avoid"

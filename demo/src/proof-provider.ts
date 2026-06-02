@@ -29,11 +29,11 @@ export class NoValidateProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {
-    const result = await this.provider.callContract({
-      contractAddress: invocation.sender_address,
-      entrypoint: "execute_view",
-      calldata: invocation.calldata,
-    });
-    return { output: result, data: undefined!, proofFacts: [] };
+    // Devnet pool we deploy does NOT expose `execute_view` — fall back to
+    // CallMockProofProvider which calls `compile_actions` (the entry point
+    // that the deployed pool does have). The predeployed devnet accounts
+    // support `is_valid_signature`, so the signature check inside the
+    // delegate works here too.
+    return this.delegate.prove(invocation);
   }
 }

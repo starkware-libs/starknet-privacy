@@ -57,6 +57,7 @@ All components in a row are tested together. Use matching revisions when deployi
 | Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x30b8c540cf04d8ef0f4db2a9098d9cc0e35e83af1cb3325f5a4f40144b4b30b` |
 | Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x61047c201f235d66cab8a0c4768ea0ca9f900c64b478a90531fb2fb30e061dc` |
 | Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.2-RC.5`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.5) | `0x2fec72887f6431e4a66090bec49ecf8bde30cf39a7045e4ed6ce57447704b24` |
+| Forge Anonymizer | [README](packages/forge_yields_anonymizer/README.md)                                                    | _unreleased — deposit + epoch-gated private redemption (commitment-based bearer protection); see [REDEMPTION_DESIGN.md](packages/forge_yields_anonymizer/docs/REDEMPTION_DESIGN.md)_ | _not yet deployed; pending audit_ |
 
 ## Repository map
 

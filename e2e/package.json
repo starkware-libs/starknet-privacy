@@ -8,16 +8,19 @@
     "test:e2e": "vitest run",
     "test:devnet": "vitest run tests/devnet",
     "test:integration": "vitest run tests/integration",
-    "scarb:build": "cd .. && SCARB_IGNORE_CAIRO_VERSION=true scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer",
+    "scarb:build": "cd .. && SCARB_IGNORE_CAIRO_VERSION=true scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer -p forge_yields_anonymizer",
     "scarb:build:vesu": "cd contracts/vesu && asdf exec scarb build",
-    "build:contracts": "npm run scarb:build && npm run scarb:build:vesu",
-"declare-class": "tsx --env-file=.env scripts/declare-class.ts",
+    "scarb:build:forge": "cd contracts/forge && SCARB_IGNORE_CAIRO_VERSION=true scarb build",
+    "build:contracts": "npm run scarb:build && npm run scarb:build:vesu && npm run scarb:build:forge",
+    "declare-class": "tsx --env-file=.env scripts/declare-class.ts",
     "deploy-accounts": "tsx --env-file=.env scripts/deploy-accounts.ts",
     "load-test-discovery": "tsx --env-file=.env scripts/load-test-discovery.ts",
     "deploy-vesu": "tsx --env-file=.env --env-file=.env.deployed scripts/deploy-vesu.ts",
     "deploy-ekubo": "tsx --env-file=.env --env-file=.env.deployed scripts/deploy-ekubo.ts",
+    "deploy-forge": "tsx --env-file=.env --env-file=.env.deployed scripts/deploy-forge.ts",
     "test-swap": "tsx --env-file=.env --env-file=.env.deployed scripts/test-swap.ts",
     "test-lending": "tsx --env-file=.env --env-file=.env.deployed scripts/test-lending.ts",
+    "test-yield": "tsx --env-file=.env --env-file=.env.deployed scripts/test-yield.ts",
     "generate-dump": "tsx scripts/generate-dump.ts",
     "pull-env": "tsx scripts/pull-env.ts",
     "lint": "eslint src tests scripts --fix",
@@ -25,8 +28,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "starknet": "10.0.0-beta.6",
-    "@starkware-libs/starknet-privacy-sdk": "file:../sdk"
+    "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
+    "starknet": "10.0.0-beta.6"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -36,6 +39,6 @@
     "tsx": "^4.19.4",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.54.0",
-    "vitest": "^4.0.15"
+    "vitest": "^4.0.17"
   }
 }

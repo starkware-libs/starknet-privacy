@@ -1,6 +1,6 @@
 {
   "name": "@starkware-libs/starknet-privacy-sdk",
-  "version": "0.14.2-rc.6",
+  "version": "0.14.2-rc.7",
   "description": "TypeScript SDK for private transfers on Starknet — deposit, transfer, withdraw, and discover notes via a fluent builder API",
   "repository": {
     "type": "git",
@@ -30,6 +30,10 @@
     "./abi": {
       "import": "./dist/internal/abi.js",
       "types": "./dist/internal/abi.d.ts"
+    },
+    "./anonymizers/forge": {
+      "import": "./dist/anonymizers/forge.js",
+      "types": "./dist/anonymizers/forge.d.ts"
     }
   },
   "publishConfig": {
