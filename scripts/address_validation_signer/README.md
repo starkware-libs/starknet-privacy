@@ -3,8 +3,9 @@
 Generate signatures that the privacy contract's `verify_depositor_validation`
 ([packages/privacy/src/snip12.cairo](../../packages/privacy/src/snip12.cairo))
 accepts. Two implementations — TypeScript and Python — kept in lockstep:
-identical inputs must produce identical `messageHash` and `signerPublicKey`
-across both.
+identical inputs must produce identical `messageHash`, `signerPublicKey`, and
+`signature` across both (both sign with plain RFC 6979 nonce derivation, so
+even the `(r, s)` pair is bit-identical).
 
 These are **reference** signers, not production tooling: useful for test
 vectors, off-chain signer service integration, and cross-language sanity
@@ -43,6 +44,17 @@ python validation_signer.py \
   --issued-at 1700000000 \
   --chain-id SN_SEPOLIA
 ```
+
+## Cross-language fixtures
+
+```bash
+# one-time venv setup as in the Python section above, then:
+py/.venv/bin/python ../gen_screening_fixtures.py    # from this directory
+```
+
+`scripts/gen_screening_fixtures.py` produces the screening vectors in
+`fixtures/screening-vectors.json`, which `scripts/gen_cairo_screening_vectors.py` renders
+into a Cairo module. These fixtures are used by cross-language tests.
 
 ## Output
 
