@@ -44,6 +44,17 @@ python validation_signer.py \
   --chain-id SN_SEPOLIA
 ```
 
+## Cross-language fixtures
+
+```bash
+(cd ts && npm install)
+../gen_screening_fixtures.py    # from this directory; or scripts/gen_screening_fixtures.py from repo root
+```
+
+`scripts/gen_screening_fixtures.py` produces the screening vectors in
+`fixtures/screening-vectors.json`, which `scripts/gen_cairo_screening_vectors.py` renders
+into a Cairo module. These fixtures are used by cross-language tests.
+
 ## Output
 
 Both emit identical JSON shape on stdout:
