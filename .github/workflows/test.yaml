@@ -13,6 +13,19 @@ jobs:
         with:
           scarb-version: "2.17.0"
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
+      - name: Regenerate screening fixtures + Cairo vectors, fail on drift
+        run: |
+          (cd scripts/address_validation_signer/ts && npm install)
+          scripts/gen_screening_fixtures.py
+          scripts/gen_cairo_screening_vectors.py
+          scarb fmt -p privacy
+          git diff --exit-code fixtures/screening-vectors.json \
+                               packages/privacy/src/tests/screening_vectors.cairo
+
       - uses: software-mansion/setup-universal-sierra-compiler@v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
