@@ -58,7 +58,23 @@
 - RPC becomes unavailable.
 - Reorg handling takes longer than expected.
 
-## 16.4 Future Enhancements
+## 16.4 Access Logs
+
+Every HTTP request emits exactly one structured log line at response time. Fields:
+
+- `method` — HTTP method.
+- `path` — matched route template (e.g. `/v1/sync/incoming_state`), or the fixed literal `<unmatched>` when no route matched. Using the template (and a stable placeholder for misses) keeps log cardinality bounded: logging the raw URI on 404s would let an attacker send arbitrarily long paths and spam logs or metrics backends.
+- `status` — HTTP status code as a number.
+- `latency_ms` — wall-clock latency in milliseconds, measured outside CORS / body-limit / timeout layers.
+
+Level selection:
+
+- `/health` logs at `DEBUG` so readiness probes don't flood steady-state output.
+- All other routes log at `INFO`.
+
+The middleware sits as the outermost router layer, so it observes every request — including OHTTP envelope requests (`POST /`) — and reports their wall-clock latency.
+
+## 16.5 Future Enhancements
 
 Not included in initial implementation:
 
