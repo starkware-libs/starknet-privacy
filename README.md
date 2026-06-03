@@ -54,9 +54,9 @@ All components in a row are tested together. Use matching revisions when deployi
 
 | Contract         | Docs                                                                                                    | Tag                                                                                                  | Class Hash                                                          |
 | ---------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x30b8c540cf04d8ef0f4db2a9098d9cc0e35e83af1cb3325f5a4f40144b4b30b` |
-| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x61047c201f235d66cab8a0c4768ea0ca9f900c64b478a90531fb2fb30e061dc` |
-| Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x2fec72887f6431e4a66090bec49ecf8bde30cf39a7045e4ed6ce57447704b24` |
+| Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x53236397a2fa166224f3bb6fe2de4de4bab10ab388b5c159e5e61812eff1a13` |
+| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x2a4ac595283d4d64b9952f5ef5c0da1775bfdb7c9d92237524a21dd8d19ebd7` |
+| Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.2-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.2-RC.6) | `0x3751128dc3ebd36215f982766f14aaca8f78793e4b0f42a73e49372a8e24aae` |
 
 ## Repository map
 
