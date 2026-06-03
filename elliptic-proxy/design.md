@@ -120,7 +120,7 @@ The proxy:
 | Rate limit exceeded                    | `429 Too Many Requests`   |
 | Body exceeds `maxBodyBytes`            | `413 Payload Too Large`   |
 | Config unavailable from Secret Manager | `503 Service Unavailable` |
-| Elliptic network error                 | `503 Service Unavailable` |
+| Elliptic network error / timeout       | `504 Gateway Timeout`     |
 | Elliptic 404 (subject not on chain)    | `200 { blocked: false }`  |
 | Elliptic other non-2xx response        | `502 Upstream Error`      |
 

@@ -215,7 +215,11 @@ export function createHandler(
           ...details,
         })
       );
-      sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
+      // The proxy itself is healthy; the path to Elliptic is not. Status codes
+      // alone carry the fault domain (503 = proxy config failure, 502 =
+      // Elliptic responded unusably, 504 = Elliptic unreachable), so monitors
+      // can separate the faults without log parsing.
+      sendResponse(504, JSON.stringify({ error: "upstream unreachable" }), {
         partner: partnerName,
         result: "error",
         errorType: "network",

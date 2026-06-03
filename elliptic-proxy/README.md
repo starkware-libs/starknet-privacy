@@ -106,6 +106,14 @@ field that names which code path produced the verdict:
 Precedence (first match wins): `allowlist` → `blocklist` → `skip` → `cache` → `elliptic`.
 
 Errors (HTTP 4xx/5xx) return `{ "error": "<reason>" }` with no `source` field.
+The status code alone names the fault domain — no log parsing needed:
+
+| Status | Fault domain                                                              |
+| ------ | ------------------------------------------------------------------------- |
+| `4xx`  | Caller: bad auth (`401`), bad address (`400`), rate limit (`429`), oversized body (`413`). |
+| `503`  | Proxy: its config could not be loaded from Secret Manager.                |
+| `502`  | Elliptic responded, but unusably (non-2xx other than 404, malformed JSON). |
+| `504`  | Elliptic unreachable: DNS/TCP/TLS failure or timeout on the upstream call. |
 
 ## Deployment
 
