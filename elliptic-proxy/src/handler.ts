@@ -215,7 +215,8 @@ export function createHandler(
           ...details,
         })
       );
-      sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
+      // The proxy itself is healthy; the path to Elliptic is not.
+      sendResponse(504, JSON.stringify({ error: "upstream unreachable" }), {
         partner: partnerName,
         result: "error",
         errorType: "network",
