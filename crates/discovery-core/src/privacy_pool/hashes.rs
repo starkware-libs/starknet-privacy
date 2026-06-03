@@ -51,6 +51,10 @@ static OUTGOING_CHANNEL_ID_TAG: LazyLock<Felt> =
 static ENC_RECIPIENT_ADDR_TAG: LazyLock<Felt> =
     LazyLock::new(|| short_string_to_felt("ENC_RECIPIENT_ADDR_TAG:V1"));
 
+/// Domain separation tag for the auditor-encrypted private key.
+static ENC_PRIVATE_KEY_TAG: LazyLock<Felt> =
+    LazyLock::new(|| short_string_to_felt("ENC_PRIVATE_KEY_TAG:V1"));
+
 /// Converts a short string (up to 31 ASCII chars) to Felt.
 fn short_string_to_felt(s: &str) -> Felt {
     assert!(
@@ -74,6 +78,12 @@ pub fn compute_enc_channel_key_hash(shared_x: Felt) -> Felt {
 /// Computes the encryption mask for sender address.
 pub fn compute_enc_sender_addr_hash(shared_x: Felt) -> Felt {
     hash(&[*ENC_SENDER_ADDR_TAG, shared_x])
+}
+
+/// Computes the encryption mask for the auditor-encrypted private key.
+/// Mirrors Cairo `compute_enc_private_key_hash`: `h(ENC_PRIVATE_KEY_TAG, shared_x)`.
+pub fn compute_enc_private_key_hash(shared_x: Felt) -> Felt {
+    hash(&[*ENC_PRIVATE_KEY_TAG, shared_x])
 }
 
 /// Computes the subchannel key from channel key and index.
@@ -243,6 +253,10 @@ mod tests {
         assert_eq!(
             compute_enc_sender_addr_hash(f.inputs.shared_x),
             f.outputs.enc_sender_addr_hash
+        );
+        assert_eq!(
+            compute_enc_private_key_hash(f.inputs.shared_x),
+            f.outputs.enc_private_key_hash
         );
     }
 
