@@ -1,0 +1,44 @@
+name: Check Class Hashes
+
+# Fails if the contract class hashes documented in the README compatibility
+# matrix drift from what the pinned Scarb toolchain compiles the contracts to.
+on:
+  pull_request:
+    paths:
+      - 'packages/**'
+      - 'README.md'
+      - 'scripts/check_class_hashes.sh'
+      - '.github/workflows/check-class-hashes.yaml'
+  push:
+    branches: [main]
+    paths:
+      - 'packages/**'
+      - 'README.md'
+      - 'scripts/check_class_hashes.sh'
+      - '.github/workflows/check-class-hashes.yaml'
+
+jobs:
+  check-class-hashes:
+    name: Check README class hashes
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.17.0"
+
+      - name: Install starkli
+        run: |
+          curl https://get.starkli.sh | sh
+          "$HOME/.starkli/bin/starkliup"
+          echo "$HOME/.starkli/bin" >> "$GITHUB_PATH"
+
+      - name: Build contracts (release)
+        env:
+          # TODO: remove once openzeppelin upgrades to Cairo >=2.17
+          SCARB_IGNORE_CAIRO_VERSION: "true"
+        run: scarb --profile release build -p privacy -p ekubo_swap_anonymizer -p vesu_lending_anonymizer
+
+      - name: Verify README class hashes match compiled contracts
+        run: ./scripts/check_class_hashes.sh
