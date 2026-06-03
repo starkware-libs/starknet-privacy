@@ -347,7 +347,7 @@ describe("createHandler", () => {
     logSpy.mockRestore();
   });
 
-  it("returns 503 when forward throws a network error", async () => {
+  it("returns 504 when forward throws a network error", async () => {
     const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
 
     mockForward.mockRejectedValue(new Error("fetch failed"));
@@ -358,8 +358,28 @@ describe("createHandler", () => {
     const res = makeResponse();
     await handler(req, res);
 
+    // Elliptic unreachable is the upstream's fault domain: 504, distinct from
+    // the 503 a config-load failure returns.
+    expect(res.statusCode).toBe(504);
+    expect(JSON.parse(res.body)).toEqual({ error: "upstream unreachable" });
+    spy.mockRestore();
+  });
+
+  it("returns 503 when the config cannot be loaded", async () => {
+    const configLoader = {
+      get: vi.fn().mockRejectedValue(new Error("secret manager down")),
+    };
+
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const handler = createHandler(configLoader, mockForward);
+    const res = makeResponse();
+    await handler(makeRequest(), res);
+
+    // A config-load failure is the proxy's own fault domain: 503, distinct
+    // from the 504 returned when only the path to Elliptic is down.
     expect(res.statusCode).toBe(503);
     expect(JSON.parse(res.body)).toEqual({ error: "service unavailable" });
+    expect(mockForward).not.toHaveBeenCalled();
     spy.mockRestore();
   });
 

@@ -196,17 +196,17 @@ export function createHandler(
       const details =
         error instanceof Error
           ? {
-              message: error.message,
-              name: error.name,
-              cause:
-                error.cause instanceof Error
-                  ? {
-                      message: error.cause.message,
-                      name: error.cause.name,
-                      code: (error.cause as NodeJS.ErrnoException).code,
-                    }
-                  : error.cause,
-            }
+            message: error.message,
+            name: error.name,
+            cause:
+              error.cause instanceof Error
+                ? {
+                  message: error.cause.message,
+                  name: error.cause.name,
+                  code: (error.cause as NodeJS.ErrnoException).code,
+                }
+                : error.cause,
+          }
           : { message: String(error) };
       console.error(
         JSON.stringify({
@@ -215,7 +215,8 @@ export function createHandler(
           ...details,
         })
       );
-      sendResponse(503, JSON.stringify({ error: "service unavailable" }), {
+      // The proxy itself is healthy; the path to Elliptic is not.
+      sendResponse(504, JSON.stringify({ error: "upstream unreachable" }), {
         partner: partnerName,
         result: "error",
         errorType: "network",
