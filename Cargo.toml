@@ -3,4 +3,5 @@ resolver = "2"
 members = [
     "crates/discovery-core",
     "crates/discovery-service",
+    "crates/solvency-audit",
 ]
