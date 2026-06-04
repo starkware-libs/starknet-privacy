@@ -5,6 +5,7 @@
 //! an enclave) classifies every slot and sums unspent notes. This crate holds
 //! the shared snapshot type and those stages.
 
+pub mod backend;
 pub mod fetch;
 pub mod snapshot;
 pub mod state_source;
