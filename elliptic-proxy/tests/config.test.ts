@@ -18,6 +18,7 @@ const VALID_CONFIG = {
     "prover-proxy": btoa("secret-aaa"),
     "other-service": btoa("secret-bbb"),
   },
+  signingPrivateKey: "0x1234",
   chainId: LIVE_CHAIN_ID,
 };
 
@@ -137,6 +138,16 @@ describe("ConfigLoader", () => {
       "0xabcdef",
       "0xdeadbeef",
     ]);
+  });
+
+  it("throws when signingPrivateKey is missing", async () => {
+    const withoutKey: Record<string, unknown> = { ...VALID_CONFIG };
+    delete withoutKey.signingPrivateKey;
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(withoutKey));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "signingPrivateKey must be a non-empty string"
+    );
   });
 
   it("throws when chainId is missing", async () => {

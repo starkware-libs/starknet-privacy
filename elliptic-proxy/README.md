@@ -38,6 +38,7 @@ The secret value must be a JSON string with this structure:
   "partners": {
     "partner-name": "<base64-encoded-partner-secret>"
   },
+  "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": []
 }
@@ -55,7 +56,8 @@ The secret value must be a JSON string with this structure:
 | `blockedCacheTtlSeconds`                  | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                             |
 | `partners.<name>`                         | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                        |
 | `additionalBlockedAddresses` _(optional)_ | Test-only deny list (hex felts) consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (a warning is logged at config load).                                                                                                                                                                         |
-| `chainId` _(required)_                    | Hex felt of the network the deployment serves. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                                                           |
+| `signingPrivateKey` _(required)_          | STARK-curve private key (felt hex, `1 <= key < curve order`) signing screening attestations; the production key is FPI-managed.                                                                                                                                                                                                                  |
+| `chainId` _(required)_                    | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                         |
 
 ### Generating partner secrets
 
@@ -102,6 +104,36 @@ field that names which code path produced the verdict:
 Precedence (first match wins): `cache` → `elliptic` (`mock` when the mock upstream is selected).
 
 Errors (HTTP 4xx/5xx) return `{ "error": "<reason>" }` with no `source` field.
+
+## Screening v2 — signing on `POST /screen`
+
+Every **allowed** `POST /screen` response carries a STARK-curve signature the
+privacy-pool contract verifies on-chain — the response is the attestation. The
+signature is bound to the deployment's configured `chainId`; the caller
+sends only the address:
+
+```json
+{ "address": "0x049d…" }
+```
+
+The signed message is a SNIP-12 (revision 1) typed-data attestation binding the
+deposit's `from_addr` and `issued_at`, with the configured chain id in the
+domain. The exact
+construction and golden values are the canonical cross-language vectors in
+`fixtures/screening-vectors.json` at the repo root (regenerate with
+`scripts/gen_screening_fixtures.py`, which signs with the reference signer in
+`scripts/address_validation_signer/py`).
+
+| Status | Body                                                                                                    | Meaning                                                                                |
+| ------ | ------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `200`  | `{ "blocked": false, "source": …, "signature": { "issued_at": 171…, "sig_r": "0x…", "sig_s": "0x…" } }` | Allowed and signed — every allow carries a signature.                                  |
+| `200`  | `{ "blocked": true, "source": … }`                                                                      | Sanctioned (terminal). `source` is the blocking path (`elliptic` / `mock` / `cache`). No signature on any block. |
+| `400`  | `{ "error": "missing address" \| "invalid address format" \| "invalid address" }`                       | Malformed request (incl. address ≥ 2\*\*251).                                          |
+| `401`  | `{ "error": "…" }`                                                                                      | Partner auth failed.                                                                   |
+| `503`  | `{ "error": "signing failed" }`                                                                         | The signer faulted — fail closed (no unsigned allow).                                  |
+
+> Signatures are never cached: only blocked verdicts are cached and a block
+> never carries a signature, so every signed allow is produced fresh.
 
 ## Mock Elliptic upstream
 
@@ -191,7 +223,9 @@ All requests are logged as structured JSON to stdout (picked up by Cloud Logging
 | `partner`           | Partner name (if identified)                                                                                                                                     |
 | `result`            | `allowed` / `blocked` / `cached` / `error`                                                                                                                       |
 | `source`            | Which path produced the verdict: `elliptic`, `mock`, or `cache`. Absent on error responses.                                                                               |
+| `signed`            | `true` on an allowed (signed) response. Absent on blocks and errors.                                                                                             |
 | `reason`            | Rejection reason (`missing_headers`, `timestamp_expired`, `unknown_partner`, `invalid_signature`, `rate_limited`, `upstream_request_failed`, `upstream_non_2xx`) |
+| `errorType`         | On an error result: `network`, `upstream_non_2xx`, `malformed_json`, or `signing` (a `signScreening` fault on the signing path).                                 |
 | `ellipticStatus`    | Upstream Elliptic response status (on success)                                                                                                                   |
 | `ellipticLatencyMs` | Upstream Elliptic response latency (on success, source=elliptic)                                                                                                 |
 

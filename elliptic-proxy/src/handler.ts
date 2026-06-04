@@ -10,6 +10,7 @@ import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
 import { scoreResponse, type ScoringResult } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
+import { signScreening, type ScreeningSignature } from "./signing.js";
 
 export interface ConfigSource {
   get(): Promise<Config>;
@@ -138,6 +139,9 @@ export function createHandler(
       return;
     }
 
+    const signingKey = config.signingPrivateKey;
+    const chainIdFelt = BigInt(config.chainId);
+
     // Verdicts are labeled with the upstream that produced them: "mock" when
     // the mock Elliptic upstream is selected, "elliptic" otherwise. A repeated
     // mock block is served from the cache and reports "cache" like any cached
@@ -145,6 +149,42 @@ export function createHandler(
     const upstreamSource = isMockEllipticUrl(config.elliptic.url)
       ? "mock"
       : "elliptic";
+
+    // Every allowed verdict is signed — the response IS the attestation the
+    // caller relays on-chain. Signing runs after the verdict over a fresh
+    // timestamp, and the cache only ever stores blocks, so a signature is
+    // never cached or stale.
+    function sendAllowed(source: string, logFields: Record<string, unknown>) {
+      let signature: ScreeningSignature;
+      try {
+        signature = signScreening(
+          signingKey,
+          chainIdFelt,
+          addressFelt,
+          Math.floor(Date.now() / 1000)
+        );
+      } catch (error) {
+        console.error(
+          JSON.stringify({
+            error: "signing_failed",
+            message: error instanceof Error ? error.message : String(error),
+          })
+        );
+        sendResponse(503, JSON.stringify({ error: "signing failed" }), {
+          ...logFields,
+          source,
+          result: "error",
+          errorType: "signing",
+        });
+        return;
+      }
+      sendResponse(200, JSON.stringify({ blocked: false, source, signature }), {
+        ...logFields,
+        source,
+        result: "allowed",
+        signed: true,
+      });
+    }
 
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
@@ -205,19 +245,13 @@ export function createHandler(
     // blockchain" — e.g. a freshly derived StarkNet address with no on-chain
     // history. There is no exposure to score, so allow the address.
     if (result.status === 404) {
-      sendResponse(
-        200,
-        JSON.stringify({ blocked: false, source: upstreamSource }),
-        {
-          partner: partnerName,
-          ellipticStatus: result.status,
-          ellipticLatencyMs: result.durationMs,
-          result: "allowed",
-          source: upstreamSource,
-          scoringReason: "not_in_blockchain",
-          cacheSize: blockedCache.size,
-        }
-      );
+      sendAllowed(upstreamSource, {
+        partner: partnerName,
+        ellipticStatus: result.status,
+        ellipticLatencyMs: result.durationMs,
+        scoringReason: "not_in_blockchain",
+        cacheSize: blockedCache.size,
+      });
       return;
     }
 
@@ -258,30 +292,34 @@ export function createHandler(
       return;
     }
 
-    const blocked = scoringResult.blocked;
-    if (blocked) {
+    if (scoringResult.blocked) {
       blockedCache.markBlocked(address);
+      sendResponse(
+        200,
+        JSON.stringify({ blocked: true, source: upstreamSource }),
+        {
+          partner: partnerName,
+          ellipticStatus: result.status,
+          ellipticLatencyMs: result.durationMs,
+          result: "blocked",
+          source: upstreamSource,
+          scoringReason: scoringResult.reason,
+          triggeringRuleIds:
+            scoringResult.triggeringRuleIds.length > 0
+              ? scoringResult.triggeringRuleIds
+              : undefined,
+          cacheSize: blockedCache.size,
+        }
+      );
+      return;
     }
 
-    sendResponse(
-      200,
-      JSON.stringify({
-        blocked: scoringResult.blocked,
-        source: upstreamSource,
-      }),
-      {
-        partner: partnerName,
-        ellipticStatus: result.status,
-        ellipticLatencyMs: result.durationMs,
-        result: blocked ? "blocked" : "allowed",
-        source: upstreamSource,
-        scoringReason: scoringResult.reason,
-        triggeringRuleIds:
-          scoringResult.triggeringRuleIds.length > 0
-            ? scoringResult.triggeringRuleIds
-            : undefined,
-        cacheSize: blockedCache.size,
-      }
-    );
+    sendAllowed(upstreamSource, {
+      partner: partnerName,
+      ellipticStatus: result.status,
+      ellipticLatencyMs: result.durationMs,
+      scoringReason: scoringResult.reason,
+      cacheSize: blockedCache.size,
+    });
   };
 }

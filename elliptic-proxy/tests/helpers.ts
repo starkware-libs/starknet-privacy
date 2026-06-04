@@ -7,10 +7,13 @@ import { computeHmacSignature } from "../src/auth.js";
 import type { Config } from "../src/config.js";
 
 export const PARTNER_SECRET = Buffer.from("partner-secret").toString("base64");
+// Reference dev key — a valid STARK key so every allowed verdict can sign.
+export const SIGNING_KEY = "0xcafebabe";
 // 'LIVE_TEST' — a dedicated test chain id (Cairo short string); tests never
 // use SN_MAIN, which rejects a mock elliptic.url at config load.
 export const LIVE_CHAIN_ID = "0x4c4956455f54455354";
 export const SN_MAIN_CHAIN_ID = "0x534e5f4d41494e";
+export const SN_SEPOLIA_CHAIN_ID = "0x534e5f5345504f4c4941";
 
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -25,6 +28,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { "test-partner": PARTNER_SECRET },
+    signingPrivateKey: SIGNING_KEY,
     chainId: LIVE_CHAIN_ID,
     ...overrides,
   };

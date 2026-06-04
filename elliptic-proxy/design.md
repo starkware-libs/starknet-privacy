@@ -44,6 +44,7 @@ re-reads it according to `configCacheTtlSeconds`.
     "partner-a": "issued-hmac-secret-base64",
     "partner-b": "issued-hmac-secret-base64"
   },
+  "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": []
 }
@@ -63,7 +64,8 @@ re-reads it according to `configCacheTtlSeconds`.
 | `blockedCacheTtlSeconds`              | How long to cache blocked address verdicts (seconds)                                                                                                                     |
 | `partners.<name>`                     | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key`                                                                                        |
 | `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
-| `chainId` _(required)_                | Hex felt of the network the deployment serves. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                   |
+| `signingPrivateKey` _(required)_      | STARK-curve private key (felt hex) signing screening attestations; production key is FPI-managed.                                                                        |
+| `chainId` _(required)_                | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN + mock `elliptic.url` is rejected at config load.                               |
 
 ### Verdict precedence
 
@@ -134,8 +136,20 @@ elliptic-proxy/
 │   ├── rate-limit.ts     # In-memory per-partner rate limiter
 │   ├── scoring.ts        # (planned) Rule-based response scoring (blocked/allowed)
 │   ├── cache.ts          # (planned) In-memory blocked address cache
-│   └── mock-elliptic.ts  # In-process mock Elliptic upstream (mock: elliptic.url)
+│   ├── mock-elliptic.ts  # In-process mock Elliptic upstream (mock: elliptic.url)
+│   └── signing.ts        # Screening v2: STARK-curve attestation signer (/screen, on allow)
 ```
+
+## Screening v2 — signing on `POST /screen`
+
+Every allowed `/screen` verdict carries a STARK-curve ECDSA signature over a
+SNIP-12 (revision 1) typed-data attestation binding `from_addr` and `issued_at`
+(with the deployment's configured `chainId` in the domain) that the
+privacy-pool contract verifies on-chain. Signing reuses partner auth and
+rate-limiting; it fails closed (a sanctioned address is a `blocked:true`
+verdict with no signature; a signing fault → 503). The message
+and signature scheme is pinned by the canonical cross-language vectors in
+`fixtures/screening-vectors.json` at the repo root.
 
 ## Mock Elliptic upstream
 
