@@ -6,6 +6,7 @@
 //! the shared snapshot type and those stages.
 
 pub mod backend;
+pub mod error;
 pub mod fetch;
 pub mod owned_slots;
 pub mod snapshot;
