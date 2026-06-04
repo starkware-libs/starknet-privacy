@@ -8,18 +8,22 @@
 //! only the orchestration is local, and it is deliberately simple (linear scan
 //! to the sentinel — no pagination/budget) for a one-time audit of a small pool.
 //!
-//! This module currently covers the **incoming channels** and **subchannels**
-//! levels; notes extend the same walk in following changes.
+//! This module currently covers the **incoming channels**, **subchannels**, and
+//! **notes** levels; the outgoing side extends the same walk in following changes.
 
-use discovery_core::privacy_pool::decryption::{decrypt_channel_info, decrypt_subchannel_token};
-use discovery_core::privacy_pool::hashes::{compute_channel_marker, compute_subchannel_id};
+use discovery_core::privacy_pool::decryption::{
+    decrypt_channel_info, decrypt_packed_value, decrypt_subchannel_token, OPEN_NOTE_SALT,
+};
+use discovery_core::privacy_pool::hashes::{
+    compute_channel_marker, compute_note_id, compute_nullifier, compute_subchannel_id,
+};
 use discovery_core::privacy_pool::storage_slots;
 use discovery_core::privacy_pool::types::SecretFelt;
 use discovery_core::privacy_pool::views::IViews;
 use discovery_core::storage_backend::StorageError;
 use starknet_types_core::felt::Felt;
 
-use crate::owned_slots::{subchannel_slots, OwnedSlot};
+use crate::owned_slots::{note_slots, nullifier_slot, subchannel_slots, OwnedSlot};
 
 /// An incoming channel discovered for the audited recipient.
 pub struct DiscoveredChannel {
@@ -129,6 +133,52 @@ pub async fn walk_subchannels<S: IViews>(
         index += 1;
     }
     Ok(subchannels)
+}
+
+/// Scans a subchannel's notes (`index = 0, 1, …`) up to the empty-note sentinel,
+/// appending each note's owned slots to `owned`: the `note` base slot, the
+/// `open_note_token` slot for open notes, and the `nullifier` slot for spent
+/// notes. Returns the sum of *unspent* note amounts for the subchannel's token —
+/// its contribution to Σ(unspent) for the balance check (DESIGN.md §5.2-§5.3).
+///
+/// This is the only level that feeds Σ, so notes are summed here exactly once
+/// (the outgoing side stops before notes). A note is spent iff its nullifier
+/// slot is set; spent notes are attributed but excluded from the sum.
+pub async fn walk_notes<S: IViews>(
+    pool: &S,
+    subchannel: &DiscoveredSubchannel,
+    owner_private_key: &SecretFelt,
+    owned: &mut Vec<OwnedSlot>,
+) -> Result<u128, StorageError> {
+    let channel_key = &subchannel.channel_key;
+    let token = subchannel.token;
+    let mut unspent_total: u128 = 0;
+    let mut index = 0u64;
+    loop {
+        let packed = pool
+            .get_note_with_block(compute_note_id(channel_key, token, index))
+            .await?
+            .value;
+        if packed == Felt::ZERO {
+            break;
+        }
+        let (amount, salt) = decrypt_packed_value(packed, channel_key, token, index);
+        owned.extend(note_slots(
+            channel_key,
+            token,
+            index,
+            salt == OPEN_NOTE_SALT,
+        ));
+
+        let nullifier = compute_nullifier(channel_key, token, index, owner_private_key);
+        if pool.nullifier_exists(nullifier).await? {
+            owned.push(nullifier_slot(channel_key, token, index, owner_private_key));
+        } else {
+            unspent_total = unspent_total.saturating_add(amount);
+        }
+        index += 1;
+    }
+    Ok(unspent_total)
 }
 
 #[cfg(test)]
@@ -324,5 +374,114 @@ mod tests {
 
         assert!(channels.is_empty()); // nothing decrypts
         assert_eq!(owned.len(), 1 + 2 * 3); // length + 2 channels × 3 element slots
+    }
+
+    /// Packs an open note's plaintext amount: `packed = OPEN_NOTE_SALT·2^128 + amount`.
+    fn open_note_packed(amount: u128) -> Felt {
+        Felt::from(OPEN_NOTE_SALT) * Felt::from(1u128 << 64) * Felt::from(1u128 << 64)
+            + Felt::from(amount)
+    }
+
+    fn seed_note(
+        slots: &mut HashMap<Felt, Felt>,
+        ck: &SecretFelt,
+        token: Felt,
+        index: u64,
+        packed: Felt,
+    ) {
+        slots.insert(
+            storage_slots::notes(compute_note_id(ck, token, index)),
+            packed,
+        );
+    }
+
+    #[tokio::test]
+    async fn test_walk_notes_sums_unspent_and_attributes_slots() {
+        let f = fixture();
+        // Reference scenario: channel_key/token/index-5 note owned by the sender.
+        let channel_key = SecretFelt::new(felt(&f["inputs"]["channelKey"]));
+        let token = felt(&f["inputs"]["token"]);
+        let owner = SecretFelt::new(felt(&f["inputs"]["senderPrivateKey"]));
+
+        let mut slots = HashMap::new();
+        // Indices 0..=4 open notes; index 1 is spent (seed its nullifier slot).
+        let amounts = [100u128, 200, 300, 400, 500];
+        for (index, &amount) in amounts.iter().enumerate() {
+            seed_note(
+                &mut slots,
+                &channel_key,
+                token,
+                index as u64,
+                open_note_packed(amount),
+            );
+        }
+        slots.insert(
+            storage_slots::nullifiers(compute_nullifier(&channel_key, token, 1, &owner)),
+            Felt::ONE,
+        );
+        // Index 5: the Cairo reference encrypted note (decrypts to 1000), unspent.
+        seed_note(
+            &mut slots,
+            &channel_key,
+            token,
+            5,
+            felt(&f["outputs"]["encNoteAmount"]),
+        );
+        let backend = MockBackend::new(slots);
+
+        let subchannel = DiscoveredSubchannel {
+            channel_key,
+            index: 0,
+            token,
+        };
+        let mut owned = Vec::new();
+        let unspent_total = walk_notes(&backend, &subchannel, &owner, &mut owned)
+            .await
+            .unwrap();
+
+        // 100 + 300 + 400 + 500 (open, unspent) + 1000 (encrypted, unspent); 200 spent.
+        assert_eq!(unspent_total, 2300);
+
+        assert_eq!(owned.iter().filter(|s| s.kind == "note").count(), 6);
+        assert_eq!(
+            owned.iter().filter(|s| s.kind == "open_note_token").count(),
+            5
+        );
+        assert_eq!(owned.iter().filter(|s| s.kind == "nullifier").count(), 1);
+        // Index-5 note slot + index-1 nullifier slot match the Cairo references.
+        assert!(owned
+            .iter()
+            .any(|s| s.kind == "note" && s.slot == felt(&f["slots"]["notesAddress"])));
+        assert!(owned.iter().any(|s| s.kind == "nullifier"
+            && s.slot
+                == storage_slots::nullifiers(compute_nullifier(
+                    &subchannel.channel_key,
+                    token,
+                    1,
+                    &owner
+                ))));
+    }
+
+    #[tokio::test]
+    async fn test_walk_notes_none() {
+        // Index-0 note value is zero (slot absent) → immediate sentinel.
+        let backend = MockBackend::new(HashMap::new());
+        let subchannel = DiscoveredSubchannel {
+            channel_key: SecretFelt::new(Felt::from(0xdef_u64)),
+            index: 0,
+            token: Felt::from(0x1234_u64),
+        };
+        let mut owned = Vec::new();
+        let unspent_total = walk_notes(
+            &backend,
+            &subchannel,
+            &SecretFelt::new(Felt::from(7u64)),
+            &mut owned,
+        )
+        .await
+        .unwrap();
+
+        assert_eq!(unspent_total, 0);
+        assert!(owned.is_empty());
     }
 }
