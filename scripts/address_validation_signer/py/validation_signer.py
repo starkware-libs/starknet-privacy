@@ -73,7 +73,14 @@ def sign_depositor_validation(sign_input: SignInput) -> dict:
         sign_input.depositor, sign_input.issued_at, sign_input.chain_id
     )
     message_hash = typed_data.message_hash(signer_public_key)
-    signature_r, signature_s = message_signature(message_hash, sign_input.signer_private_key)
+    # seed=None selects plain RFC 6979 nonce derivation (no extra entropy).
+    # starknet-py's default (seed=32) folds the seed into the nonce as extra
+    # entropy, which yields a different — equally valid — (r, s) than
+    # starknet.js/@scure. Plain RFC 6979 keeps this signer bit-compatible with
+    # the TypeScript signers, so identical inputs produce identical signatures.
+    signature_r, signature_s = message_signature(
+        message_hash, sign_input.signer_private_key, seed=None
+    )
     return {
         "messageHash": hex(message_hash),
         "signature": {"r": hex(signature_r), "s": hex(signature_s)},
