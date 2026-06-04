@@ -7,5 +7,6 @@
 
 pub mod backend;
 pub mod fetch;
+pub mod owned_slots;
 pub mod snapshot;
 pub mod state_source;
