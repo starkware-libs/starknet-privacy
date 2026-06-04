@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 starknet-types-core = { version = "0.2", features = ["curve", "serde"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }
