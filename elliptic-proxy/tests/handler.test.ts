@@ -1,80 +1,13 @@
 // tests/handler.test.ts
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type { Request, Response } from "@google-cloud/functions-framework";
 import { createHandler } from "../src/handler.js";
 import { computeHmacSignature } from "../src/auth.js";
-import type { Config } from "../src/config.js";
-
-const PARTNER_SECRET = Buffer.from("partner-secret").toString("base64");
-
-function makeConfig(): Config {
-  return {
-    elliptic: {
-      url: "https://api.elliptic.co",
-      key: "elliptic-key",
-      secret: Buffer.from("elliptic-secret").toString("base64"),
-      timeoutMs: 10000,
-    },
-    rateLimitPerMinute: 100,
-    maxBodyBytes: 10240,
-    configCacheTtlSeconds: 300,
-    blockedCacheTtlSeconds: 300,
-    partners: { "test-partner": PARTNER_SECRET },
-  };
-}
-
-function makeRequest(
-  overrides: Record<string, unknown> = {},
-  address = "0xabc123"
-): Request {
-  const body = JSON.stringify({ address });
-  const timestamp = Date.now().toString();
-  const signature = computeHmacSignature(
-    PARTNER_SECRET,
-    timestamp,
-    "POST",
-    "/screen",
-    body
-  );
-
-  return {
-    method: "POST",
-    path: "/screen",
-    headers: {
-      "x-access-key": "test-partner",
-      "x-access-sign": signature,
-      "x-access-timestamp": timestamp,
-    },
-    rawBody: Buffer.from(body),
-    body: { address },
-    ...overrides,
-  } as unknown as Request;
-}
-
-function makeResponse(): Response & {
-  statusCode: number;
-  body: string;
-  headers: Record<string, string>;
-} {
-  const res = {
-    statusCode: 200,
-    body: "",
-    headers: {} as Record<string, string>,
-    status(code: number) {
-      res.statusCode = code;
-      return res;
-    },
-    set(key: string, value: string) {
-      res.headers[key] = value;
-      return res;
-    },
-    send(body: string) {
-      res.body = body;
-      return res;
-    },
-  };
-  return res as Response & typeof res;
-}
+import {
+  PARTNER_SECRET,
+  makeConfig,
+  makeRequest,
+  makeResponse,
+} from "./helpers.js";
 
 describe("createHandler", () => {
   const mockForward = vi.fn();
@@ -613,16 +546,12 @@ describe("createHandler", () => {
   });
 
   describe("operator policy lists", () => {
-    function makePolicyConfig(overrides: Partial<Config> = {}): Config {
-      return { ...makeConfig(), ...overrides };
-    }
-
     it("blocks via additionalBlockedAddresses without calling Elliptic", async () => {
       const configLoader = {
         get: vi
           .fn()
           .mockResolvedValue(
-            makePolicyConfig({ additionalBlockedAddresses: ["0xdeadbeef"] })
+            makeConfig({ additionalBlockedAddresses: ["0xdeadbeef"] })
           ),
       };
       const handler = createHandler(configLoader, mockForward);
@@ -643,7 +572,7 @@ describe("createHandler", () => {
         get: vi
           .fn()
           .mockResolvedValue(
-            makePolicyConfig({ blockOverrideAddresses: ["0xcafe"] })
+            makeConfig({ blockOverrideAddresses: ["0xcafe"] })
           ),
       };
       const handler = createHandler(configLoader, mockForward);
@@ -662,7 +591,7 @@ describe("createHandler", () => {
     it("allowlist wins over blocklist when both list the same address", async () => {
       const configLoader = {
         get: vi.fn().mockResolvedValue(
-          makePolicyConfig({
+          makeConfig({
             additionalBlockedAddresses: ["0xdeadbeef"],
             blockOverrideAddresses: ["0xdeadbeef"],
           })
@@ -682,9 +611,7 @@ describe("createHandler", () => {
 
     it("skipElliptic returns allowed without calling Elliptic when no list matches", async () => {
       const configLoader = {
-        get: vi
-          .fn()
-          .mockResolvedValue(makePolicyConfig({ skipElliptic: true })),
+        get: vi.fn().mockResolvedValue(makeConfig({ skipElliptic: true })),
       };
       const handler = createHandler(configLoader, mockForward);
       const req = makeRequest({}, "0xf00d");
@@ -699,7 +626,7 @@ describe("createHandler", () => {
     it("blocklist still applies under skipElliptic", async () => {
       const configLoader = {
         get: vi.fn().mockResolvedValue(
-          makePolicyConfig({
+          makeConfig({
             skipElliptic: true,
             additionalBlockedAddresses: ["0xdeadbeef"],
           })
@@ -730,7 +657,7 @@ describe("createHandler", () => {
         get: vi
           .fn()
           .mockResolvedValue(
-            makePolicyConfig({ additionalBlockedAddresses: ["0xabc123"] })
+            makeConfig({ additionalBlockedAddresses: ["0xabc123"] })
           ),
       };
       const handler = createHandler(configLoader, mockForward);
@@ -750,7 +677,7 @@ describe("createHandler", () => {
         get: vi
           .fn()
           .mockResolvedValue(
-            makePolicyConfig({ additionalBlockedAddresses: ["0xabcdef"] })
+            makeConfig({ additionalBlockedAddresses: ["0xabcdef"] })
           ),
       };
       const handler = createHandler(configLoader, mockForward);
