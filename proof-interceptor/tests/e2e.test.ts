@@ -16,6 +16,14 @@ import type { Config } from "../../elliptic-proxy/src/config.js";
 const PARTNER_NAME = "proof-interceptor";
 const PARTNER_SECRET = Buffer.from("e2e-secret").toString("base64");
 
+// elliptic-proxy signs every allowed verdict, so a valid STARK-curve private
+// key is required config even though this flow asserts only the allow/block
+// outcome (the interceptor reads `blocked` and ignores the signature), not the
+// signature bytes. CHAIN_ID is the 'LIVE_TEST' Cairo short string — a dedicated
+// test chain id, never SN_MAIN, which the proxy rejects with a mock upstream.
+const SIGNING_KEY = "0x1";
+const CHAIN_ID = "0x" + Buffer.from("LIVE_TEST").toString("hex");
+
 // Rule ID for SANCTIONED_ENTITY
 const SANCTIONED_RULE = "1f86dce1-166a-4749-a5df-3972fae7635a";
 
@@ -68,6 +76,8 @@ async function startEllipticProxy(): Promise<void> {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { [PARTNER_NAME]: PARTNER_SECRET },
+    signingPrivateKey: SIGNING_KEY,
+    chainId: CHAIN_ID,
   };
 
   const handler = createEllipticHandler(
