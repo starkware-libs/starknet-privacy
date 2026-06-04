@@ -196,17 +196,17 @@ export function createHandler(
       const details =
         error instanceof Error
           ? {
-            message: error.message,
-            name: error.name,
-            cause:
-              error.cause instanceof Error
-                ? {
-                  message: error.cause.message,
-                  name: error.cause.name,
-                  code: (error.cause as NodeJS.ErrnoException).code,
-                }
-                : error.cause,
-          }
+              message: error.message,
+              name: error.name,
+              cause:
+                error.cause instanceof Error
+                  ? {
+                      message: error.cause.message,
+                      name: error.cause.name,
+                      code: (error.cause as NodeJS.ErrnoException).code,
+                    }
+                  : error.cause,
+            }
           : { message: String(error) };
       console.error(
         JSON.stringify({
