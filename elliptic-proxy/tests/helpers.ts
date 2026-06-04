@@ -7,6 +7,10 @@ import { computeHmacSignature } from "../src/auth.js";
 import type { Config } from "../src/config.js";
 
 export const PARTNER_SECRET = Buffer.from("partner-secret").toString("base64");
+// 'LIVE_TEST' — a dedicated test chain id (Cairo short string); tests never
+// use SN_MAIN, which rejects a mock elliptic.url at config load.
+export const LIVE_CHAIN_ID = "0x4c4956455f54455354";
+export const SN_MAIN_CHAIN_ID = "0x534e5f4d41494e";
 
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -21,8 +25,17 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { "test-partner": PARTNER_SECRET },
+    chainId: LIVE_CHAIN_ID,
     ...overrides,
   };
+}
+
+// Config that screens against the in-process mock Elliptic upstream.
+export function makeMockEllipticConfig(
+  overrides: Partial<Config> = {}
+): Config {
+  const config = makeConfig(overrides);
+  return { ...config, elliptic: { ...config.elliptic, url: "mock:" } };
 }
 
 export function makeRequest(

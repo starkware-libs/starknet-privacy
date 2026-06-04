@@ -12,21 +12,26 @@ export interface Config {
   configCacheTtlSeconds: number;
   blockedCacheTtlSeconds: number;
   partners: Record<string, string>; // partner name -> HMAC secret
-  // When true, the proxy never calls Elliptic. Use on non-mainnet
-  // deployments where Elliptic has no data coverage, or as a kill
-  // switch. Off by default. Operator-curated lists below still apply.
-  skipElliptic?: boolean;
-  // Lowercase hex addresses to always treat as blocked, regardless of
-  // Elliptic's verdict (or in lieu of it when skipElliptic is set).
-  // Supplemental deny list for operator policy.
+  // Test-only deny list consumed by the mock Elliptic upstream ("mock:"
+  // elliptic.url): listed addresses screen as sanctioned. Ignored (with a
+  // load-time warning) when screening live — a live verdict must come from
+  // Elliptic.
   additionalBlockedAddresses?: string[];
-  // Lowercase hex addresses to always treat as allowed, regardless of
-  // Elliptic's verdict and regardless of additionalBlockedAddresses.
-  // Operator override for addresses we believe were wrongly flagged.
-  blockOverrideAddresses?: string[];
+  // chain_id felt (hex) of the network the deployment serves. SN_MAIN must
+  // never be combined with a mock elliptic.url — config load rejects it.
+  chainId: string;
 }
 
 export const HEX_FELT = /^0x[0-9a-fA-F]+$/;
+
+// 'SN_MAIN' as a Cairo short string.
+const SN_MAIN_CHAIN_ID = 0x534e5f4d41494en;
+
+// A "mock:" elliptic.url selects the in-process mock Elliptic upstream (see
+// mock-elliptic.ts) instead of the live API.
+export function isMockEllipticUrl(url: string): boolean {
+  return url.startsWith("mock:");
+}
 
 type SecretFetcher = () => Promise<string>;
 
@@ -47,6 +52,7 @@ export class ConfigLoader {
 
     const raw = JSON.parse(await this.fetcher());
     const config = validateConfig(raw);
+    warnOnMockPolicy(config);
     this.ttlMs =
       config.configCacheTtlSeconds != null
         ? config.configCacheTtlSeconds * 1000
@@ -114,17 +120,22 @@ function validateConfig(raw: unknown): Config {
     }
   }
 
-  let skipElliptic: boolean | undefined;
-  if (root.skipElliptic !== undefined) {
-    if (typeof root.skipElliptic !== "boolean") {
-      throw new Error("config: skipElliptic must be a boolean");
-    }
-    skipElliptic = root.skipElliptic;
+  const ellipticUrl = requireString(elliptic, "url");
+  const chainId = requireString(root, "chainId").toLowerCase();
+  if (!HEX_FELT.test(chainId)) {
+    throw new Error("config: chainId must be a 0x-prefixed hex felt");
+  }
+  // A mock upstream must never screen for mainnet: it would produce real
+  // verdicts with no real screening behind them.
+  if (isMockEllipticUrl(ellipticUrl) && BigInt(chainId) === SN_MAIN_CHAIN_ID) {
+    throw new Error(
+      "config: a mock elliptic.url is not allowed with the SN_MAIN chainId"
+    );
   }
 
   return {
     elliptic: {
-      url: requireString(elliptic, "url"),
+      url: ellipticUrl,
       key: requireString(elliptic, "key"),
       secret: requireString(elliptic, "secret"),
       timeoutMs: requirePositiveNumber(elliptic, "timeoutMs"),
@@ -137,16 +148,35 @@ function validateConfig(raw: unknown): Config {
       "blockedCacheTtlSeconds"
     ),
     partners: root.partners as Record<string, string>,
-    skipElliptic,
     additionalBlockedAddresses: parseLowercaseHexList(
       root,
       "additionalBlockedAddresses"
     ),
-    blockOverrideAddresses: parseLowercaseHexList(
-      root,
-      "blockOverrideAddresses"
-    ),
+    chainId,
   };
+}
+
+// Operational warnings on every fresh config load (cold start and each TTL
+// refresh): a mock deployment must be unmistakable in the logs, and a deny
+// list outside mock screening is dead config (it is test-only and ignored).
+function warnOnMockPolicy(config: Config): void {
+  if (isMockEllipticUrl(config.elliptic.url)) {
+    console.warn(
+      JSON.stringify({
+        warning: "mock_mode",
+        ellipticUrl: config.elliptic.url,
+        message: "mock Elliptic upstream: verdicts are not real screening",
+      })
+    );
+  } else if (config.additionalBlockedAddresses?.length) {
+    console.warn(
+      JSON.stringify({
+        warning: "blocklist_ignored",
+        message:
+          "additionalBlockedAddresses is test-only and ignored when screening live",
+      })
+    );
+  }
 }
 
 function parseLowercaseHexList(

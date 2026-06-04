@@ -4,7 +4,7 @@ import type {
   Request,
   Response,
 } from "@google-cloud/functions-framework";
-import { HEX_FELT, type Config } from "./config.js";
+import { HEX_FELT, isMockEllipticUrl, type Config } from "./config.js";
 import { authenticateRequest, type AuthResult } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
@@ -138,46 +138,13 @@ export function createHandler(
       return;
     }
 
-    // Operator overrides take precedence over Elliptic and the cache.
-    // blockOverrideAddresses wins over additionalBlockedAddresses so an
-    // explicit allow can rescue a globally-denied address.
-    if (config.blockOverrideAddresses?.includes(address)) {
-      sendResponse(
-        200,
-        JSON.stringify({ blocked: false, source: "allowlist" }),
-        {
-          partner: partnerName,
-          result: "allowed",
-          source: "allowlist",
-        }
-      );
-      return;
-    }
-
-    if (config.additionalBlockedAddresses?.includes(address)) {
-      sendResponse(
-        200,
-        JSON.stringify({ blocked: true, source: "blocklist" }),
-        {
-          partner: partnerName,
-          result: "blocked",
-          source: "blocklist",
-        }
-      );
-      return;
-    }
-
-    // skipElliptic short-circuits the live screening path. Useful on
-    // non-mainnet deployments where Elliptic has no Starknet coverage,
-    // or as a kill switch. Operator lists above still apply.
-    if (config.skipElliptic) {
-      sendResponse(200, JSON.stringify({ blocked: false, source: "skip" }), {
-        partner: partnerName,
-        result: "allowed",
-        source: "skip",
-      });
-      return;
-    }
+    // Verdicts are labeled with the upstream that produced them: "mock" when
+    // the mock Elliptic upstream is selected, "elliptic" otherwise. A repeated
+    // mock block is served from the cache and reports "cache" like any cached
+    // block.
+    const upstreamSource = isMockEllipticUrl(config.elliptic.url)
+      ? "mock"
+      : "elliptic";
 
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
@@ -240,13 +207,13 @@ export function createHandler(
     if (result.status === 404) {
       sendResponse(
         200,
-        JSON.stringify({ blocked: false, source: "elliptic" }),
+        JSON.stringify({ blocked: false, source: upstreamSource }),
         {
           partner: partnerName,
           ellipticStatus: result.status,
           ellipticLatencyMs: result.durationMs,
           result: "allowed",
-          source: "elliptic",
+          source: upstreamSource,
           scoringReason: "not_in_blockchain",
           cacheSize: blockedCache.size,
         }
@@ -298,13 +265,16 @@ export function createHandler(
 
     sendResponse(
       200,
-      JSON.stringify({ blocked: scoringResult.blocked, source: "elliptic" }),
+      JSON.stringify({
+        blocked: scoringResult.blocked,
+        source: upstreamSource,
+      }),
       {
         partner: partnerName,
         ellipticStatus: result.status,
         ellipticLatencyMs: result.durationMs,
         result: blocked ? "blocked" : "allowed",
-        source: "elliptic",
+        source: upstreamSource,
         scoringReason: scoringResult.reason,
         triggeringRuleIds:
           scoringResult.triggeringRuleIds.length > 0
