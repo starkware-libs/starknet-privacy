@@ -4,7 +4,7 @@ import type {
   Request,
   Response,
 } from "@google-cloud/functions-framework";
-import type { Config } from "./config.js";
+import { HEX_FELT, type Config } from "./config.js";
 import { authenticateRequest, type AuthResult } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
@@ -14,6 +14,13 @@ import type { ForwardResponse } from "./elliptic.js";
 export interface ConfigSource {
   get(): Promise<Config>;
 }
+
+// StarkNet addresses: "0x" + up to 64 hex chars.
+const MAX_ADDRESS_LENGTH = 66;
+// A StarkNet ContractAddress is < 2**251. The contract can only ever recompute
+// the screening digest over such a value, so signing a larger "address" would
+// yield a signature the on-chain verifier can never match — reject it up front.
+const ADDRESS_UPPER_BOUND = 2n ** 251n;
 
 export type Forwarder = (request: {
   ellipticUrl: string;
@@ -115,18 +122,21 @@ export function createHandler(
       return;
     }
 
-    // StarkNet addresses: "0x" + up to 64 hex chars
-    const MAX_ADDRESS_LENGTH = 66;
-    if (
-      address.length > MAX_ADDRESS_LENGTH ||
-      !/^0x[0-9a-fA-F]+$/.test(address)
-    ) {
+    if (address.length > MAX_ADDRESS_LENGTH || !HEX_FELT.test(address)) {
       sendResponse(400, JSON.stringify({ error: "invalid address format" }), {
         partner: partnerName,
       });
       return;
     }
     address = address.toLowerCase();
+    const addressFelt = BigInt(address);
+
+    if (addressFelt >= ADDRESS_UPPER_BOUND) {
+      sendResponse(400, JSON.stringify({ error: "invalid address" }), {
+        partner: partnerName,
+      });
+      return;
+    }
 
     // Operator overrides take precedence over Elliptic and the cache.
     // blockOverrideAddresses wins over additionalBlockedAddresses so an
