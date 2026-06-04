@@ -4,6 +4,7 @@ import { createHandler } from "../src/handler.js";
 import { computeHmacSignature } from "../src/auth.js";
 import type { Request } from "@google-cloud/functions-framework";
 import type { Config } from "../src/config.js";
+import { LIVE_CHAIN_ID } from "./helpers.js";
 
 describe("integration: full request flow", () => {
   it("happy path — valid screen request returns blocked verdict", async () => {
@@ -21,6 +22,7 @@ describe("integration: full request flow", () => {
       configCacheTtlSeconds: 300,
       blockedCacheTtlSeconds: 300,
       partners: { "integration-partner": partnerSecret },
+      chainId: LIVE_CHAIN_ID,
     };
 
     const body = JSON.stringify({ address: "0xabc123" });

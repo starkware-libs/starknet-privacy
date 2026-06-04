@@ -8,6 +8,16 @@ import type { Config } from "../src/config.js";
 
 export const PARTNER_SECRET = Buffer.from("partner-secret").toString("base64");
 
+// Cairo short string: the felt is the big-endian ASCII bytes of the text.
+function shortStringFelt(text: string): string {
+  return "0x" + Buffer.from(text).toString("hex");
+}
+
+// 'LIVE_TEST' — a dedicated test chain id; tests never use SN_MAIN, which
+// rejects a mock elliptic.url at config load.
+export const LIVE_CHAIN_ID = shortStringFelt("LIVE_TEST");
+export const SN_MAIN_CHAIN_ID = shortStringFelt("SN_MAIN");
+
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
     elliptic: {
@@ -21,8 +31,17 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { "test-partner": PARTNER_SECRET },
+    chainId: LIVE_CHAIN_ID,
     ...overrides,
   };
+}
+
+// Config that screens against the in-process mock Elliptic upstream.
+export function makeMockEllipticConfig(
+  overrides: Partial<Config> = {}
+): Config {
+  const config = makeConfig(overrides);
+  return { ...config, elliptic: { ...config.elliptic, url: "mock:" } };
 }
 
 export function makeRequest(
