@@ -8,14 +8,17 @@
 //! only the orchestration is local, and it is deliberately simple (linear scan
 //! to the sentinel — no pagination/budget) for a one-time audit of a small pool.
 //!
-//! This module currently covers the **incoming channels**, **subchannels**, and
-//! **notes** levels; the outgoing side extends the same walk in following changes.
+//! This module covers both sides of the audited user's activity: the **incoming**
+//! descent (channels → subchannels → notes, the only place Σ is fed) and the
+//! **outgoing** side (channels → subchannels, stopping before notes).
 
 use discovery_core::privacy_pool::decryption::{
-    decrypt_channel_info, decrypt_packed_value, decrypt_subchannel_token, OPEN_NOTE_SALT,
+    decrypt_channel_info, decrypt_outgoing_recipient_addr, decrypt_packed_value,
+    decrypt_subchannel_token, OPEN_NOTE_SALT,
 };
 use discovery_core::privacy_pool::hashes::{
-    compute_channel_marker, compute_note_id, compute_nullifier, compute_subchannel_id,
+    compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
+    compute_outgoing_channel_id, compute_subchannel_id,
 };
 use discovery_core::privacy_pool::storage_slots;
 use discovery_core::privacy_pool::types::SecretFelt;
@@ -24,7 +27,9 @@ use discovery_core::storage_backend::StorageError;
 use starknet_types_core::felt::Felt;
 
 use crate::error::AuditError;
-use crate::owned_slots::{note_slots, nullifier_slot, subchannel_slots, OwnedSlot};
+use crate::owned_slots::{
+    note_slots, nullifier_slot, outgoing_channel_slots, subchannel_slots, OwnedSlot,
+};
 
 /// An incoming channel discovered for the audited recipient.
 pub struct DiscoveredChannel {
@@ -100,34 +105,38 @@ pub struct DiscoveredSubchannel {
 /// appending each one's owned slots (`subchannel_tokens` ×2 + `subchannel_exists`)
 /// to `owned`, and returns the decrypted subchannels for the notes level.
 ///
+/// Takes the bare `channel_key` (not a `DiscoveredChannel`) so it serves both the
+/// incoming descent and the outgoing side; the `recipient_addr`/`recipient_public_key`
+/// passed in are the ones the subchannel marker was created with.
+///
 /// Subchannels are index-sequential (contract-enforced), so the first zero-salt
 /// read marks the end; a subchannel planted at a non-sequential index is left
 /// undiscovered on purpose, so its slots surface as anomalies (DESIGN.md §8).
 pub async fn walk_subchannels<S: IViews>(
     pool: &S,
-    channel: &DiscoveredChannel,
-    recipient: Felt,
+    channel_key: &SecretFelt,
+    recipient_addr: Felt,
     recipient_public_key: Felt,
     owned: &mut Vec<OwnedSlot>,
 ) -> Result<Vec<DiscoveredSubchannel>, StorageError> {
     let mut subchannels = Vec::new();
     let mut index = 0u64;
     loop {
-        let id = compute_subchannel_id(&channel.channel_key, index);
+        let id = compute_subchannel_id(channel_key, index);
         let enc = pool.get_subchannel_info(id).await?;
         if enc.salt == Felt::ZERO {
             break;
         }
-        let token = decrypt_subchannel_token(&enc, &channel.channel_key, index);
+        let token = decrypt_subchannel_token(&enc, channel_key, index);
         owned.extend(subchannel_slots(
-            &channel.channel_key,
+            channel_key,
             index,
-            recipient,
+            recipient_addr,
             recipient_public_key,
             token,
         ));
         subchannels.push(DiscoveredSubchannel {
-            channel_key: channel.channel_key.clone(),
+            channel_key: channel_key.clone(),
             index,
             token,
         });
@@ -182,6 +191,68 @@ pub async fn walk_notes<S: IViews>(
         index += 1;
     }
     Ok(unspent_total)
+}
+
+/// An outgoing channel discovered for the audited sender.
+pub struct DiscoveredOutgoingChannel {
+    pub channel_key: SecretFelt,
+    /// The decrypted counterparty (the channel's recipient).
+    pub recipient_addr: Felt,
+    /// The recipient's on-chain public key (used for the shared subchannel markers).
+    pub recipient_public_key: Felt,
+    /// Index of this outgoing channel for the sender (`outgoing_channels` key).
+    pub index: u64,
+}
+
+/// Walks the audited sender's outgoing channels (`index = 0, 1, …`) up to the
+/// salt-0 sentinel, appending each channel's owned slots (`outgoing_channel` ×2 +
+/// the shared `channel_exists` marker) to `owned`, and returns the decrypted
+/// channels so the caller can re-mark their subchannel slots.
+///
+/// The outgoing side **stops before notes**: a note's amount is summed exactly
+/// once, on the incoming side, so the sender/recipient pair never double-counts
+/// (DESIGN.md §5.2). The `channel_exists` / `subchannel_*` slots it touches are
+/// shared with the incoming side and idempotently re-marked.
+pub async fn walk_outgoing_channels<S: IViews>(
+    pool: &S,
+    sender_addr: Felt,
+    sender_private_key: &SecretFelt,
+    owned: &mut Vec<OwnedSlot>,
+) -> Result<Vec<DiscoveredOutgoingChannel>, StorageError> {
+    let mut channels = Vec::new();
+    let mut index = 0u64;
+    loop {
+        let id = compute_outgoing_channel_id(sender_addr, sender_private_key, index);
+        let enc = pool.get_outgoing_channel_info(id).await?;
+        if enc.salt == Felt::ZERO {
+            break;
+        }
+        let recipient_addr =
+            decrypt_outgoing_recipient_addr(&enc, sender_addr, sender_private_key, index);
+        let recipient_public_key = pool.get_public_key(recipient_addr).await?;
+        let channel_key = compute_channel_key(
+            sender_addr,
+            sender_private_key,
+            recipient_addr,
+            recipient_public_key,
+        );
+        owned.extend(outgoing_channel_slots(
+            sender_addr,
+            sender_private_key,
+            index,
+            &channel_key,
+            recipient_addr,
+            recipient_public_key,
+        ));
+        channels.push(DiscoveredOutgoingChannel {
+            channel_key,
+            recipient_addr,
+            recipient_public_key,
+            index,
+        });
+        index += 1;
+    }
+    Ok(channels)
 }
 
 #[cfg(test)]
@@ -305,14 +376,9 @@ mod tests {
         );
         let backend = MockBackend::new(slots);
 
-        let channel = DiscoveredChannel {
-            channel_key,
-            sender_addr: felt(&f["inputs"]["sender"]),
-            index: 0,
-        };
         let mut owned = Vec::new();
         let subchannels =
-            walk_subchannels(&backend, &channel, recipient, recipient_pub, &mut owned)
+            walk_subchannels(&backend, &channel_key, recipient, recipient_pub, &mut owned)
                 .await
                 .unwrap();
 
@@ -336,15 +402,11 @@ mod tests {
     async fn test_walk_subchannels_none() {
         // Index-0 salt is zero (slot absent) → immediate sentinel, nothing owned.
         let backend = MockBackend::new(HashMap::new());
-        let channel = DiscoveredChannel {
-            channel_key: SecretFelt::new(Felt::from(0xdef_u64)),
-            sender_addr: Felt::from(0x123_u64),
-            index: 0,
-        };
+        let channel_key = SecretFelt::new(Felt::from(0xdef_u64));
         let mut owned = Vec::new();
         let subchannels = walk_subchannels(
             &backend,
-            &channel,
+            &channel_key,
             Felt::from(0x456_u64),
             Felt::from(9u64),
             &mut owned,
@@ -522,5 +584,116 @@ mod tests {
             error,
             AuditError::NoteAmountOverflow { token: t, index: 1 } if t == token
         ));
+    }
+
+    /// Forward-builds one outgoing channel's storage: `enc_recipient_addr =
+    /// recipient_addr + enc_recipient_addr_hash` (inverse of the decrypt).
+    fn seed_outgoing(
+        slots: &mut HashMap<Felt, Felt>,
+        sender: Felt,
+        key: &SecretFelt,
+        index: u64,
+        salt: Felt,
+        enc_recipient_addr: Felt,
+    ) {
+        let s = storage_slots::outgoing_channels(compute_outgoing_channel_id(sender, key, index));
+        slots.insert(s.salt, salt);
+        slots.insert(s.enc_recipient_addr, enc_recipient_addr);
+    }
+
+    #[tokio::test]
+    async fn test_walk_outgoing_channels_sequential_reaches_fixture_vector() {
+        use discovery_core::privacy_pool::hashes::compute_enc_recipient_addr_hash;
+
+        let f = fixture();
+        let sender = felt(&f["inputs"]["sender"]);
+        let sender_key = SecretFelt::new(felt(&f["inputs"]["senderPrivateKey"]));
+        let recipient = felt(&f["inputs"]["recipient"]);
+        let recipient_pub = felt(&f["inputs"]["recipientPublicKey"]);
+
+        // Indices 0..=4 filler channels; index 5 is the Cairo reference vector
+        // (encOutgoingSalt/RecipientAddr decrypt to the fixture recipient).
+        let mut slots = HashMap::new();
+        for index in 0..5u64 {
+            let salt = Felt::from(0x2000_u64 + index);
+            let recipient_i = Felt::from(0x1000_u64 + index);
+            let enc =
+                recipient_i + compute_enc_recipient_addr_hash(sender, &sender_key, index, salt);
+            seed_outgoing(&mut slots, sender, &sender_key, index, salt, enc);
+        }
+        seed_outgoing(
+            &mut slots,
+            sender,
+            &sender_key,
+            5,
+            felt(&f["outputs"]["encOutgoingSalt"]),
+            felt(&f["outputs"]["encOutgoingRecipientAddr"]),
+        );
+        slots.insert(storage_slots::public_key(recipient), recipient_pub);
+        let backend = MockBackend::new(slots);
+
+        let mut owned = Vec::new();
+        let channels = walk_outgoing_channels(&backend, sender, &sender_key, &mut owned)
+            .await
+            .unwrap();
+
+        // Scan stops at the index-6 sentinel; index 5 decrypts to the fixture recipient.
+        assert_eq!(channels.len(), 6);
+        assert_eq!(channels[5].index, 5);
+        assert_eq!(channels[5].recipient_addr, recipient);
+        assert_eq!(channels[5].recipient_public_key, recipient_pub);
+
+        // 6 channels × (2 outgoing slots + 1 marker).
+        assert_eq!(owned.len(), 18);
+        assert_eq!(
+            owned
+                .iter()
+                .filter(|s| s.kind == "outgoing_channel")
+                .count(),
+            12
+        );
+        assert_eq!(
+            owned.iter().filter(|s| s.kind == "channel_exists").count(),
+            6
+        );
+
+        // The index-5 outgoing slots match the Cairo reference channel id.
+        let oc = storage_slots::outgoing_channels(felt(&f["outputs"]["outgoingChannelId"]));
+        assert!(owned
+            .iter()
+            .any(|s| s.kind == "outgoing_channel" && s.slot == oc.salt));
+        assert!(owned
+            .iter()
+            .any(|s| s.kind == "outgoing_channel" && s.slot == oc.enc_recipient_addr));
+
+        // The channel key is derived from the sender/recipient identity, and its
+        // shared `channel_exists` marker is attributed.
+        let channel_key = compute_channel_key(sender, &sender_key, recipient, recipient_pub);
+        assert_eq!(*channels[5].channel_key, *channel_key);
+        let marker = compute_channel_marker(&channel_key, sender, recipient, recipient_pub);
+        assert!(
+            owned
+                .iter()
+                .any(|s| s.kind == "channel_exists"
+                    && s.slot == storage_slots::channel_exists(marker))
+        );
+    }
+
+    #[tokio::test]
+    async fn test_walk_outgoing_channels_none() {
+        // Index-0 salt is zero (slot absent) → immediate sentinel.
+        let backend = MockBackend::new(HashMap::new());
+        let mut owned = Vec::new();
+        let channels = walk_outgoing_channels(
+            &backend,
+            Felt::from(0x123_u64),
+            &SecretFelt::new(Felt::from(0x789_u64)),
+            &mut owned,
+        )
+        .await
+        .unwrap();
+
+        assert!(channels.is_empty());
+        assert!(owned.is_empty());
     }
 }
