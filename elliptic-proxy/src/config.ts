@@ -21,8 +21,13 @@ export interface Config {
   // winning over the deny list, the blocked cache, and the upstream verdict —
   // rescues addresses the upstream wrongly flags (false positives).
   blockOverrideAddresses?: string[];
-  // chain_id felt (hex) of the network the deployment serves. SN_MAIN must
-  // never be combined with a mock elliptic.url — config load rejects it.
+  // STARK-curve private key (felt hex, 1 <= key < curve order) used to sign
+  // screening attestations. Managed by the FPI cloud function in production.
+  signingPrivateKey: string;
+  // chain_id felt (hex) of the network the deployment signs for, bound into
+  // the SNIP-12 domain; must match what the contract derives from get_tx_info.
+  // SN_MAIN must never be combined with a mock elliptic.url — config load
+  // rejects it.
   chainId: string;
 }
 
@@ -158,6 +163,7 @@ function validateConfig(raw: unknown): Config {
       root,
       "blockOverrideAddresses"
     ),
+    signingPrivateKey: requireString(root, "signingPrivateKey"),
     chainId,
   };
 }

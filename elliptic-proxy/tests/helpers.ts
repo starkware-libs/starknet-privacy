@@ -2,6 +2,7 @@
 //
 // Shared fixtures for the handler-level suites: a valid config, a
 // partner-signed /screen request, and a capturing response stub.
+import { readFileSync } from "node:fs";
 import type { Request, Response } from "@google-cloud/functions-framework";
 import { computeHmacSignature } from "../src/auth.js";
 import type { Config } from "../src/config.js";
@@ -17,6 +18,34 @@ function shortStringFelt(text: string): string {
 // rejects a mock elliptic.url at config load.
 export const LIVE_CHAIN_ID = shortStringFelt("LIVE_TEST");
 export const SN_MAIN_CHAIN_ID = shortStringFelt("SN_MAIN");
+export const SN_SEPOLIA_CHAIN_ID = shortStringFelt("SN_SEPOLIA");
+
+export interface ScreeningVector {
+  name: string;
+  chain_id: string;
+  depositor: string;
+  issued_at: number;
+  message_hash: string;
+  sig_r: string;
+  sig_s: string;
+}
+
+// The committed cross-language screening vectors — the contract between the
+// reference Python signer, this proxy, and the Cairo verifier.
+export const SCREENING_FIXTURE = JSON.parse(
+  readFileSync(
+    new URL("../../fixtures/screening-vectors.json", import.meta.url),
+    "utf8"
+  )
+) as {
+  signer_private_key: string;
+  signer_public_key: string;
+  vectors: ScreeningVector[];
+};
+
+// The canonical screening signer key — the single signing key across every
+// suite, so produced signatures can be checked against the committed vectors.
+export const SIGNING_KEY = SCREENING_FIXTURE.signer_private_key;
 
 export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
@@ -31,6 +60,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
     partners: { "test-partner": PARTNER_SECRET },
+    signingPrivateKey: SIGNING_KEY,
     chainId: LIVE_CHAIN_ID,
     ...overrides,
   };
