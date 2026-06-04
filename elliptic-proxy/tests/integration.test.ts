@@ -21,6 +21,7 @@ describe("integration: full request flow", () => {
       configCacheTtlSeconds: 300,
       blockedCacheTtlSeconds: 300,
       partners: { "integration-partner": partnerSecret },
+      signingPrivateKey: "0xcafebabe",
       // 'LIVE_TEST' — a dedicated test chain id (Cairo short string).
       chainId: "0x4c4956455f54455354",
     };
@@ -81,10 +82,9 @@ describe("integration: full request flow", () => {
     await handler(req, res as unknown as Parameters<typeof handler>[1]);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );

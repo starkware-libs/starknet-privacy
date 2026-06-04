@@ -268,10 +268,9 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
 
     const logCall = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
@@ -362,10 +361,9 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
     expect(errorSpy).not.toHaveBeenCalled();
     const allowedLog = logSpy.mock.calls.find((call) => {
       const parsed = JSON.parse(call[0] as string);
@@ -390,10 +388,9 @@ describe("createHandler", () => {
     await handler(makeRequest({}, "0xab07f0d"), res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
   });
 
   it("returns cached blocked result without calling forwarder again", async () => {
@@ -482,10 +479,9 @@ describe("createHandler", () => {
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xd0e5cafe"), res2);
     expect(res2.statusCode).toBe(200);
-    expect(JSON.parse(res2.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res2.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
     // If the address had been erroneously cached as blocked on the 500,
     // this second request would return { blocked: true } from cache.
     spy.mockRestore();
@@ -520,10 +516,9 @@ describe("createHandler", () => {
     const res2 = makeResponse();
     await handler(makeRequest({}, "0xbadcafe"), res2);
     expect(res2.statusCode).toBe(200);
-    expect(JSON.parse(res2.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res2.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
     spy.mockRestore();
   });
 
@@ -542,10 +537,9 @@ describe("createHandler", () => {
     await handler(req, res);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
   });
 
   describe("mock Elliptic upstream", () => {
@@ -566,10 +560,9 @@ describe("createHandler", () => {
       await handler(req, res);
 
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body)).toEqual({
-        blocked: false,
-        source: "mock",
-      });
+      const allowed = JSON.parse(res.body);
+      expect(allowed).toMatchObject({ blocked: false, source: "mock" });
+      expect(allowed.signature).toBeDefined();
       expect(mockForward).not.toHaveBeenCalled();
     });
 
@@ -640,10 +633,9 @@ describe("createHandler", () => {
       const res = makeResponse();
       await handler(req, res);
 
-      expect(JSON.parse(res.body)).toEqual({
-        blocked: false,
-        source: "elliptic",
-      });
+      const allowed = JSON.parse(res.body);
+      expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+      expect(allowed.signature).toBeDefined();
       expect(mockForward).toHaveBeenCalledOnce();
     });
   });
