@@ -5,6 +5,9 @@ edition = "2021"
 
 [dependencies]
 async-trait = "0.1"
+# Drives the async snapshot walk to completion inside the synchronous `analyze`
+# (the snapshot backend never suspends, so this needs no async runtime).
+futures-executor = "0.3"
 discovery-core = { path = "../discovery-core" }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
