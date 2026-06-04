@@ -21,6 +21,8 @@ describe("integration: full request flow", () => {
       configCacheTtlSeconds: 300,
       blockedCacheTtlSeconds: 300,
       partners: { "integration-partner": partnerSecret },
+      // 'LIVE_TEST' — a dedicated test chain id (Cairo short string).
+      chainId: "0x4c4956455f54455354",
     };
 
     const body = JSON.stringify({ address: "0xabc123" });

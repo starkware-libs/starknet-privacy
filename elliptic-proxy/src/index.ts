@@ -4,6 +4,7 @@ import { SecretManagerServiceClient } from "@google-cloud/secret-manager";
 import { ConfigLoader } from "./config.js";
 import { forwardToElliptic } from "./elliptic.js";
 import { createHandler } from "./handler.js";
+import { mockableForwarder } from "./mock-elliptic.js";
 
 function createSecretFetcher(): () => Promise<string> {
   const client = new SecretManagerServiceClient();
@@ -19,4 +20,10 @@ function createSecretFetcher(): () => Promise<string> {
 
 const configLoader = new ConfigLoader(createSecretFetcher());
 
-ff.http("ellipticProxy", createHandler(configLoader, forwardToElliptic));
+ff.http(
+  "ellipticProxy",
+  createHandler(
+    configLoader,
+    mockableForwarder(configLoader, forwardToElliptic)
+  )
+);

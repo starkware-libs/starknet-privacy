@@ -44,9 +44,8 @@ re-reads it according to `configCacheTtlSeconds`.
     "partner-a": "issued-hmac-secret-base64",
     "partner-b": "issued-hmac-secret-base64"
   },
-  "skipElliptic": false,
-  "additionalBlockedAddresses": [],
-  "blockOverrideAddresses": []
+  "chainId": "0x534e5f4d41494e",
+  "additionalBlockedAddresses": []
 }
 ```
 
@@ -54,7 +53,7 @@ re-reads it according to `configCacheTtlSeconds`.
 
 | Field                                 | Description                                                                                                                                                              |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `elliptic.url`                        | Elliptic API base URL                                                                                                                                                    |
+| `elliptic.url`                        | Elliptic API base URL; `mock:` selects the in-process mock upstream (test deployments only)                                                                              |
 | `elliptic.key`                        | Real Elliptic API key                                                                                                                                                    |
 | `elliptic.secret`                     | Real Elliptic HMAC secret (base64)                                                                                                                                       |
 | `elliptic.timeoutMs`                  | Timeout for upstream Elliptic requests (ms)                                                                                                                              |
@@ -63,19 +62,15 @@ re-reads it according to `configCacheTtlSeconds`.
 | `configCacheTtlSeconds`               | How often the proxy re-reads config from Secret Manager (seconds)                                                                                                        |
 | `blockedCacheTtlSeconds`              | How long to cache blocked address verdicts (seconds)                                                                                                                     |
 | `partners.<name>`                     | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key`                                                                                        |
-| `skipElliptic` _(optional)_           | When `true`, the proxy never calls Elliptic. Use for non-mainnet deployments where Elliptic has no data coverage, or as a kill switch. Operator lists below still apply. |
-| `additionalBlockedAddresses` _(opt.)_ | Lowercase hex addresses always treated as blocked. Wins over Elliptic and the cache. Tagged `source: "blocklist"`.                                                       |
-| `blockOverrideAddresses` _(opt.)_     | Lowercase hex addresses always treated as allowed. Wins over `additionalBlockedAddresses`, Elliptic, and the cache. Tagged `source: "allowlist"`.                        |
+| `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
+| `chainId` _(required)_                | Hex felt of the network the deployment serves. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                   |
 
 ### Verdict precedence
 
 For each request the proxy evaluates sources in this order, first match wins:
 
-1. `blockOverrideAddresses` → `{ blocked: false, source: "allowlist" }`
-2. `additionalBlockedAddresses` → `{ blocked: true, source: "blocklist" }`
-3. `skipElliptic` set → `{ blocked: false, source: "skip" }`
-4. blocked-address cache hit → `{ blocked: true, source: "cache" }`
-5. Live Elliptic call → `{ blocked, source: "elliptic" }`
+1. blocked-address cache hit → `{ blocked: true, source: "cache" }`
+2. Live (or mock) Elliptic call → `{ blocked, source: "elliptic" | "mock" }`
 
 ## Authentication
 
@@ -138,8 +133,21 @@ elliptic-proxy/
 │   ├── elliptic.ts       # HMAC re-signing + forwarding to Elliptic
 │   ├── rate-limit.ts     # In-memory per-partner rate limiter
 │   ├── scoring.ts        # (planned) Rule-based response scoring (blocked/allowed)
-│   └── cache.ts          # (planned) In-memory blocked address cache
+│   ├── cache.ts          # (planned) In-memory blocked address cache
+│   └── mock-elliptic.ts  # In-process mock Elliptic upstream (mock: elliptic.url)
 ```
+
+## Mock Elliptic upstream
+
+Setting `elliptic.url` to `mock:` screens against an in-process mock upstream
+instead of elliptic.co — for test deployments only (elliptic.co has no coverage
+outside mainnet). The full proxy pipeline (auth, scoring, caching, verdicts)
+runs unchanged; only the upstream response is faked: addresses on
+`additionalBlockedAddresses` score as sanctioned (and are cached like any live
+block), everything else returns Elliptic's 404 "not in blockchain" and is
+allowed. Mock verdicts report `source: "mock"` (cached repeats report
+`cache`). A `mock_mode` warning is logged on every config load, and a mock url
+combined with the SN_MAIN `chainId` is rejected at config load.
 
 ## Deployment
 
