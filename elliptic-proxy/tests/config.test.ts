@@ -1,6 +1,7 @@
 // tests/config.test.ts
 import { describe, it, expect, vi } from "vitest";
 import { ConfigLoader } from "../src/config.js";
+import { LIVE_CHAIN_ID, SN_MAIN_CHAIN_ID } from "./helpers.js";
 
 const VALID_CONFIG = {
   elliptic: {
@@ -17,6 +18,13 @@ const VALID_CONFIG = {
     "prover-proxy": btoa("secret-aaa"),
     "other-service": btoa("secret-bbb"),
   },
+  chainId: LIVE_CHAIN_ID,
+};
+
+// VALID_CONFIG with the mock Elliptic upstream selected.
+const MOCK_UPSTREAM_CONFIG = {
+  ...VALID_CONFIG,
+  elliptic: { ...VALID_CONFIG.elliptic, url: "mock:" },
 };
 
 describe("ConfigLoader", () => {
@@ -108,40 +116,83 @@ describe("ConfigLoader", () => {
     );
   });
 
-  it("leaves operator-policy fields unset by default", async () => {
+  it("leaves the deny list unset by default", async () => {
     const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
     const loader = new ConfigLoader(fetcher);
     const config = await loader.get();
-    expect(config.skipElliptic).toBeUndefined();
     expect(config.additionalBlockedAddresses).toBeUndefined();
-    expect(config.blockOverrideAddresses).toBeUndefined();
   });
 
-  it("accepts skipElliptic with operator-curated lists, lowercasing addresses", async () => {
+  it("accepts a deny list, lowercasing addresses", async () => {
     const config = {
       ...VALID_CONFIG,
-      skipElliptic: true,
       additionalBlockedAddresses: ["0xABCDEF", "0xdeadbeef"],
-      blockOverrideAddresses: ["0xCAFE"],
     };
     const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
     const loader = new ConfigLoader(fetcher);
     const loaded = await loader.get();
-    expect(loaded.skipElliptic).toBe(true);
     expect(loaded.additionalBlockedAddresses).toEqual([
       "0xabcdef",
       "0xdeadbeef",
     ]);
-    expect(loaded.blockOverrideAddresses).toEqual(["0xcafe"]);
   });
 
-  it("throws when skipElliptic is not a boolean", async () => {
-    const invalidConfig = { ...VALID_CONFIG, skipElliptic: "yes" };
+  it("accepts an allow list, lowercasing addresses", async () => {
+    const config = {
+      ...VALID_CONFIG,
+      blockOverrideAddresses: ["0xCAFE", "0xf00d"],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+    const loader = new ConfigLoader(fetcher);
+    const loaded = await loader.get();
+    expect(loaded.blockOverrideAddresses).toEqual(["0xcafe", "0xf00d"]);
+  });
+
+  it("throws when chainId is missing", async () => {
+    const withoutChainId: Record<string, unknown> = { ...VALID_CONFIG };
+    delete withoutChainId.chainId;
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(withoutChainId));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "chainId must be a non-empty string"
+    );
+  });
+
+  it("throws when chainId is not a hex felt", async () => {
+    const invalidConfig = { ...VALID_CONFIG, chainId: "LIVE_TEST" };
     const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
     const loader = new ConfigLoader(fetcher);
     await expect(loader.get()).rejects.toThrow(
-      "skipElliptic must be a boolean"
+      "chainId must be a 0x-prefixed hex felt"
     );
+  });
+
+  it("lowercases chainId", async () => {
+    const config = { ...VALID_CONFIG, chainId: "0x4C4956455F54455354" };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+    const loader = new ConfigLoader(fetcher);
+    const loaded = await loader.get();
+    expect(loaded.chainId).toBe(LIVE_CHAIN_ID);
+  });
+
+  it("rejects a mock elliptic.url with the SN_MAIN chainId", async () => {
+    const invalidConfig = {
+      ...MOCK_UPSTREAM_CONFIG,
+      chainId: SN_MAIN_CHAIN_ID,
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "a mock elliptic.url is not allowed with the SN_MAIN chainId"
+    );
+  });
+
+  it("accepts the SN_MAIN chainId with a live elliptic.url", async () => {
+    const config = { ...VALID_CONFIG, chainId: SN_MAIN_CHAIN_ID };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+    const loader = new ConfigLoader(fetcher);
+    const loaded = await loader.get();
+    expect(loaded.chainId).toBe(SN_MAIN_CHAIN_ID);
   });
 
   it("throws when additionalBlockedAddresses is not a string array", async () => {
@@ -156,18 +207,6 @@ describe("ConfigLoader", () => {
     );
   });
 
-  it("throws when blockOverrideAddresses is not a string array", async () => {
-    const invalidConfig = {
-      ...VALID_CONFIG,
-      blockOverrideAddresses: "not-an-array",
-    };
-    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
-    const loader = new ConfigLoader(fetcher);
-    await expect(loader.get()).rejects.toThrow(
-      "blockOverrideAddresses must be string[]"
-    );
-  });
-
   it("throws when a list entry is not a hex felt", async () => {
     const invalidConfig = {
       ...VALID_CONFIG,
@@ -178,5 +217,58 @@ describe("ConfigLoader", () => {
     await expect(loader.get()).rejects.toThrow(
       "additionalBlockedAddresses entries must be 0x-prefixed hex felts"
     );
+  });
+
+  it("throws when an allow list entry is not a hex felt", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      blockOverrideAddresses: ["0x" + "f".repeat(64)], // 64 digits can't fit a felt
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "blockOverrideAddresses entries must be 0x-prefixed hex felts"
+    );
+  });
+
+  it("throws when chainId exceeds the felt size", async () => {
+    const invalidConfig = { ...VALID_CONFIG, chainId: "0x" + "f".repeat(63) }; // >= the Stark prime
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "chainId must be a 0x-prefixed hex felt"
+    );
+  });
+
+  describe("load-time warnings", () => {
+    async function loadAndCaptureWarnings(
+      config: Record<string, unknown>
+    ): Promise<string[]> {
+      const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const fetcher = vi.fn().mockResolvedValue(JSON.stringify(config));
+      await new ConfigLoader(fetcher).get();
+      const warnings = warnSpy.mock.calls.map(
+        (call) => JSON.parse(call[0] as string).warning as string
+      );
+      warnSpy.mockRestore();
+      return warnings;
+    }
+
+    it("warns mock_mode for a mock elliptic.url", async () => {
+      expect(await loadAndCaptureWarnings(MOCK_UPSTREAM_CONFIG)).toEqual([
+        "mock_mode",
+      ]);
+    });
+
+    it("does not warn for a live elliptic.url, with or without operator lists", async () => {
+      expect(await loadAndCaptureWarnings(VALID_CONFIG)).toEqual([]);
+      expect(
+        await loadAndCaptureWarnings({
+          ...VALID_CONFIG,
+          additionalBlockedAddresses: ["0xdeadbeef"],
+          blockOverrideAddresses: ["0xcafe"],
+        })
+      ).toEqual([]);
+    });
   });
 });

@@ -2,9 +2,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { createHandler } from "../src/handler.js";
 import { computeHmacSignature } from "../src/auth.js";
+import { mockableForwarder } from "../src/mock-elliptic.js";
+import type { Config } from "../src/config.js";
 import {
   PARTNER_SECRET,
   makeConfig,
+  makeMockEllipticConfig,
   makeRequest,
   makeResponse,
 } from "./helpers.js";
@@ -545,114 +548,47 @@ describe("createHandler", () => {
     });
   });
 
-  describe("operator policy lists", () => {
-    it("blocks via additionalBlockedAddresses without calling Elliptic", async () => {
-      const configLoader = {
-        get: vi
-          .fn()
-          .mockResolvedValue(
-            makeConfig({ additionalBlockedAddresses: ["0xdeadbeef"] })
-          ),
-      };
-      const handler = createHandler(configLoader, mockForward);
-      const req = makeRequest({}, "0xdeadbeef");
-      const res = makeResponse();
-      await handler(req, res);
+  describe("mock Elliptic upstream", () => {
+    function makeMockUpstreamHandler(config: Config) {
+      const configSource = { get: vi.fn().mockResolvedValue(config) };
+      // mockForward stands in for the live forwarder: the dispatch must never
+      // reach it when the mock upstream is selected.
+      return createHandler(configSource, mockableForwarder(mockForward));
+    }
 
-      expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body)).toEqual({
-        blocked: true,
-        source: "blocklist",
-      });
-      expect(mockForward).not.toHaveBeenCalled();
-    });
-
-    it("allows via blockOverrideAddresses without calling Elliptic", async () => {
-      const configLoader = {
-        get: vi
-          .fn()
-          .mockResolvedValue(
-            makeConfig({ blockOverrideAddresses: ["0xcafe"] })
-          ),
-      };
-      const handler = createHandler(configLoader, mockForward);
-      const req = makeRequest({}, "0xCAFE");
-      const res = makeResponse();
-      await handler(req, res);
-
-      expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body)).toEqual({
-        blocked: false,
-        source: "allowlist",
-      });
-      expect(mockForward).not.toHaveBeenCalled();
-    });
-
-    it("allowlist wins over blocklist when both list the same address", async () => {
-      const configLoader = {
-        get: vi.fn().mockResolvedValue(
-          makeConfig({
-            additionalBlockedAddresses: ["0xdeadbeef"],
-            blockOverrideAddresses: ["0xdeadbeef"],
-          })
-        ),
-      };
-      const handler = createHandler(configLoader, mockForward);
-      const req = makeRequest({}, "0xdeadbeef");
-      const res = makeResponse();
-      await handler(req, res);
-
-      expect(JSON.parse(res.body)).toEqual({
-        blocked: false,
-        source: "allowlist",
-      });
-      expect(mockForward).not.toHaveBeenCalled();
-    });
-
-    it("skipElliptic returns allowed without calling Elliptic when no list matches", async () => {
-      const configLoader = {
-        get: vi.fn().mockResolvedValue(makeConfig({ skipElliptic: true })),
-      };
-      const handler = createHandler(configLoader, mockForward);
+    it("allows an unlisted address without calling live Elliptic", async () => {
+      const handler = makeMockUpstreamHandler(makeMockEllipticConfig());
       const req = makeRequest({}, "0xf00d");
       const res = makeResponse();
       await handler(req, res);
 
       expect(res.statusCode).toBe(200);
-      expect(JSON.parse(res.body)).toEqual({ blocked: false, source: "skip" });
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: false,
+        source: "mock",
+      });
       expect(mockForward).not.toHaveBeenCalled();
     });
 
-    it("blocklist still applies under skipElliptic", async () => {
-      const configLoader = {
-        get: vi.fn().mockResolvedValue(
-          makeConfig({
-            skipElliptic: true,
-            additionalBlockedAddresses: ["0xdeadbeef"],
-          })
-        ),
-      };
-      const handler = createHandler(configLoader, mockForward);
+    it("blocks a deny-listed address without calling live Elliptic", async () => {
+      const handler = makeMockUpstreamHandler(
+        makeMockEllipticConfig({ additionalBlockedAddresses: ["0xdeadbeef"] })
+      );
       const req = makeRequest({}, "0xdeadbeef");
       const res = makeResponse();
       await handler(req, res);
 
+      expect(res.statusCode).toBe(200);
       expect(JSON.parse(res.body)).toEqual({
         blocked: true,
         source: "blocklist",
       });
       expect(mockForward).not.toHaveBeenCalled();
     });
+  });
 
-    it("blocklist overrides Elliptic on a clean live response", async () => {
-      mockForward.mockResolvedValue({
-        status: 200,
-        durationMs: 5,
-        body: JSON.stringify({
-          process_status: "complete",
-          evaluation_detail: { source: [], destination: [] },
-        }),
-      });
+  describe("operator lists", () => {
+    it("blocks a deny-listed address when screening live, without calling Elliptic", async () => {
       const configLoader = {
         get: vi
           .fn()
@@ -661,7 +597,7 @@ describe("createHandler", () => {
           ),
       };
       const handler = createHandler(configLoader, mockForward);
-      const req = makeRequest();
+      const req = makeRequest(); // 0xabc123 — deny-listed
       const res = makeResponse();
       await handler(req, res);
 
@@ -672,22 +608,113 @@ describe("createHandler", () => {
       expect(mockForward).not.toHaveBeenCalled();
     });
 
-    it("matches policy lists case-insensitively (handler lowercases the address)", async () => {
+    it("matches a zero-padded deny entry against a stripped address", async () => {
+      // List entries are matched on the canonical felt: an entry written
+      // zero-padded blocks the leading-zero-stripped address a caller sends.
       const configLoader = {
         get: vi
           .fn()
           .mockResolvedValue(
-            makeConfig({ additionalBlockedAddresses: ["0xabcdef"] })
+            makeConfig({ additionalBlockedAddresses: ["0x00deadbeef"] })
           ),
       };
       const handler = createHandler(configLoader, mockForward);
-      const req = makeRequest({}, "0xABCDEF");
       const res = makeResponse();
-      await handler(req, res);
+      await handler(makeRequest({}, "0xdeadbeef"), res);
 
       expect(JSON.parse(res.body)).toEqual({
         blocked: true,
         source: "blocklist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("allow list wins over the deny list", async () => {
+      const configLoader = {
+        get: vi.fn().mockResolvedValue(
+          makeConfig({
+            additionalBlockedAddresses: ["0xabc123"],
+            blockOverrideAddresses: ["0xabc123"],
+          })
+        ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const res = makeResponse();
+      await handler(makeRequest(), res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: false,
+        source: "allowlist",
+      });
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("allow list wins over an upstream block, without calling Elliptic", async () => {
+      const configLoader = {
+        get: vi
+          .fn()
+          .mockResolvedValue(
+            makeConfig({ blockOverrideAddresses: ["0xabc123"] })
+          ),
+      };
+      const handler = createHandler(configLoader, mockForward);
+      const res = makeResponse();
+      await handler(makeRequest(), res);
+
+      expect(JSON.parse(res.body)).toEqual({
+        blocked: false,
+        source: "allowlist",
+      });
+      // The verdict is decided before any upstream call, so even an upstream
+      // that would block can't override the operator allow.
+      expect(mockForward).not.toHaveBeenCalled();
+    });
+
+    it("allow list rescues an address already cached as blocked", async () => {
+      // First request: no lists, Elliptic blocks → cached.
+      const blockedBody = JSON.stringify({
+        process_status: "complete",
+        evaluation_detail: {
+          source: [
+            {
+              rule_id: "1f86dce1-166a-4749-a5df-3972fae7635a",
+              matched_elements: [
+                {
+                  contribution_percentage: 5,
+                  contribution_value: { usd: 100 },
+                  counterparty_percentage: 10,
+                  counterparty_value: { usd: 50 },
+                },
+              ],
+            },
+          ],
+        },
+      });
+      mockForward.mockResolvedValue({
+        status: 200,
+        durationMs: 5,
+        body: blockedBody,
+      });
+      const config = makeConfig();
+      const configLoader = { get: vi.fn().mockResolvedValue(config) };
+      const handler = createHandler(configLoader, mockForward);
+
+      const first = makeResponse();
+      await handler(makeRequest({}, "0xcacbed"), first);
+      expect(JSON.parse(first.body)).toEqual({
+        blocked: true,
+        source: "elliptic",
+      });
+
+      // Config refresh adds the allow override: the cached block must not win.
+      configLoader.get.mockResolvedValue(
+        makeConfig({ blockOverrideAddresses: ["0xcacbed"] })
+      );
+      const second = makeResponse();
+      await handler(makeRequest({}, "0xcacbed"), second);
+      expect(JSON.parse(second.body)).toEqual({
+        blocked: false,
+        source: "allowlist",
       });
     });
   });
@@ -696,13 +723,26 @@ describe("createHandler", () => {
     const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
     const handler = createHandler(configLoader, mockForward);
 
-    const tooLarge = "0x" + "f".repeat(64); // 2**256-1, beyond the address bound
+    const tooLarge = "0x8" + "0".repeat(62); // exactly 2**251, beyond the address bound
     const req = makeRequest({}, tooLarge);
     const res = makeResponse();
     await handler(req, res);
 
     expect(res.statusCode).toBe(400);
     expect(JSON.parse(res.body).error).toBe("invalid address");
+    expect(mockForward).not.toHaveBeenCalled();
+  });
+
+  it("returns 400 for a 64-hex-digit address (not a felt)", async () => {
+    const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
+    const handler = createHandler(configLoader, mockForward);
+
+    const tooLong = "0x" + "f".repeat(64); // 2**256-1 can't fit a felt252
+    const res = makeResponse();
+    await handler(makeRequest({}, tooLong), res);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toBe("invalid address format");
     expect(mockForward).not.toHaveBeenCalled();
   });
 });
