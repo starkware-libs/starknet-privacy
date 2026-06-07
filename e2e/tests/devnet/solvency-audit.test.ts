@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { ec, num } from "starknet";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  createDevnetTestEnv,
+  type DevnetTestEnv,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
   runAuditFetch,
   runAuditAnalyze,
@@ -15,10 +19,38 @@ const AUDITOR_PUBLIC_KEY = ec.starkCurve.getStarkKey(AUDITOR_PRIVATE_KEY);
 
 describe("solvency-audit E2E", () => {
   let devnet: Devnet;
+  let test: DevnetTestEnv;
 
   beforeAll(async () => {
     devnet = new Devnet({ auditorPublicKey: AUDITOR_PUBLIC_KEY });
-    await devnet.initialize();
+    test = await createDevnetTestEnv(devnet);
+    const { env, transfers } = test;
+
+    // Create real state (mock-proved on devnet): register alice & bob, then
+    // alice deposits 100 STRK and transfers 50 to bob — producing channels,
+    // subchannels, notes, and ViewingKeySet events for the audit to find.
+    await env.alice.execute({
+      contractAddress: env.strk,
+      entrypoint: "approve",
+      calldata: [env.privacy.address, 100n, 0n],
+    });
+    const { callAndProof: bobReg } = await transfers.bob
+      .build()
+      .register()
+      .execute();
+    await devnet.executeOutside(bobReg);
+    const { callAndProof } = await transfers.alice
+      .build({
+        autoRegister: true,
+        autoSetup: true,
+        autoDiscover: { notes: "refresh", channels: "refresh" },
+      })
+      .with(env.strk)
+      .deposit({ amount: 100n })
+      .transfer({ recipient: env.bob.address, amount: 50n })
+      .surplusTo(env.alice.address)
+      .execute();
+    await devnet.executeOutside(callAndProof);
   });
 
   afterAll(async () => {
@@ -58,5 +90,35 @@ describe("solvency-audit E2E", () => {
     const proofValidity = byKind("singleton:proof_validity_blocks");
     expect(proofValidity).toBeDefined();
     expect(num.toBigInt(proofValidity!.value)).toBe(450n);
+  });
+
+  it("fetch captures registered users, meta, and contract storage", async () => {
+    const env = test.env;
+    const to = await env.provider.getBlockNumber();
+    const snapshot = await runAuditFetch({
+      rpcUrl: devnet.url,
+      contract: env.privacy.address,
+      from: 0,
+      to,
+    });
+
+    // ViewingKeySet scan finds both registered users.
+    expect(snapshot.users.every((user) => user.kind === "viewing_key")).toBe(
+      true,
+    );
+    const userAddrs = snapshot.users.map((user) => num.toBigInt(user.addr));
+    expect(userAddrs).toContain(num.toBigInt(env.alice.address));
+    expect(userAddrs).toContain(num.toBigInt(env.bob.address));
+
+    // Meta records the audited contract and the on-chain auditor public key.
+    expect(num.toBigInt(snapshot.meta.contract_address)).toBe(
+      num.toBigInt(env.privacy.address),
+    );
+    expect(num.toBigInt(snapshot.meta.auditor_public_key)).toBe(
+      num.toBigInt(AUDITOR_PUBLIC_KEY),
+    );
+
+    // Storage holds far more than the infra slots (channels/notes were written).
+    expect(Object.keys(snapshot.slots).length).toBeGreaterThan(10);
   });
 });
