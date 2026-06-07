@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { constants, RpcProvider } from "starknet";
 import { ProvingServiceProofProvider } from "../../src/internal/proving-service-provider.js";
+import { PoolCapabilityError } from "../../src/internal/errors.js";
 
 // Mock ohttp-ts and hpke so OhttpClient can be instantiated without real crypto.
 vi.mock("ohttp-ts", () => ({
@@ -134,6 +135,77 @@ describe("ProvingServiceProofProvider.getDefaultDetails", () => {
       const details = await provider.getDefaultDetails();
       expect(details.nonce).toBe(0n);
     });
+  });
+});
+
+describe("ProvingServiceProofProvider.resolvePoolCapability", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("detects screening and caches it — calls the node only once", async () => {
+    const callContract = vi.spyOn(RpcProvider.prototype, "callContract").mockResolvedValue(["0x1"]);
+
+    const provider = new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+      nodeUrl: NODE_URL,
+      poolAddress: POOL_ADDRESS,
+    });
+
+    expect(await provider.resolvePoolCapability()).toBe("screening");
+    expect(await provider.resolvePoolCapability()).toBe("screening");
+    expect(callContract).toHaveBeenCalledTimes(1);
+  });
+
+  it("detects compatibility when the view is absent (entrypoint-not-found)", async () => {
+    vi.spyOn(RpcProvider.prototype, "callContract").mockRejectedValue(
+      new Error("Entry point screening_version not found in contract")
+    );
+
+    const provider = new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+      nodeUrl: NODE_URL,
+      poolAddress: POOL_ADDRESS,
+    });
+
+    expect(await provider.resolvePoolCapability()).toBe("compatibility");
+  });
+
+  it("re-detects after invalidatePoolCapabilityCache", async () => {
+    const callContract = vi.spyOn(RpcProvider.prototype, "callContract").mockResolvedValue(["0x1"]);
+
+    const provider = new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+      nodeUrl: NODE_URL,
+      poolAddress: POOL_ADDRESS,
+    });
+
+    await provider.resolvePoolCapability();
+    provider.invalidatePoolCapabilityCache();
+    await provider.resolvePoolCapability();
+
+    expect(callContract).toHaveBeenCalledTimes(2);
+  });
+
+  it("propagates a transient RPC failure as PoolCapabilityError (no silent compat)", async () => {
+    vi.spyOn(RpcProvider.prototype, "callContract").mockRejectedValue(
+      new Error("fetch failed: ECONNREFUSED")
+    );
+
+    const provider = new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID, {
+      nodeUrl: NODE_URL,
+      poolAddress: POOL_ADDRESS,
+    });
+
+    await expect(provider.resolvePoolCapability()).rejects.toBeInstanceOf(PoolCapabilityError);
+  });
+
+  it("defaults to compatibility and warns when no nodeUrl is configured", async () => {
+    const callContract = vi.spyOn(RpcProvider.prototype, "callContract");
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const provider = new ProvingServiceProofProvider(PROVER_URL, CHAIN_ID);
+
+    expect(await provider.resolvePoolCapability()).toBe("compatibility");
+    expect(callContract).not.toHaveBeenCalled();
+    expect(warn).toHaveBeenCalledOnce();
   });
 });
 

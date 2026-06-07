@@ -13,8 +13,10 @@ export type {
 export {
   ScreeningRejected,
   ScreeningUnavailable,
+  PoolCapabilityError,
   screeningErrorFromProvingError,
 } from "./internal/errors.js";
+export type { PoolCapabilityMode } from "./internal/pool-capability.js";
 export type { BlockIdentifier } from "starknet";
 export { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
 export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";

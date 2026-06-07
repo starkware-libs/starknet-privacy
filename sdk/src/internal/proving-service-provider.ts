@@ -16,6 +16,7 @@ import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
 import { OhttpClient, type OhttpOption } from "./ohttp-client.js";
 import { DEFAULT_REQUEST_TIMEOUT_MS, ProvingService } from "./proving-service.js";
+import { type PoolCapabilityMode, resolvePoolScreeningCapability } from "./pool-capability.js";
 
 /** Options for ProvingServiceProofProvider. */
 export type ProvingServiceProofProviderOptions = {
@@ -29,13 +30,16 @@ export type ProvingServiceProofProviderOptions = {
   // TODO: Change default to latest-verifiable.
   blockIdentifier?: ProvingBlockId;
   /**
-   * Optional RPC node URL used to fetch the pool nonce (cached; use invalidateNonceCache() after nonce errors).
+   * Optional RPC node URL used to fetch the pool nonce (cached; use invalidateNonceCache() after nonce errors)
+   * and to detect the pool's screening capability (cached; use invalidatePoolCapabilityCache()).
    * Requires `poolAddress` to be set. When both are provided, getDefaultDetails() returns details with the
-   * fetched nonce; no provider on account or factory needed.
+   * fetched nonce; no provider on account or factory needed. Without a node, resolvePoolCapability()
+   * cannot detect and defaults to compatibility mode.
    */
   nodeUrl?: string;
   /**
-   * Pool contract address used for nonce fetching. Required when `nodeUrl` is set.
+   * Pool contract address used for nonce fetching and screening-capability detection.
+   * Required when `nodeUrl` is set.
    */
   poolAddress?: StarknetAddress;
   /** Enable OHTTP envelope encryption. Pass `true` for defaults, or an object for custom relay/key config. */
@@ -52,9 +56,10 @@ export type ProvingServiceProofProviderOptions = {
 export class ProvingServiceProofProvider implements ProofProviderInterface {
   private readonly provingService: ProvingService;
   private readonly blockIdentifier: ProvingBlockId;
-  private readonly nonceProvider: RpcProvider | null;
+  private readonly rpcProvider: RpcProvider | null;
   private readonly poolAddressHex: string | null;
   private cachedNonce: bigint | null = null;
+  private cachedCapability: PoolCapabilityMode | null = null;
 
   constructor(
     provingServiceUrl: string,
@@ -80,10 +85,10 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       if (options.poolAddress == null) {
         throw new Error("ProvingServiceProofProvider: nodeUrl requires poolAddress to be set");
       }
-      this.nonceProvider = new RpcProvider({ nodeUrl: options.nodeUrl });
+      this.rpcProvider = new RpcProvider({ nodeUrl: options.nodeUrl });
       this.poolAddressHex = toHex(options.poolAddress);
     } else {
-      this.nonceProvider = null;
+      this.rpcProvider = null;
       this.poolAddressHex = null;
     }
   }
@@ -92,17 +97,46 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
     this.cachedNonce = null;
   }
 
+  invalidatePoolCapabilityCache(): void {
+    this.cachedCapability = null;
+  }
+
   async getDefaultDetails(): Promise<ProofInvocationFactoryDetails> {
     const base = getDefaultProofDetails(this.chainId);
-    if (this.nonceProvider == null || this.poolAddressHex == null) {
+    if (this.rpcProvider == null || this.poolAddressHex == null) {
       return base;
     }
     if (this.cachedNonce == null) {
       this.cachedNonce = BigInt(
-        await this.nonceProvider.getNonceForAddress(this.poolAddressHex, "latest")
+        await this.rpcProvider.getNonceForAddress(this.poolAddressHex, "latest")
       );
     }
     return { ...base, nonce: this.cachedNonce };
+  }
+
+  /**
+   * Detect whether the pool expects the screening attestation in `apply_actions`
+   * calldata, by probing its `screening_version` view (cached for the provider's
+   * lifetime). Without an RPC node configured, detection is impossible, so this
+   * defaults to compatibility mode (current pool, no attestation) and warns once.
+   */
+  async resolvePoolCapability(): Promise<PoolCapabilityMode> {
+    if (this.cachedCapability != null) {
+      return this.cachedCapability;
+    }
+    if (this.rpcProvider == null || this.poolAddressHex == null) {
+      console.warn(
+        "ProvingServiceProofProvider: no nodeUrl configured; cannot detect pool screening " +
+          "capability, defaulting to compatibility mode (no screening attestation)."
+      );
+      this.cachedCapability = "compatibility";
+      return this.cachedCapability;
+    }
+    this.cachedCapability = await resolvePoolScreeningCapability(
+      this.rpcProvider,
+      this.poolAddressHex
+    );
+    return this.cachedCapability;
   }
 
   async prove(invocation: ProofInvocation, blockIdentifier?: ProvingBlockId): Promise<Proof> {
@@ -125,6 +159,7 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       data: result.proof,
       output,
       proofFacts,
+      additionalData: result.additional_data,
     };
   }
 }

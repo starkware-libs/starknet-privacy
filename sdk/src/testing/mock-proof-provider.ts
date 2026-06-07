@@ -6,6 +6,7 @@
  */
 
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
+import type { PoolCapabilityMode } from "../internal/pool-capability.js";
 import type { ClientAction } from "../internal/client-actions.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
 import { ProvingServiceError } from "../internal/proving-service.js";
@@ -29,6 +30,15 @@ export class MockProofProvider implements ProofProviderInterface {
 
   async getDefaultDetails() {
     return getDefaultProofDetails(constants.StarknetChainId.SN_SEPOLIA);
+  }
+
+  /**
+   * Mirror on-chain detection by reading the mock pool's `screening_version`:
+   * >= 1 advertises screening arity, 0 is the current pool. Lets mocknet tests
+   * exercise both calldata shapes via MockPoolContract.setScreeningVersion().
+   */
+  async resolvePoolCapability(): Promise<PoolCapabilityMode> {
+    return this.pool.screening_version() >= 1n ? "screening" : "compatibility";
   }
 
   async prove(invocation: ProofInvocation): Promise<Proof> {

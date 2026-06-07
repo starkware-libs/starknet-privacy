@@ -21,6 +21,7 @@ import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
+import { screeningCalldataSuffix } from "./screening-calldata.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -81,6 +82,10 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     this.params.provingProvider.invalidateNonceCache?.();
   }
 
+  invalidateProofPoolCapabilityCache(): void {
+    this.params.provingProvider.invalidatePoolCapabilityCache?.();
+  }
+
   async executeWithInvocation(
     { invocation, registry, warnings }: ProofInvocationResult,
     provingBlockId?: ProvingBlockId
@@ -96,12 +101,20 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
+    // The pool version — not signature presence — decides the calldata shape.
+    // A screening-capable pool deserializes a trailing Option<ScreeningAttestation>
+    // after the action span; the current pool expects no such suffix. Default to
+    // compatibility when the provider cannot detect (no RPC node configured).
+    const mode = (await this.params.provingProvider.resolvePoolCapability?.()) ?? "compatibility";
+    const screeningSuffix =
+      mode === "screening" ? screeningCalldataSuffix(proof.additionalData) : [];
+
     return {
       callAndProof: {
         call: {
           contractAddress: toHex(this.params.poolContractAddress),
           entrypoint: "apply_actions",
-          calldata: serverActionsCalldata,
+          calldata: [...serverActionsCalldata, ...screeningSuffix],
         },
         proof,
       },

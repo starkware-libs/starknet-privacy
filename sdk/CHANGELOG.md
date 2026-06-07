@@ -15,6 +15,22 @@
   `address_blocked` / `screening_unavailable` reasons (JSON-RPC code 10000).
   Other code-10000 errors return `undefined` so the caller rethrows the
   original rather than mislabeling a transient fault as terminal.
+- Screening v2: `apply_actions` calldata carries the screening attestation as a
+  trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
+  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+  Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
+  optional `additionalData` relaying the prove response's `additional_data`.
+  Emitted **only against a screening-capable pool**: the SDK detects the pool's
+  `screening_version` view (cached) and falls back to today's calldata (no
+  suffix) against the current pool, so one SDK build is compatible with both
+  pool versions. Detection is strict — only an entrypoint-not-found revert means
+  "current pool"; transient RPC failures throw `PoolCapabilityError` rather than
+  silently assuming a calldata shape. Without an RPC `nodeUrl`, detection is
+  impossible and the SDK defaults to compatibility mode (warns once).
+- Screening v2: exported `PoolCapabilityMode` and `PoolCapabilityError`;
+  `ProofProviderInterface` gains optional `resolvePoolCapability()` /
+  `invalidatePoolCapabilityCache()`, and `PrivateTransfers` gains
+  `invalidateProofPoolCapabilityCache()`.
 
 ## 0.14.2-RC.6
 

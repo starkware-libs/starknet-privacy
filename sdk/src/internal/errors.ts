@@ -9,6 +9,23 @@ export class ReorgError extends Error {
 }
 
 /**
+ * The pool's screening capability could not be resolved from the RPC node.
+ *
+ * Distinct from a clean entrypoint-not-found revert (which deterministically
+ * identifies the current, non-screening pool): this wraps transient or
+ * ambiguous failures — network errors, an unreachable node, timeouts, malformed
+ * responses. The caller must retry rather than assume a pool shape, because
+ * submitting the wrong calldata arity reverts on-chain.
+ */
+export class PoolCapabilityError extends Error {
+  override readonly name = "PoolCapabilityError";
+  constructor(poolAddress: string, cause: unknown) {
+    const reason = cause instanceof Error ? cause.message : String(cause);
+    super(`Could not resolve screening capability for pool ${poolAddress}: ${reason}`);
+  }
+}
+
+/**
  * The deposit's source address is on the sanctions list. Terminal — retrying
  * with the same address will not succeed.
  */
