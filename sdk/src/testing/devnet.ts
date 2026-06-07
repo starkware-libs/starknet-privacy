@@ -484,6 +484,8 @@ export async function createDevnetTestEnv(
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
+  // Source-built pool: its class hash is never pinned, so force compatibility
+  // calldata until the in-repo contract accepts the screening suffix.
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
@@ -491,6 +493,7 @@ export async function createDevnetTestEnv(
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
+      poolMode: "compatibility",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
@@ -498,6 +501,7 @@ export async function createDevnetTestEnv(
       provingProvider: new CallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
+      poolMode: "compatibility",
     }),
   };
 

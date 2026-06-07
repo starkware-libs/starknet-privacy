@@ -52,9 +52,9 @@ export class MockProofProvider implements ProofProviderInterface {
 
     return {
       data: "",
-      // L2-to-L1 message payload: [class_hash, ...callbacks].
-      // The consumer strips the class_hash prefix before passing to apply_actions.
-      output: buildMessagePayload("0x0", callbacks),
+      // L2-to-L1 message payload: [class_hash, ...callbacks], as in a real
+      // prove response.
+      output: buildMessagePayload(this.pool.classHash, callbacks),
       proofFacts: [],
     };
   }

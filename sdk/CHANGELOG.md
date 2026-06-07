@@ -15,6 +15,22 @@
   `address_blocked` / `screening_unavailable` reasons (JSON-RPC code 10000).
   Other code-10000 errors return `undefined` so the caller rethrows the
   original rather than mislabeling a transient fault as terminal.
+- Screening v2: `apply_actions` calldata carries the screening attestation as a
+  trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
+  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+  Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
+  optional `additionalData` relaying the prove response's `additional_data`.
+  Emitted **only against a screening-capable pool**, identified with zero RPC
+  calls: the prove response's payload is headed by the pool's class hash, which
+  the SDK looks up against the pinned class hashes of the deployed
+  pre-screening pools on SN_MAIN and SN_SEPOLIA. A pinned
+  hash gets today's calldata (no suffix); **any other class hash is treated as
+  screening-capable**, so the SDK activates automatically when an upgraded
+  pool deploys, and one SDK build is compatible with both pool versions.
+- Screening v2: exported `PoolCapabilityMode`, and
+  `createPrivateTransfers()` gains an optional `poolMode` override for
+  deployments whose pool class hash isn't pinned (e.g. local devnet/test pools
+  built from source).
 
 ## 0.14.2-RC.6
 

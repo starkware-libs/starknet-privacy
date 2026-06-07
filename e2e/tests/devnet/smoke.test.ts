@@ -74,6 +74,8 @@ describe("E2E Smoke", () => {
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes } = await aliceIndexer.discoverNotes();
@@ -105,6 +107,8 @@ describe("E2E Smoke", () => {
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     // Bob should discover 1 incoming note: 50 STRK from Alice
