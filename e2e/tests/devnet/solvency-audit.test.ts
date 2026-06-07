@@ -144,6 +144,11 @@ describe("solvency-audit E2E", () => {
     expect(count("public-key mismatches")).toBe(0);
     expect(count("foreign auditor-key refs")).toBe(0);
 
+    // Infra slots are classified; only the two `AccessControl_role_member`
+    // grants (keyed by grantee address) remain — those need the RoleGranted
+    // scan, added next. Tighten to 0 once that lands.
+    expect(count("anomaly slots")).toBe(2);
+
     // Solvency: the summed unspent STRK notes equal the pool's on-chain balance.
     // Alice deposited 100 STRK; after transferring 50 to Bob the pool still holds
     // 100 (50 Alice change + 50 Bob), all unspent.
