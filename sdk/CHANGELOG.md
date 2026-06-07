@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Added
+
+- `DevnetConfig.auditorPublicKey` (`@starkware-libs/starknet-privacy-sdk/testing`): deploy the privacy pool with a chosen auditor public key instead of the dummy `0x1`. Lets tests that need the auditor to recover users' viewing keys (e.g. the solvency audit) deploy with a real derived key.
+
 ### Breaking
 
 - Renamed `MockSwapHelper` to `MockSwapAnonymizer` in `@starkware-libs/starknet-privacy-sdk/testing` (and its `browser` re-export). Update imports accordingly.
