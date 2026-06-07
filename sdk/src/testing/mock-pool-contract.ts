@@ -303,16 +303,29 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
   /**
    * Apply server actions to mutate state.
+   *
+   * Mirrors the on-chain calldata shape: the action span first, then a
+   * Serde-encoded Option<ScreeningAttestation> — [0x0] when absent,
+   * [0x1, issued_at, sig_r, sig_s] when present.
    */
-  apply_actions(actions: string[]): void {
-    for (let i = 0; i < actions.length; i++) {
+  apply_actions(calldata: string[]): void {
+    const actionCount = this.serverActions.length;
+    for (let i = 0; i < actionCount; i++) {
       assert(
-        this.serverActions[i].type == actions[i],
-        () => `Server action ${actions[i]} does not match expected ${this.serverActions[i].type}`
+        this.serverActions[i].type == calldata[i],
+        () => `Server action ${calldata[i]} does not match expected ${this.serverActions[i].type}`
       );
       this.serverActions[i].apply();
     }
     this.serverActions = [];
+
+    const screeningSuffix = calldata.slice(actionCount);
+    const isNoneAttestation = screeningSuffix.length == 1 && screeningSuffix[0] == "0x0";
+    const isSomeAttestation = screeningSuffix.length == 4 && screeningSuffix[0] == "0x1";
+    assert(
+      isNoneAttestation || isSomeAttestation,
+      () => `Malformed screening attestation suffix: [${screeningSuffix.join(", ")}]`
+    );
   }
 
   /**

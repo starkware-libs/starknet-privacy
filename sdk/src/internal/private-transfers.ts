@@ -21,6 +21,7 @@ import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
+import { screeningCalldataSuffix } from "./screening-calldata.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -101,7 +102,9 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
         call: {
           contractAddress: toHex(this.params.poolContractAddress),
           entrypoint: "apply_actions",
-          calldata: serverActionsCalldata,
+          // The screening attestation rides after the proof-committed action
+          // span as a separately-deserialized Option<ScreeningAttestation>.
+          calldata: [...serverActionsCalldata, ...screeningCalldataSuffix(proof.additionalData)],
         },
         proof,
       },

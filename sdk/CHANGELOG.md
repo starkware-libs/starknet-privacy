@@ -15,6 +15,16 @@
   `address_blocked` / `screening_unavailable` reasons (JSON-RPC code 10000).
   Other code-10000 errors return `undefined` so the caller rethrows the
   original rather than mislabeling a transient fault as terminal.
+- Screening v2: `apply_actions` calldata now carries the screening attestation
+  as a trailing Serde-encoded `Option` — `[0x0]` when absent, `[0x1, issued_at,
+  sig_r, sig_s]` when the prove response carries a signature. `Proof` gains an
+  optional `additionalData` relaying the prove response's `additional_data`.
+
+### Breaking
+
+- `apply_actions` calldata format changed (trailing screening attestation
+  `Option`); requires the pool contract upgrade that accepts the screening
+  attestation parameter. Deposits against older pool contracts revert.
 
 ## 0.14.2-RC.6
 

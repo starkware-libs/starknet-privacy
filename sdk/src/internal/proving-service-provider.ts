@@ -125,6 +125,7 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       data: result.proof,
       output,
       proofFacts,
+      additionalData: result.additional_data,
     };
   }
 }
