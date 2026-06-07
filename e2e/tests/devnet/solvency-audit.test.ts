@@ -102,13 +102,12 @@ describe("solvency-audit E2E", () => {
       to,
     });
 
-    // ViewingKeySet scan finds both registered users.
-    expect(snapshot.users.every((user) => user.kind === "viewing_key")).toBe(
-      true,
-    );
-    const userAddrs = snapshot.users.map((user) => num.toBigInt(user.addr));
-    expect(userAddrs).toContain(num.toBigInt(env.alice.address));
-    expect(userAddrs).toContain(num.toBigInt(env.bob.address));
+    // ViewingKeySet scan finds both registered users (alongside infra grantees).
+    const viewingKeyAddrs = snapshot.users
+      .filter((user) => user.kind === "viewing_key")
+      .map((user) => num.toBigInt(user.addr));
+    expect(viewingKeyAddrs).toContain(num.toBigInt(env.alice.address));
+    expect(viewingKeyAddrs).toContain(num.toBigInt(env.bob.address));
 
     // Meta records the audited contract and the on-chain auditor public key.
     expect(num.toBigInt(snapshot.meta.contract_address)).toBe(
@@ -144,10 +143,10 @@ describe("solvency-audit E2E", () => {
     expect(count("public-key mismatches")).toBe(0);
     expect(count("foreign auditor-key refs")).toBe(0);
 
-    // Infra slots are classified; only the two `AccessControl_role_member`
-    // grants (keyed by grantee address) remain — those need the RoleGranted
-    // scan, added next. Tighten to 0 once that lands.
-    expect(count("anomaly slots")).toBe(2);
+    // Every non-zero slot is now explained: user attribution + all infra slots
+    // (singletons, components, role_admin/role_member, SRC5). Empty anomaly set
+    // is the completeness check (DESIGN §11).
+    expect(count("anomaly slots")).toBe(0);
 
     // Solvency: the summed unspent STRK notes equal the pool's on-chain balance.
     // Alice deposited 100 STRK; after transferring 50 to Bob the pool still holds

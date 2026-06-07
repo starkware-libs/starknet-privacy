@@ -119,6 +119,27 @@ pub fn derivable_infra_slots() -> Vec<OwnedSlot> {
     slots
 }
 
+/// `AccessControl_role_member[(role, grantee)]` slots for each grantee address
+/// (from FETCH's `RoleGranted` scan), across every known role. We mark all
+/// `roles × grantees` pairs because the event's role isn't threaded through;
+/// pairs the contract never wrote are simply absent, so over-marking is a
+/// harmless no-op and never hides a real anomaly (DESIGN §5.4).
+pub fn grantee_role_member_slots(grantees: &[Felt]) -> Vec<OwnedSlot> {
+    let mut slots = Vec::with_capacity(grantees.len() * ROLE_IDS.len());
+    for &grantee in grantees {
+        for role_id in ROLE_IDS {
+            slots.push(OwnedSlot {
+                slot: slot(
+                    "AccessControl_role_member",
+                    &[Felt::from_hex(role_id).unwrap(), grantee],
+                ),
+                kind: "component:access_control:role_member",
+            });
+        }
+    }
+    slots
+}
+
 #[cfg(test)]
 mod tests {
     use discovery_core::privacy_pool::storage_slots;
@@ -161,6 +182,35 @@ mod tests {
                 .count(),
             ROLE_IDS.len()
         );
+    }
+
+    #[test]
+    fn test_grantee_role_member_slots_shape() {
+        let grantees = [Felt::from(0xAA_u64), Felt::from(0xBB_u64)];
+        let slots = grantee_role_member_slots(&grantees);
+        // One slot per (grantee, role); all distinct, all role_member.
+        assert_eq!(slots.len(), grantees.len() * ROLE_IDS.len());
+        assert!(slots
+            .iter()
+            .all(|s| s.kind == "component:access_control:role_member"));
+        let distinct: std::collections::HashSet<Felt> = slots.iter().map(|s| s.slot).collect();
+        assert_eq!(distinct.len(), slots.len());
+    }
+
+    #[test]
+    fn test_grantee_role_member_matches_storage_var() {
+        let grantee = Felt::from(0x123_u64);
+        let role = Felt::from_hex(ROLE_IDS[0]).unwrap();
+        let expected =
+            get_storage_var_address("AccessControl_role_member", &[role, grantee]).unwrap();
+        assert!(grantee_role_member_slots(&[grantee])
+            .iter()
+            .any(|s| s.slot == expected));
+    }
+
+    #[test]
+    fn test_no_grantees_no_slots() {
+        assert!(grantee_role_member_slots(&[]).is_empty());
     }
 
     #[test]
