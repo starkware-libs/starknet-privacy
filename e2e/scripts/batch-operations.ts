@@ -84,8 +84,7 @@ function findAccount(accounts: AccountEntry[], name: string): AccountEntry {
   const entry = accounts.find(
     (account) => account.name.toLowerCase() === name.toLowerCase(),
   );
-  if (!entry)
-    throw new Error(`Account "${name}" not found in ACCOUNTS`);
+  if (!entry) throw new Error(`Account "${name}" not found in ACCOUNTS`);
   return entry;
 }
 
@@ -267,6 +266,8 @@ async function runDeposit() {
   }
   console.log("Approve tx:", approveTx.transaction_hash);
 
+  // Source-built pool: its class hash is never pinned, so force compatibility
+  // calldata until the in-repo contract accepts the screening suffix.
   const transfers = createPrivateTransfers({
     account: aliceAccount,
     viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
@@ -276,6 +277,7 @@ async function runDeposit() {
     ),
     discoveryProvider: discovery,
     poolContractAddress: POOL_ADDRESS,
+    poolMode: "compatibility",
   });
 
   const depositInputs = Array.from({ length: chunkSize }, () => ({
@@ -403,6 +405,8 @@ async function runTransfer() {
     ),
     discoveryProvider: discovery,
     poolContractAddress: POOL_ADDRESS,
+    // Unpinned source-built pool — see the deposit-flow comment above.
+    poolMode: "compatibility",
   });
 
   const transferOutputs = Array.from({ length: chunkSize }, () => ({

@@ -29,9 +29,9 @@ export type ProvingServiceProofProviderOptions = {
   // TODO: Change default to latest-verifiable.
   blockIdentifier?: ProvingBlockId;
   /**
-   * Optional RPC node URL used to fetch the pool nonce (cached; use invalidateNonceCache() after nonce errors).
-   * Requires `poolAddress` to be set. When both are provided, getDefaultDetails() returns details with the
-   * fetched nonce; no provider on account or factory needed.
+   * Optional RPC node URL used to fetch the pool nonce (cached; use invalidateNonceCache() after
+   * nonce errors). Requires `poolAddress` to be set. When both are provided, getDefaultDetails()
+   * returns details with the fetched nonce; no provider on account or factory needed.
    */
   nodeUrl?: string;
   /**
@@ -52,7 +52,7 @@ export type ProvingServiceProofProviderOptions = {
 export class ProvingServiceProofProvider implements ProofProviderInterface {
   private readonly provingService: ProvingService;
   private readonly blockIdentifier: ProvingBlockId;
-  private readonly nonceProvider: RpcProvider | null;
+  private readonly rpcProvider: RpcProvider | null;
   private readonly poolAddressHex: string | null;
   private cachedNonce: bigint | null = null;
 
@@ -80,10 +80,10 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       if (options.poolAddress == null) {
         throw new Error("ProvingServiceProofProvider: nodeUrl requires poolAddress to be set");
       }
-      this.nonceProvider = new RpcProvider({ nodeUrl: options.nodeUrl });
+      this.rpcProvider = new RpcProvider({ nodeUrl: options.nodeUrl });
       this.poolAddressHex = toHex(options.poolAddress);
     } else {
-      this.nonceProvider = null;
+      this.rpcProvider = null;
       this.poolAddressHex = null;
     }
   }
@@ -94,12 +94,12 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
 
   async getDefaultDetails(): Promise<ProofInvocationFactoryDetails> {
     const base = getDefaultProofDetails(this.chainId);
-    if (this.nonceProvider == null || this.poolAddressHex == null) {
+    if (this.rpcProvider == null || this.poolAddressHex == null) {
       return base;
     }
     if (this.cachedNonce == null) {
       this.cachedNonce = BigInt(
-        await this.nonceProvider.getNonceForAddress(this.poolAddressHex, "latest")
+        await this.rpcProvider.getNonceForAddress(this.poolAddressHex, "latest")
       );
     }
     return { ...base, nonce: this.cachedNonce };
@@ -125,6 +125,7 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       data: result.proof,
       output,
       proofFacts,
+      additionalData: result.additional_data,
     };
   }
 }

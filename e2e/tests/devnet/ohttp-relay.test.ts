@@ -89,6 +89,8 @@ describe("E2E OHTTP via relay", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     // Discover notes via relay — validates full client → relay → gateway pipeline
@@ -110,7 +112,10 @@ describe("E2E OHTTP via relay", () => {
     expect(channels!.has(BigInt(de.bob.address))).toBe(true);
 
     // Preflight check via relay
-    const requirement = await aliceOhttp.discoverRequirement(de.bob.address, de.strk);
+    const requirement = await aliceOhttp.discoverRequirement(
+      de.bob.address,
+      de.strk,
+    );
     expect(requirement).toBe(SetupRequirement.Ready);
 
     // Bob's discovery via relay
@@ -123,6 +128,8 @@ describe("E2E OHTTP via relay", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes: bobNotes } = await bobOhttp.discoverNotes();

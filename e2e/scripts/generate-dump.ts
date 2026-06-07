@@ -26,8 +26,14 @@ import {
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "../..");
 
-const DISCOVERY_CORE_FIXTURES = join(repoRoot, "crates/discovery-core/tests/fixtures");
-const DISCOVERY_SERVICE_FIXTURES = join(repoRoot, "crates/discovery-service/tests/fixtures");
+const DISCOVERY_CORE_FIXTURES = join(
+  repoRoot,
+  "crates/discovery-core/tests/fixtures",
+);
+const DISCOVERY_SERVICE_FIXTURES = join(
+  repoRoot,
+  "crates/discovery-service/tests/fixtures",
+);
 
 const ALICE_VIEWING_KEY = BigInt("0xA11CE");
 const BOB_VIEWING_KEY = BigInt("0xB0B");
@@ -36,6 +42,8 @@ const devnet = new Devnet();
 const env = await devnet.initialize();
 const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
+// Source-built pool: its class hash is never pinned, so force compatibility
+// calldata until the in-repo contract accepts the screening suffix.
 const transfers = {
   alice: createPrivateTransfers({
     account: env.alice,
@@ -43,6 +51,7 @@ const transfers = {
     provingProvider: new CallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
+    poolMode: "compatibility",
   }),
   bob: createPrivateTransfers({
     account: env.bob,
@@ -50,6 +59,7 @@ const transfers = {
     provingProvider: new CallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
+    poolMode: "compatibility",
   }),
 };
 
@@ -63,7 +73,10 @@ await env.alice.execute({
 
 // Register bob via outside execution (admin submits on behalf of bob)
 console.log("[2/6] Registering Bob...");
-const { callAndProof: bobReg } = await transfers.bob.build().register().execute();
+const { callAndProof: bobReg } = await transfers.bob
+  .build()
+  .register()
+  .execute();
 await devnet.executeOutside(bobReg);
 
 // Alice: deposit 100 STRK + transfer 50 to bob (representative scenario)
@@ -105,7 +118,10 @@ console.log("Scenario complete, generating fixtures...");
 const spawnTimestamp = Math.floor(Date.now() / 1000);
 
 // All dumps happen while devnet is still running — no race conditions.
-await dumpContractState(env, join(DISCOVERY_CORE_FIXTURES, "devnet-state.json"));
+await dumpContractState(
+  env,
+  join(DISCOVERY_CORE_FIXTURES, "devnet-state.json"),
+);
 await dumpDevnet(devnet.url, DISCOVERY_SERVICE_FIXTURES);
 writeFileSync(
   join(DISCOVERY_SERVICE_FIXTURES, "devnet-dump.metadata.json"),
@@ -120,8 +136,8 @@ writeFileSync(
       strk_token: env.strk,
     },
     null,
-    2
-  ) + "\n"
+    2,
+  ) + "\n",
 );
 
 await devnet.cleanup();
@@ -133,7 +149,7 @@ console.log("Fixtures written.");
  */
 async function dumpContractState(
   env: DevnetEnvironment,
-  outputPath: string
+  outputPath: string,
 ): Promise<void> {
   const latestBlock = await env.provider.getBlockNumber();
   const storageState: Record<string, string> = {};

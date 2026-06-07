@@ -125,6 +125,8 @@ export async function createE2eTestEnv(
   });
   await indexer.waitUntilReady(devnet.url);
 
+  // Source-built pool: its class hash is never pinned, so force compatibility
+  // calldata until the in-repo contract accepts the screening suffix.
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
@@ -135,6 +137,7 @@ export async function createE2eTestEnv(
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
+      poolMode: "compatibility",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
@@ -145,6 +148,7 @@ export async function createE2eTestEnv(
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
+      poolMode: "compatibility",
     }),
   };
 

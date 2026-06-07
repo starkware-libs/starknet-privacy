@@ -76,6 +76,8 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     // total-only: exercises total_n_channels
@@ -110,6 +112,8 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes } = await aliceTransfers.discoverNotes();
@@ -127,6 +131,8 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes: bobNotes } = await bobTransfers.discoverNotes();

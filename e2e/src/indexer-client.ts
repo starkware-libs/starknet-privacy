@@ -23,7 +23,8 @@ async function findFreePort(): Promise<number> {
     const srv = createServer();
     srv.listen(0, "127.0.0.1", () => {
       const addr = srv.address();
-      if (!addr || typeof addr === "string") return reject(new Error("bad addr"));
+      if (!addr || typeof addr === "string")
+        return reject(new Error("bad addr"));
       const port = addr.port;
       srv.close(() => resolve(port));
     });
@@ -34,7 +35,8 @@ async function findFreePort(): Promise<number> {
 export class IndexerClient {
   private child: ChildProcess;
   private lines: string[] = [];
-  private waiters: Array<{ pattern: string; resolve: (line: string) => void }> = [];
+  private waiters: Array<{ pattern: string; resolve: (line: string) => void }> =
+    [];
   private _apiPort: number;
   private logStream?: WriteStream;
   private rl?: Interface;
@@ -134,12 +136,19 @@ export class IndexerClient {
    * Registers the log listener BEFORE creating the block to avoid
    * the race where the indexer processes the block before the listener is set up.
    */
-  async waitForBlock(rpcUrl: string, timeoutMs = E2E_TIMEOUTS.indexerLog): Promise<string> {
+  async waitForBlock(
+    rpcUrl: string,
+    timeoutMs = E2E_TIMEOUTS.indexerLog,
+  ): Promise<string> {
     const logPromise = this.waitForNewLog("New block #", timeoutMs);
     await fetch(rpcUrl, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "devnet_createBlock",
+      }),
     });
     return logPromise;
   }
