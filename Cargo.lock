@@ -2684,6 +2684,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "discovery-core",
+ "futures-executor",
  "serde",
  "serde_json",
  "starknet-rust-core",
