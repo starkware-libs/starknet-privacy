@@ -9,9 +9,9 @@ use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_reentrancy,
-    deploy_mock_return_garbage, deploy_mock_return_trailing_garbage, deploy_mock_swap_executor,
-    deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_echo_with_salt,
+    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_return_trailing_garbage,
+    deploy_mock_swap_executor, deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{
@@ -883,6 +883,45 @@ fn test_deposit_to_open_note() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
+}
+
+#[test]
+fn test_deposit_to_open_note_blocked_depositor() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let mut user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    let token_addr = token.contract_address();
+    let echo_executor = test.privacy.echo_executor;
+
+    user.set_viewing_key_e2e();
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
+
+    let create_note_input = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+    token.supply(address: echo_executor, :amount);
+    token.approve(owner: echo_executor, spender: test.privacy.address, amount: amount.into());
+    let (note_id, actions) = user.create_and_deposit_to_open_note(:create_note_input, :amount);
+
+    // The depositor for echo-executor open-note deposits is the Invoke target (echo_executor).
+    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: true);
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_BLOCKED);
+
+    // Nothing transferred and the note is still empty (the revert undid all state).
+    assert_eq!(token.balance_of(address: echo_executor), amount.into());
+    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
+
+    // Unblocking lets the same deposit succeed.
+    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: false);
+    test.privacy.apply_actions(:actions);
+
+    let deposited_note = test.privacy.get_note(:note_id);
+    let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(token.balance_of(address: echo_executor), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
 #[test]

@@ -105,3 +105,12 @@ pub struct ProofValidityBlocksSet {
     /// The number of blocks that a proof is valid for.
     pub proof_validity_blocks: u64,
 }
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct DepositorBlockSet {
+    /// The depositor address whose block state changed.
+    #[key]
+    pub depositor: ContractAddress,
+    /// Whether the depositor is now blocked.
+    pub blocked: bool,
+}
