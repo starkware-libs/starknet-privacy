@@ -10,6 +10,7 @@ import {
   CairoAssembly,
   CompiledContract,
   constants,
+  type BigNumberish,
   Contract,
   EDataAvailabilityMode,
   ETransactionVersion,
@@ -72,6 +73,12 @@ const DEVNET_RESOURCE_BOUNDS = {
 export interface DevnetConfig {
   /** Number of predeployed user accounts (excludes admin). Default: 2 (alice, bob). */
   userAccounts?: number;
+  /**
+   * Auditor public key the pool is deployed with (constructor arg). Default
+   * `"0x1"` (a dummy). Set this to a real derived public key when a test needs
+   * the auditor to recover users' viewing keys (e.g. the solvency audit).
+   */
+  auditorPublicKey?: BigNumberish;
 }
 
 export interface DevnetEnvironment {
@@ -95,7 +102,10 @@ export class Devnet {
   private exitHandler?: () => void;
 
   constructor(config?: DevnetConfig) {
-    this.config = { userAccounts: Math.max(config?.userAccounts ?? 2, 2) };
+    this.config = {
+      userAccounts: Math.max(config?.userAccounts ?? 2, 2),
+      auditorPublicKey: config?.auditorPublicKey ?? "0x1",
+    };
   }
 
   /** HTTP RPC URL of the running devnet (e.g. `http://127.0.0.1:5050`). */
@@ -338,7 +348,7 @@ export class Devnet {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
-          "0x1", // auditor_public_key (dummy value)
+          this.config.auditorPublicKey, // auditor_public_key (default dummy 0x1)
           "450", // proof_validity_blocks (~15 min at 2s/block)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
