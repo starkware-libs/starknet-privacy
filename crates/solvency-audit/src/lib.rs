@@ -8,6 +8,7 @@
 pub mod backend;
 pub mod error;
 pub mod fetch;
+pub mod infra_slots;
 pub mod owned_slots;
 pub mod snapshot;
 pub mod state_source;

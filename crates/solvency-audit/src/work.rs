@@ -17,6 +17,7 @@ use starknet_types_core::felt::Felt;
 
 use crate::backend::SnapshotBackend;
 use crate::error::AuditError;
+use crate::infra_slots::static_infra_slots;
 use crate::owned_slots::{registration_slots, OwnedSlot};
 use crate::snapshot::Snapshot;
 use crate::walk::{walk_incoming_channels, walk_notes, walk_outgoing_channels, walk_subchannels};
@@ -87,6 +88,11 @@ pub fn analyze(
         n_users: user_addrs.len(),
         ..Default::default()
     };
+    // Infrastructure slots (singletons + static component vars) are owner-less, so
+    // mark them once up front (DESIGN.md §5.4).
+    for infra in static_infra_slots() {
+        snapshot.set_kind(infra.slot, infra.kind);
+    }
     let mut unspent_by_token: HashMap<Felt, u128> = HashMap::new();
     for attribution in &attributions {
         summary.n_recovery_failures += usize::from(attribution.recovery_failed);
@@ -500,6 +506,45 @@ mod tests {
         let result = Snapshot::from_json_bytes(&out).unwrap();
         assert_eq!(result.balances.get(&token), Some(&Felt::from(1000u64)));
         assert!(result.slots[&anomaly].kind.is_none());
+    }
+
+    #[test]
+    fn test_analyze_classifies_infra_slots() {
+        let f = fixture();
+        let auditor_private_key = felt(&f["inputs"]["auditorPrivateKey"]);
+        let auditor_key = SecretFelt::new(auditor_private_key);
+        // No users; just the singleton + a static component slot, both non-zero.
+        let mut slots = HashMap::new();
+        slots.insert(storage_slots::auditor_public_key(), Felt::from(0x42u64));
+        let reentrancy = static_infra_slots()
+            .into_iter()
+            .find(|s| s.kind == "component:reentrancy_guard:ReentrancyGuard_entered")
+            .unwrap()
+            .slot;
+        slots.insert(reentrancy, Felt::ONE);
+
+        let snapshot = snapshot_from(slots, vec![], derive_public_key(&auditor_key));
+        let (out, summary) =
+            analyze(&snapshot.to_json_bytes().unwrap(), auditor_private_key).unwrap();
+
+        assert!(summary.anomaly_slots.is_empty());
+        assert_eq!(
+            summary.kind_counts.get("singleton:auditor_public_key"),
+            Some(&1)
+        );
+        assert_eq!(
+            summary
+                .kind_counts
+                .get("component:reentrancy_guard:ReentrancyGuard_entered"),
+            Some(&1)
+        );
+        let result = Snapshot::from_json_bytes(&out).unwrap();
+        assert_eq!(
+            result.slots[&storage_slots::auditor_public_key()]
+                .kind
+                .as_deref(),
+            Some("singleton:auditor_public_key")
+        );
     }
 
     #[test]
