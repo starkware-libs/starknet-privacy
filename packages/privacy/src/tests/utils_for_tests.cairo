@@ -1898,6 +1898,24 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_proof_validity_blocks(:proof_validity_blocks)
     }
 
+    fn set_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress, blocked: bool) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.security_governor,
+        );
+        self.admin.set_depositor_blocked(:depositor, :blocked);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_depositor_blocked(
+        self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_admin.set_depositor_blocked(:depositor, :blocked)
+    }
+
+    fn is_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
+        self.views.is_depositor_blocked(:depositor)
+    }
+
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
         self.views.get_fee_amount()
     }
@@ -1979,9 +1997,17 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn invoke_external_echo_deposits(
         self: @PrivacyCfg, deposits: Span<OpenNoteDeposit>,
     ) -> InvokeExternalInput {
+        self.invoke_external_echo_deposits_to(executor: *self.echo_executor, :deposits)
+    }
+
+    /// Like `invoke_external_echo_deposits`, but targets a caller-chosen echo executor — used to
+    /// exercise deposits originating from a second, distinct depositor.
+    fn invoke_external_echo_deposits_to(
+        self: @PrivacyCfg, executor: ContractAddress, deposits: Span<OpenNoteDeposit>,
+    ) -> InvokeExternalInput {
         let mut calldata: Array<felt252> = array![];
         deposits.serialize(ref calldata);
-        InvokeExternalInput { contract_address: *self.echo_executor, calldata: calldata.span() }
+        InvokeExternalInput { contract_address: executor, calldata: calldata.span() }
     }
 }
 
@@ -2189,8 +2215,14 @@ fn deploy_mock_amm() -> ContractAddress {
 }
 
 pub(crate) fn deploy_mock_echo() -> ContractAddress {
+    deploy_mock_echo_with_salt(salt: 0)
+}
+
+/// Deploys a `MockEcho` at a caller-chosen `salt`, so tests needing a second, distinct echo
+/// executor (e.g. a second depositor) can deploy one at a different address.
+pub(crate) fn deploy_mock_echo_with_salt(salt: felt252) -> ContractAddress {
     let class_hash = declare(contract: "MockEcho").unwrap_syscall().contract_class().class_hash;
-    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_echo_for_test(
         class_hash: *class_hash, :deployment_params,
     )
