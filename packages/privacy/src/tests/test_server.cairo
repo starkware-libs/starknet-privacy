@@ -9,9 +9,9 @@ use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_reentrancy,
-    deploy_mock_return_garbage, deploy_mock_return_trailing_garbage, deploy_mock_swap_executor,
-    deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_echo_with_salt,
+    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_return_trailing_garbage,
+    deploy_mock_swap_executor, deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{
