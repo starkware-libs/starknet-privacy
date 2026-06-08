@@ -95,6 +95,8 @@ pub mod Privacy {
         notes: Map<felt252, Note>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
+        /// Map of depositor addresses blocked from funding open-note deposits.
+        blocked_depositors: Map<ContractAddress, bool>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
@@ -135,6 +137,7 @@ pub mod Privacy {
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
         ProofValidityBlocksSet: events::ProofValidityBlocksSet,
+        DepositorBlockSet: events::DepositorBlockSet,
     }
 
     #[constructor]
@@ -786,6 +789,9 @@ pub mod Privacy {
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             let mut undeposited_open_notes: usize = Zero::zero();
+            // All deposit-to-open-note actions must share one depositor, screened against the
+            // block list the first time it's seen. Zero means "none yet" (safe: an Invoke
+            // returning deposits always has a non-zero target).
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
@@ -794,12 +800,19 @@ pub mod Privacy {
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::Invoke(input) => {
                         let open_note_deposits = self._apply_invoke(:input);
-                        // Apply deposits to open notes returned by Invoke.
-                        for deposit in open_note_deposits {
-                            self
-                                ._deposit_to_open_note(
-                                    depositor: input.contract_address, deposit: *deposit,
-                                );
+                        if !open_note_deposits.is_empty() {
+                            let open_note_depositor = input.contract_address;
+                            assert(
+                                !self.blocked_depositors.read(open_note_depositor),
+                                errors::DEPOSITOR_BLOCKED,
+                            );
+                            // Apply deposits to open notes returned by Invoke.
+                            for deposit in open_note_deposits {
+                                self
+                                    ._deposit_to_open_note(
+                                        depositor: open_note_depositor, deposit: *deposit,
+                                    );
+                            }
                         }
                         undeposited_open_notes = undeposited_open_notes
                             .checked_sub(open_note_deposits.len())
@@ -966,6 +979,10 @@ pub mod Privacy {
         fn get_proof_validity_blocks(self: @ContractState) -> u64 {
             self.proof_validity_blocks.read()
         }
+
+        fn is_depositor_blocked(self: @ContractState, depositor: ContractAddress) -> bool {
+            self.blocked_depositors.read(depositor)
+        }
     }
 
     #[abi(embed_v0)]
@@ -996,6 +1013,15 @@ pub mod Privacy {
         fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
             self.roles.only_app_governor();
             self._set_proof_validity_blocks(:proof_validity_blocks);
+        }
+
+        fn set_depositor_blocked(
+            ref self: ContractState, depositor: ContractAddress, blocked: bool,
+        ) {
+            self.roles.only_security_governor();
+            assert(depositor.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
+            self.blocked_depositors.entry(depositor).write(blocked);
+            self.emit(events::DepositorBlockSet { depositor, blocked });
         }
     }
 
