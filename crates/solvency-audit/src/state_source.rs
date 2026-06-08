@@ -47,6 +47,12 @@ impl<P: Provider> JsonRpcStateSource<P> {
     pub fn with_provider(provider: P, contract: Felt) -> Self {
         Self { provider, contract }
     }
+
+    /// The underlying provider, so `fetch` can reuse this client for the event
+    /// scan and meta reads instead of opening a second connection.
+    pub fn provider(&self) -> &P {
+        &self.provider
+    }
 }
 
 #[async_trait]
