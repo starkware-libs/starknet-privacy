@@ -2688,9 +2688,11 @@ dependencies = [
  "serde",
  "serde_json",
  "starknet-rust-core",
+ "starknet-rust-providers",
  "starknet-types-core",
  "thiserror 1.0.69",
  "tokio",
+ "url",
 ]
 
 [[package]]
