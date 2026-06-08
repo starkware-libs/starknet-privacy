@@ -84,6 +84,10 @@ jobs:
       - name: Build discovery service
         run: cargo build --release -p discovery-service
 
+      # Build solvency-audit CLIs (e2e spawns audit-fetch/audit-analyze from target/debug/)
+      - name: Build solvency-audit
+        run: cargo build -p solvency-audit
+
       # Build SDK (e2e depends on it via file: link)
       - name: Build SDK
         run: cd sdk && npm ci && npm run build
