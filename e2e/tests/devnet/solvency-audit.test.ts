@@ -121,4 +121,45 @@ describe("solvency-audit E2E", () => {
     // Storage holds far more than the infra slots (channels/notes were written).
     expect(Object.keys(snapshot.slots).length).toBeGreaterThan(10);
   });
+
+  it("analyze recovers users and reconciles the STRK note sum with balanceOf", async () => {
+    const env = test.env;
+    const to = await env.provider.getBlockNumber();
+    const snapshot = await runAuditFetch({
+      rpcUrl: devnet.url,
+      contract: env.privacy.address,
+      from: 0,
+      to,
+    });
+    const { snapshot: classified, summary } = await runAuditAnalyze({
+      snapshot,
+      auditorKey: AUDITOR_PRIVATE_KEY,
+    });
+
+    // The auditor recovered both users' viewing keys cleanly.
+    const count = (label: string): number =>
+      Number(summary.match(new RegExp(`${label}:\\s*(\\d+)`))![1]);
+    expect(count("users processed")).toBe(2);
+    expect(count("recovery failures")).toBe(0);
+    expect(count("public-key mismatches")).toBe(0);
+    expect(count("foreign auditor-key refs")).toBe(0);
+
+    // Solvency: the summed unspent STRK notes equal the pool's on-chain balance.
+    // Alice deposited 100 STRK; after transferring 50 to Bob the pool still holds
+    // 100 (50 Alice change + 50 Bob), all unspent.
+    const balanceResult = await env.provider.callContract({
+      contractAddress: env.strk,
+      entrypoint: "balanceOf",
+      calldata: [env.privacy.address],
+    });
+    const poolBalance =
+      num.toBigInt(balanceResult[0]) + (num.toBigInt(balanceResult[1]) << 128n);
+    expect(poolBalance).toBe(100n);
+
+    const strkKey = Object.keys(classified.balances).find(
+      (token) => num.toBigInt(token) === num.toBigInt(env.strk),
+    );
+    expect(strkKey).toBeDefined();
+    expect(num.toBigInt(classified.balances[strkKey!])).toBe(poolBalance);
+  });
 });
