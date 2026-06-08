@@ -19,6 +19,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "near_intents_anonymizer"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
+]
+
+[[package]]
 name = "openzeppelin"
 version = "3.0.0"
 source = "registry+https://scarbs.xyz/"
@@ -162,6 +173,7 @@ version = "0.1.0"
 dependencies = [
  "ekubo",
  "ekubo_swap_anonymizer",
+ "near_intents_anonymizer",
  "openzeppelin",
  "snforge_std",
  "starkware_utils",

@@ -10,8 +10,9 @@ use privacy::objects::{EncSubchannelInfo, EncUserAddr, OpenNoteDeposit};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
-    InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
-    constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
+    CreateOpenNoteInputWithDepositorTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, constants, decrypt_channel_info,
+    decrypt_outgoing_channel_info, decrypt_subchannel_token,
 };
 use privacy::utils::constants::{ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
 use privacy::utils::{
@@ -3881,7 +3882,8 @@ fn test_execute_use_note_swap() {
     let out_token_addr = out_token.contract_address();
     user.open_subchannel_e2e(recipient: user, token_addr: out_token_addr, index: 1);
     let create_open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0)
+        .with_depositor(depositor: test.privacy.swap_executor.address);
     test.privacy.increase_token_balance(:token, :amount);
 
     let channel_key = user.compute_channel_key(recipient: user);
@@ -4000,7 +4002,10 @@ fn test_execute_use_note_swap() {
         user_addr: user.address,
     );
     let expected_event_open_note_created = events::OpenNoteCreated {
-        enc_recipient_addr, token: out_token_addr, note_id,
+        enc_recipient_addr,
+        depositor: create_open_note_input.depositor,
+        token: out_token_addr,
+        note_id,
     };
     assert_expected_event_emitted(
         spied_event: events[1],
@@ -4044,7 +4049,8 @@ fn test_execute_deposit_swap() {
     let token_out_addr = token_out.contract_address();
     user.open_subchannel_e2e(recipient: user, token_addr: token_out_addr, index: 1);
     let create_open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: token_out_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: token_out_addr, index: 0)
+        .with_depositor(depositor: test.privacy.swap_executor.address);
     user.cheat_create_open_note(create_note_input: create_open_note_input);
     let deposit_input = DepositInput { token: token_addr, amount: 100 };
     let channel_key = user.compute_channel_key(recipient: user);
@@ -5548,7 +5554,9 @@ fn test_execute_create_open_note() {
     user_1.open_channel_with_token_e2e(recipient: user_2, :token_addr, outgoing_channel_index: 0);
     let index = 0;
     let random = user_1.get_random();
-    let create_note_input = user_1.new_open_note(recipient: user_2, :token_addr, :index, :random);
+    let create_note_input = user_1
+        .new_open_note(recipient: user_2, :token_addr, :index, :random)
+        .with_depositor(depositor: test.privacy.echo_executor);
 
     // Pre-compute note_id and build the InvokeExternal for the echo executor.
     let (note_id, expected_note) = user_1
@@ -5613,6 +5621,7 @@ fn test_execute_create_open_note() {
     assert_eq!(events.len(), 2);
     let expected_event = events::OpenNoteCreated {
         enc_recipient_addr: user_2.compute_enc_user_addr(random: random.into()),
+        depositor: create_note_input.depositor,
         token: token_addr,
         note_id,
     };
@@ -5654,11 +5663,13 @@ fn test_create_open_and_enc_notes_same_tx() {
 
     // Create 4 notes in order: open -> enc -> open -> enc.
     let open_0 = user_1
-        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 0)
+        .with_depositor(depositor: test.privacy.echo_executor);
     let enc_1 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 1);
     let open_2 = user_1
-        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 2);
+        .new_open_note_with_generated_random(recipient: user_2, :token_addr, index: 2)
+        .with_depositor(depositor: test.privacy.echo_executor);
     let enc_3 = user_1
         .new_enc_note_with_generated_salt(recipient: user_2, :token_addr, amount: 0, index: 3);
 
@@ -5958,7 +5969,8 @@ fn test_swap_client_action() {
 
     // Create an open note for the swap output.
     let create_open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0)
+        .with_depositor(depositor: swap_executor_addr);
     let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
 
     // === Verify balances before swap ===
@@ -6045,7 +6057,10 @@ fn test_swap_client_action() {
         user_addr: user.address,
     );
     let expected_create_event = events::OpenNoteCreated {
-        enc_recipient_addr, token: out_token_addr, note_id: open_note_id,
+        enc_recipient_addr,
+        depositor: create_open_note_input.depositor,
+        token: out_token_addr,
+        note_id: open_note_id,
     };
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
@@ -6305,7 +6320,8 @@ fn test_invoke_external_swap_deposit_errors() {
 
     // Create an open note for the swap output.
     let create_open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 1);
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 1)
+        .with_depositor(depositor: swap_executor_addr);
 
     let note_id = compute_note_id(:channel_key, token: out_token_addr, index: 1);
     let invoke_external_input_1 = user
@@ -6361,7 +6377,8 @@ fn test_invoke_external_swap_deposit_errors() {
     let use_note_input_5 = UseNoteInput { channel_key, token: in_token_addr, index: 5 };
 
     let create_open_note_input_token_mismatch = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: in_token_addr, index: 6);
+        .new_open_note_with_generated_random(recipient: user, token_addr: in_token_addr, index: 6)
+        .with_depositor(depositor: swap_executor_addr);
     user.cheat_create_open_note(create_note_input: create_open_note_input_token_mismatch);
 
     let note_id = compute_note_id(:channel_key, token: in_token_addr, index: 6);
@@ -6438,7 +6455,8 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
 
     // Create open note for swap output.
     let create_open_note_input = user
-        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0);
+        .new_open_note_with_generated_random(recipient: user, token_addr: out_token_addr, index: 0)
+        .with_depositor(depositor: swap_executor_addr);
     let (open_note_id, _) = user.compute_open_note(create_note_input: create_open_note_input);
 
     // === Verify balances BEFORE everything ===
@@ -6568,7 +6586,10 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         user_addr: user.address,
     );
     let expected_create_event = events::OpenNoteCreated {
-        enc_recipient_addr, token: out_token_addr, note_id: open_note_id,
+        enc_recipient_addr,
+        depositor: create_open_note_input.depositor,
+        token: out_token_addr,
+        note_id: open_note_id,
     };
     assert_expected_event_emitted(
         spied_event: events_after[1],

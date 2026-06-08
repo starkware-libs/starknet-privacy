@@ -411,7 +411,7 @@ describe("Private Transfers Integration", () => {
           .deposit({ amount: 100n })
           .withdraw({ recipient: swapAnonymizer.address, amount: 10n })
         .with(env.bee)
-          .transfer({ recipient: env.alice.address, amount: Open })
+          .transfer({ recipient: env.alice.address, amount: Open, depositor: swapAnonymizer.address })
         .done()
         .invoke(({ openNotes }) => {
           expect(openNotes.length).toBe(1);

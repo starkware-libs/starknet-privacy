@@ -402,8 +402,8 @@ pub(crate) fn to_write_once_action<T, +Serde<T>, +Store<T>, +Drop<T>>(
     ServerAction::WriteOnce(WriteOnceInput { storage_address, value: serialized_value.span() })
 }
 
-pub(crate) fn open_note(token: ContractAddress) -> Note {
-    Note { packed_value: OPEN_NOTE_PACKED_VALUE, token }
+pub(crate) fn open_note(token: ContractAddress, depositor: ContractAddress) -> Note {
+    Note { packed_value: OPEN_NOTE_PACKED_VALUE, token, depositor }
 }
 
 #[derive(Drop, Serde, Debug, Copy)]

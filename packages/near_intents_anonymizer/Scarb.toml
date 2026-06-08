@@ -1,0 +1,41 @@
+[package]
+name = "near_intents_anonymizer"
+version.workspace = true
+edition.workspace = true
+license-file.workspace = true
+
+[tool]
+fmt.workspace = true
+scarb.workspace = true
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+starkware_utils.workspace = true
+privacy = { path = "../privacy" }
+
+[dev-dependencies]
+assert_macros.workspace = true
+snforge_std.workspace = true
+starkware_utils_testing.workspace = true
+
+[features]
+test_utils = []
+
+[lib]
+
+[[test]]
+name = "near_intents_anonymizer_unittest"
+build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
+    "near_intents_anonymizer::tests::deploy_probe::DeployProbe",
+    "near_intents_anonymizer::tests::mock_pool::MockPool",
+]
+
+[scripts]
+test = "snforge test"
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+casm-add-pythonic-hints = true

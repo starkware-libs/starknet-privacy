@@ -83,6 +83,7 @@ describe("Ekubo swap on devnet", () => {
       .transfer({
         recipient: de.alice.address,
         amount: Open,
+        depositor: executorAddress,
       })
       .done()
       .invoke((args) => {

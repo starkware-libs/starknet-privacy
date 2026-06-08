@@ -130,7 +130,8 @@ fn test_open_note_packed_value_decode_note_amount() {
     for amount in amounts.span() {
         nonce += 1;
         let token: ContractAddress = hash(['TOKEN', nonce.into()].span()).try_into().unwrap();
-        let note = open_note(:token);
+        let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
+        let note = open_note(:token, :depositor);
         let dec_amount = decode_note_amount(
             packed_value: note.packed_value, channel_key: Zero::zero(), :token, index: Zero::zero(),
         );
@@ -149,11 +150,13 @@ fn test_open_note_packed_value_decode_note_amount() {
 #[test]
 fn test_open_note() {
     let token = 'TOKEN'.try_into().unwrap();
-    let note = open_note(:token);
+    let depositor = 'DEPOSITOR'.try_into().unwrap();
+    let note = open_note(:token, :depositor);
     let (salt, amount) = unpack(note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
     assert_eq!(amount, 0);
     assert_eq!(note.token, token);
+    assert_eq!(note.depositor, depositor);
 }
 
 #[test]

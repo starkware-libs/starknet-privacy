@@ -52,13 +52,11 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
         .done()
         .invoke(({ openNotes, withdrawals }) => {
-          // TODO: once contract enforces "no unfilled open notes at tx end",
-          // this should be 1 and this flow should revert if an extra open note is left unfilled.
           expect(openNotes.length).toBe(2);
           expect(openNotes[0].token).toBe(bee);
           expect(withdrawals.length).toBe(1);
@@ -125,7 +123,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: swapAmount })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
         .done()
         .with(env.bee, (t) => t.withdraw({ recipient: env.alice.address, amount: feeAmount }))
         .invoke(({ openNotes }) => {
@@ -193,7 +191,7 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
         .withdraw({ recipient: anonymizer.address, amount: 10n })
         .surplusTo(env.alice.address, false)
         .with(env.bee)
-        .transfer({ recipient: env.alice.address, amount: Open })
+        .transfer({ recipient: env.alice.address, amount: Open, depositor: helper.address })
         .done()
         .invoke(({ openNotes, withdrawals }) => {
           expect(openNotes.length).toBe(1);
