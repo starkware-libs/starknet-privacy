@@ -1,6 +1,7 @@
 //! The online FETCH stage (DESIGN.md §4): reconstructs the contract's storage at
 //! a pinned block by folding state diffs, scans `ViewingKeySet` events for the
-//! candidate user list, records provenance meta, and serializes the snapshot.
+//! candidate user list and `RoleGranted` events for infra grantees, records
+//! provenance meta, and serializes the snapshot.
 
 use std::collections::{BTreeMap, HashMap};
 
@@ -20,6 +21,8 @@ use crate::state_source::{JsonRpcStateSource, StateSource};
 const EVENT_CHUNK_SIZE: u64 = 1024;
 /// `users` entry kind for a `ViewingKeySet`-registered user (matches `analyze`).
 const VIEWING_KEY_USER: &str = "viewing_key";
+/// `users` entry kind for an address granted a component role (matches `analyze`).
+const INFRA_GRANTEE_USER: &str = "infra_grantee";
 
 /// Why FETCH could not produce a snapshot.
 #[derive(Debug)]
@@ -84,25 +87,29 @@ pub async fn fetch(
         .get(&storage_slots::auditor_public_key())
         .map_or(Felt::ZERO, |entry| entry.value);
 
-    snapshot.users = fetch_viewing_key_users(provider, contract, from, to).await?;
+    // Candidate viewing-key users (incoming/outgoing attribution) plus role
+    // grantees (infra `role_member` attribution, §5.4).
+    let mut users = fetch_viewing_key_users(provider, contract, from, to).await?;
+    users.extend(fetch_role_grantees(provider, contract, from, to).await?);
+    snapshot.users = users;
     snapshot.meta = build_meta(to, state_root, contract, auditor_public_key);
     Ok(snapshot.to_json_bytes()?)
 }
 
-/// Paginates the `ViewingKeySet` event scan over `from..=to` and returns the
-/// distinct registered users (DESIGN.md §4.2). Best-effort per §2: under the bug
-/// events can be omitted, so this is "users we can attribute," not a complete set.
-async fn fetch_viewing_key_users<P: Provider + Sync>(
+/// Paginates a single-selector event scan over `contract` for `from..=to`,
+/// following continuation tokens to the last page.
+async fn scan_events<P: Provider + Sync>(
     provider: &P,
     contract: Felt,
     from: u64,
     to: u64,
-) -> Result<Vec<User>, ProviderError> {
+    selector: Felt,
+) -> Result<Vec<EmittedEvent>, ProviderError> {
     let filter = EventFilter {
         from_block: Some(BlockId::Number(from)),
         to_block: Some(BlockId::Number(to)),
         address: Some(AddressFilter::Single(contract)),
-        keys: Some(vec![vec![starknet_keccak(b"ViewingKeySet")]]),
+        keys: Some(vec![vec![selector]]),
     };
 
     let mut events = Vec::new();
@@ -117,7 +124,47 @@ async fn fetch_viewing_key_users<P: Provider + Sync>(
             break;
         }
     }
+    Ok(events)
+}
+
+/// Scans `ViewingKeySet` events over `from..=to` for the distinct registered
+/// users (DESIGN.md §4.2). Best-effort per §2: under the bug events can be
+/// omitted, so this is "users we can attribute," not a complete set.
+async fn fetch_viewing_key_users<P: Provider + Sync>(
+    provider: &P,
+    contract: Felt,
+    from: u64,
+    to: u64,
+) -> Result<Vec<User>, ProviderError> {
+    let events = scan_events(
+        provider,
+        contract,
+        from,
+        to,
+        starknet_keccak(b"ViewingKeySet"),
+    )
+    .await?;
     Ok(viewing_key_users(&events))
+}
+
+/// Scans `RoleGranted` events over `from..=to` for the distinct addresses
+/// granted a component role (DESIGN.md §5.4), used to attribute `role_member`
+/// slots. Noise-reduction only — not part of the security guarantee.
+async fn fetch_role_grantees<P: Provider + Sync>(
+    provider: &P,
+    contract: Felt,
+    from: u64,
+    to: u64,
+) -> Result<Vec<User>, ProviderError> {
+    let events = scan_events(
+        provider,
+        contract,
+        from,
+        to,
+        starknet_keccak(b"RoleGranted"),
+    )
+    .await?;
+    Ok(role_grantees(&events))
 }
 
 /// Extracts distinct user addresses from `ViewingKeySet` events, preserving
@@ -132,6 +179,23 @@ fn viewing_key_users(events: &[EmittedEvent]) -> Vec<User> {
         .map(|addr| User {
             addr,
             kind: VIEWING_KEY_USER.to_string(),
+        })
+        .collect()
+}
+
+/// Extracts distinct grantee addresses from `RoleGranted` events, preserving
+/// first-seen order. The event has no `#[key]` fields, so data layout is
+/// `[role, account, sender]` and the grantee is `data[1]`; malformed events are
+/// skipped.
+fn role_grantees(events: &[EmittedEvent]) -> Vec<User> {
+    let mut seen = std::collections::HashSet::new();
+    events
+        .iter()
+        .filter_map(|event| event.data.get(1).copied())
+        .filter(|addr| seen.insert(*addr))
+        .map(|addr| User {
+            addr,
+            kind: INFRA_GRANTEE_USER.to_string(),
         })
         .collect()
 }
@@ -306,6 +370,50 @@ mod tests {
             event_index: 0,
         };
         assert!(viewing_key_users(&[malformed]).is_empty());
+    }
+
+    fn role_granted_event(role: u64, account: u64) -> EmittedEvent {
+        EmittedEvent {
+            from_address: Felt::from(0xC0_u64),
+            keys: vec![starknet_keccak(b"RoleGranted")],
+            // No #[key] fields: data = [role, account, sender].
+            data: vec![Felt::from(role), Felt::from(account), Felt::from(0x999_u64)],
+            block_hash: None,
+            block_number: Some(1),
+            transaction_hash: Felt::ZERO,
+            transaction_index: 0,
+            event_index: 0,
+        }
+    }
+
+    #[test]
+    fn test_role_grantees_extracts_account_and_dedups() {
+        let events = vec![
+            role_granted_event(0x1, 0xAA),
+            role_granted_event(0x2, 0xAA), // same account, different role
+            role_granted_event(0x1, 0xBB),
+        ];
+        let grantees = role_grantees(&events);
+        assert_eq!(grantees.len(), 2); // distinct accounts AA, BB
+        assert_eq!(grantees[0].addr, Felt::from(0xAA_u64));
+        assert_eq!(grantees[1].addr, Felt::from(0xBB_u64));
+        assert!(grantees.iter().all(|u| u.kind == INFRA_GRANTEE_USER));
+    }
+
+    #[test]
+    fn test_role_grantees_skips_malformed() {
+        // Fewer than two data felts → no account.
+        let malformed = EmittedEvent {
+            from_address: Felt::from(0xC0_u64),
+            keys: vec![starknet_keccak(b"RoleGranted")],
+            data: vec![Felt::from(0x1_u64)],
+            block_hash: None,
+            block_number: Some(1),
+            transaction_hash: Felt::ZERO,
+            transaction_index: 0,
+            event_index: 0,
+        };
+        assert!(role_grantees(&[malformed]).is_empty());
     }
 
     #[test]

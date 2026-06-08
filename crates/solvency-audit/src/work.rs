@@ -17,7 +17,7 @@ use starknet_types_core::felt::Felt;
 
 use crate::backend::SnapshotBackend;
 use crate::error::AuditError;
-use crate::infra_slots::derivable_infra_slots;
+use crate::infra_slots::{derivable_infra_slots, grantee_role_member_slots};
 use crate::owned_slots::{registration_slots, OwnedSlot};
 use crate::snapshot::Snapshot;
 use crate::walk::{walk_incoming_channels, walk_notes, walk_outgoing_channels, walk_subchannels};
@@ -26,6 +26,8 @@ use crate::walk::{walk_incoming_channels, walk_notes, walk_outgoing_channels, wa
 const AUDITOR_PUBLIC_KEY_META: &str = "auditor_public_key";
 /// `users` entry kind that `analyze` attempts to attribute.
 const VIEWING_KEY_USER: &str = "viewing_key";
+/// `users` entry kind for a role grantee (matches `fetch`).
+const INFRA_GRANTEE_USER: &str = "infra_grantee";
 
 /// Aggregate, publishable result of an audit run (no secret-derived data).
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -88,9 +90,19 @@ pub fn analyze(
         n_users: user_addrs.len(),
         ..Default::default()
     };
-    // Infrastructure slots (singletons + static component vars) are owner-less, so
-    // mark them once up front (DESIGN.md §5.4).
-    for infra in derivable_infra_slots() {
+    // Infrastructure slots are owner-less, so mark them once up front (§5.4):
+    // the deterministically-derivable ones, plus the role_member slots for the
+    // grantee addresses FETCH collected from `RoleGranted` events.
+    let grantees: Vec<Felt> = snapshot
+        .users
+        .iter()
+        .filter(|user| user.kind == INFRA_GRANTEE_USER)
+        .map(|user| user.addr)
+        .collect();
+    let infra_slots = derivable_infra_slots()
+        .into_iter()
+        .chain(grantee_role_member_slots(&grantees));
+    for infra in infra_slots {
         snapshot.set_kind(infra.slot, infra.kind);
     }
     let mut unspent_by_token: HashMap<Felt, u128> = HashMap::new();
