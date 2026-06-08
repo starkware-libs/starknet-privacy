@@ -2683,8 +2683,10 @@ name = "solvency-audit"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "discovery-core",
  "serde",
  "serde_json",
+ "starknet-rust-core",
  "starknet-types-core",
  "tokio",
 ]
