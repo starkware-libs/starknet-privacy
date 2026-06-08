@@ -789,6 +789,9 @@ pub mod Privacy {
 
         fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
             let mut undeposited_open_notes: usize = Zero::zero();
+            // All deposit-to-open-note actions must share one depositor, screened against the
+            // block list the first time it's seen. Zero means "none yet" (safe: an Invoke
+            // returning deposits always has a non-zero target).
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
