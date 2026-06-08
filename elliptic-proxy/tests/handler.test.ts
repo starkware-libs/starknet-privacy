@@ -691,4 +691,18 @@ describe("createHandler", () => {
       });
     });
   });
+
+  it("returns 400 for an address >= 2**251", async () => {
+    const configLoader = { get: vi.fn().mockResolvedValue(makeConfig()) };
+    const handler = createHandler(configLoader, mockForward);
+
+    const tooLarge = "0x" + "f".repeat(64); // 2**256-1, beyond the address bound
+    const req = makeRequest({}, tooLarge);
+    const res = makeResponse();
+    await handler(req, res);
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toBe("invalid address");
+    expect(mockForward).not.toHaveBeenCalled();
+  });
 });

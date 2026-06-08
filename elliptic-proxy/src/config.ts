@@ -26,6 +26,8 @@ export interface Config {
   blockOverrideAddresses?: string[];
 }
 
+export const HEX_FELT = /^0x[0-9a-fA-F]+$/;
+
 type SecretFetcher = () => Promise<string>;
 
 export class ConfigLoader {
@@ -156,5 +158,12 @@ function parseLowercaseHexList(
   if (!Array.isArray(value) || !value.every((a) => typeof a === "string")) {
     throw new Error(`config: ${key} must be string[]`);
   }
-  return (value as string[]).map((a) => a.toLowerCase());
+  // Entries are felts (addresses). Validate the format at load so a malformed
+  // entry fails fast instead of silently never matching.
+  return (value as string[]).map((entry) => {
+    if (!HEX_FELT.test(entry)) {
+      throw new Error(`config: ${key} entries must be 0x-prefixed hex felts`);
+    }
+    return entry.toLowerCase();
+  });
 }

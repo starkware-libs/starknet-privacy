@@ -167,4 +167,16 @@ describe("ConfigLoader", () => {
       "blockOverrideAddresses must be string[]"
     );
   });
+
+  it("throws when a list entry is not a hex felt", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      additionalBlockedAddresses: ["not-hex"],
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "additionalBlockedAddresses entries must be 0x-prefixed hex felts"
+    );
+  });
 });
