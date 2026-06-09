@@ -692,6 +692,15 @@ pub trait IViews<T> {
     /// #### Returns
     /// - (`u64`): The number of blocks that a proof is valid for.
     fn get_proof_validity_blocks(self: @T) -> u64;
+
+    /// Returns whether a depositor is blocked from funding open-note deposits.
+    ///
+    /// #### Parameters
+    /// - `depositor` (`ContractAddress`): The depositor address to query.
+    ///
+    /// #### Returns
+    /// - (`bool`): `true` if the depositor is blocked, `false` otherwise.
+    fn is_depositor_blocked(self: @T, depositor: ContractAddress) -> bool;
 }
 
 #[starknet::interface]
@@ -794,4 +803,30 @@ pub trait IAdmin<T> {
     /// #### Access Control
     /// - Only app governor.
     fn set_proof_validity_blocks(ref self: T, proof_validity_blocks: u64);
+
+    /// Add/Remove addresses to/from the block list of depositors to open-note.
+    ///
+    /// A blocked depositor cannot fund any open note: every `_deposit_to_open_note`
+    /// originating from that depositor reverts with
+    /// [`DEPOSITOR_BLOCKED`](privacy::errors::DEPOSITOR_BLOCKED).
+    ///
+    /// #### Parameters
+    /// - `depositor` (`ContractAddress`): The depositor address to block or unblock. Must be
+    /// non-zero.
+    /// - `blocked` (`bool`): `true` to block the depositor, `false` to unblock.
+    ///
+    /// #### Returns
+    /// None
+    ///
+    /// #### Events Emitted
+    /// - [`DepositorBlockSet`](privacy::events::DepositorBlockSet): Emitted with the depositor and
+    /// the new block state.
+    ///
+    /// #### Reverts
+    /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if `depositor`
+    /// is zero.
+    ///
+    /// #### Access Control
+    /// - Only security governor.
+    fn set_depositor_blocked(ref self: T, depositor: ContractAddress, blocked: bool);
 }
