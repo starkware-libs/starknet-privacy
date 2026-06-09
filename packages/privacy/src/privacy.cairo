@@ -22,8 +22,10 @@ pub mod Privacy {
         EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
         OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
     };
+    use privacy::snip12::{ScreeningAttestation, is_screening_attestation_valid};
     use privacy::utils::constants::{
-        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+        CONTRACT_VERSION, DEPOSITOR_VALIDATION_MAX_AGE, INVOKE_SELECTOR, OPEN_NOTE_SALT,
+        STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
@@ -48,8 +50,8 @@ pub mod Privacy {
         storage_write_syscall,
     };
     use starknet::{
-        ContractAddress, SyscallResultTrait, VALIDATED, get_caller_address, get_contract_address,
-        get_execution_info,
+        ContractAddress, SyscallResultTrait, VALIDATED, get_block_timestamp, get_caller_address,
+        get_contract_address, get_execution_info,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -103,6 +105,8 @@ pub mod Privacy {
         enc_private_key: Map<ContractAddress, EncPrivateKey>,
         /// Public key of the auditor used for private key encryptions.
         auditor_public_key: felt252,
+        /// Public key of the off-chain screener who signs attestations of regular pool deposits.
+        screener_public_key: felt252,
         /// Fee amount (in FRI) charged per `apply_actions` call.
         fee_amount: u128,
         /// Address that receives the fee.
@@ -130,6 +134,7 @@ pub mod Privacy {
         Withdrawal: events::Withdrawal,
         Deposit: events::Deposit,
         AuditorPublicKeySet: events::AuditorPublicKeySet,
+        ScreenerPublicKeySet: events::ScreenerPublicKeySet,
         OpenNoteCreated: events::OpenNoteCreated,
         EncNoteCreated: events::EncNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
@@ -145,11 +150,13 @@ pub mod Privacy {
         ref self: ContractState,
         governance_admin: ContractAddress,
         auditor_public_key: felt252,
+        screener_public_key: felt252,
         proof_validity_blocks: u64,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
+        self._set_screener_public_key(:screener_public_key);
         self._set_proof_validity_blocks(:proof_validity_blocks);
     }
 
@@ -725,12 +732,17 @@ pub mod Privacy {
 
     #[abi(embed_v0)]
     pub impl ServerImpl of IServer<ContractState> {
-        fn apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+        fn apply_actions(
+            ref self: ContractState,
+            actions: Span<ServerAction>,
+            screening: Option<ScreeningAttestation>,
+        ) {
             self.reentrancy_guard.start();
             self.pausable.assert_not_paused();
             self.validate_proof(:actions);
             self.collect_fee();
-            self._apply_actions(:actions);
+            let depositor = self._apply_actions(:actions);
+            self._verify_screening(:screening, :depositor);
             self.reentrancy_guard.end();
         }
     }
@@ -787,20 +799,33 @@ pub mod Privacy {
             }
         }
 
-        fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) {
+        /// Applies all server actions and returns the regular-deposit depositor address.
+        fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) -> ContractAddress {
             let mut undeposited_open_notes: usize = Zero::zero();
-            // All deposit-to-open-note actions must share one depositor, screened against the
-            // block list the first time it's seen. Zero means "none yet" (safe: an Invoke
-            // returning deposits always has a non-zero target).
+            // The single regular-pool depositor (`TransferFrom.from_addr`). Zero means "none yet";
+            // every `TransferFrom` in the tx must share it (`MULTIPLE_DEPOSITORS` otherwise).
+            let mut deposit_depositor: ContractAddress = Zero::zero();
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
                     ServerAction::Append(input) => self._apply_append(:input),
-                    ServerAction::TransferFrom(input) => self._apply_transfer_from(:input),
+                    ServerAction::TransferFrom(input) => {
+                        if deposit_depositor.is_zero() {
+                            deposit_depositor = input.from_addr;
+                        } else {
+                            assert(
+                                deposit_depositor == input.from_addr,
+                                internal_errors::MULTIPLE_DEPOSITORS,
+                            );
+                        }
+                        self._apply_transfer_from(:input);
+                    },
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::Invoke(input) => {
                         let open_note_deposits = self._apply_invoke(:input);
                         if !open_note_deposits.is_empty() {
+                            // As we set the input.contract_address as the open_note depositor,
+                            // there can be only one open_note depositor address.
                             let open_note_depositor = input.contract_address;
                             assert(
                                 !self.blocked_depositors.read(open_note_depositor),
@@ -830,6 +855,37 @@ pub mod Privacy {
                 };
             }
             assert(undeposited_open_notes == Zero::zero(), errors::UNDEPOSITED_OPEN_NOTES);
+            deposit_depositor
+        }
+
+        /// Enforces screening of a regular-pool deposit.
+        /// `depositor` is the deposit's `from_addr` (zero when the tx has no deposit).
+        /// The attestation binds only `{depositor, issued_at}`.
+        /// The depositor is proof-bound via `TransferFrom`.
+        fn _verify_screening(
+            self: @ContractState,
+            screening: Option<ScreeningAttestation>,
+            depositor: ContractAddress,
+        ) {
+            match screening {
+                // No attestation: valid case when there is no deposit to screen.
+                Option::None => assert(depositor.is_zero(), errors::SCREENING_REQUIRED),
+                Option::Some(attestation) => {
+                    assert(depositor.is_non_zero(), errors::UNEXPECTED_SCREENING);
+                    let now = get_block_timestamp();
+                    assert(attestation.issued_at <= now, errors::SCREENING_FUTURE_DATED);
+                    assert(
+                        now - attestation.issued_at <= DEPOSITOR_VALIDATION_MAX_AGE,
+                        errors::SCREENING_EXPIRED,
+                    );
+                    assert(
+                        is_screening_attestation_valid(
+                            depositor, attestation, self.screener_public_key.read(),
+                        ),
+                        errors::SCREENING_INVALID_SIGNATURE,
+                    );
+                },
+            }
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
@@ -968,6 +1024,14 @@ pub mod Privacy {
             self.auditor_public_key.read()
         }
 
+        fn get_screener_public_key(self: @ContractState) -> felt252 {
+            self.screener_public_key.read()
+        }
+
+        fn get_version(self: @ContractState) -> felt252 {
+            CONTRACT_VERSION
+        }
+
         fn get_fee_amount(self: @ContractState) -> u128 {
             self.fee_amount.read()
         }
@@ -990,6 +1054,11 @@ pub mod Privacy {
         fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
             self.roles.only_security_governor();
             self._set_auditor_public_key(:auditor_public_key);
+        }
+
+        fn set_screener_public_key(ref self: ContractState, screener_public_key: felt252) {
+            self.roles.only_security_governor();
+            self._set_screener_public_key(:screener_public_key);
         }
 
         fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
@@ -1035,6 +1104,16 @@ pub mod Privacy {
             );
             self.auditor_public_key.write(auditor_public_key);
             self.emit(events::AuditorPublicKeySet { auditor_public_key });
+        }
+
+        fn _set_screener_public_key(ref self: ContractState, screener_public_key: felt252) {
+            assert(screener_public_key.is_non_zero(), errors::INVALID_PUBLIC_KEY);
+            assert(
+                EcPointTrait::new_from_x(x: screener_public_key).is_some(),
+                errors::INVALID_PUBLIC_KEY,
+            );
+            self.screener_public_key.write(screener_public_key);
+            self.emit(events::ScreenerPublicKeySet { screener_public_key });
         }
 
         fn _set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
