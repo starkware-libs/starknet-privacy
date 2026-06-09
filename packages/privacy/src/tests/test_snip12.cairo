@@ -4,14 +4,13 @@ use snforge_std::signature::stark_curve::{
 use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{start_cheat_chain_id, test_address};
 use crate::snip12::{
-    DepositorValidation, ValidationError, compute_message_hash, verify_depositor_validation,
+    DepositorValidation, ScreeningAttestation, compute_message_hash, is_screening_attestation_valid,
 };
 
 const TEST_CHAIN_ID: felt252 = 'TEST';
 const SIGNER_SECRET: felt252 = 'PRIVACY_DEPOSITOR_VALIDATION_SK';
 const OTHER_SIGNER_SECRET: felt252 = 'OTHER_SIGNER_SK';
 const ISSUED_AT: u64 = 1_700_000_000;
-const MAX_AGE: u64 = 60;
 
 fn setup_chain_id() {
     start_cheat_chain_id(test_address(), TEST_CHAIN_ID);
@@ -34,84 +33,56 @@ fn sign_validation(key: StarkCurveKeyPair, validation: DepositorValidation) -> (
     key.sign(hash).unwrap()
 }
 
-fn fresh_signed() -> (StarkCurveKeyPair, DepositorValidation, (felt252, felt252)) {
+/// Signs `sample_validation()` under the trusted signer and returns the key, the validation it
+/// signed (for the depositor/issued_at), and the attestation carrying that signature.
+fn fresh_signed() -> (StarkCurveKeyPair, DepositorValidation, ScreeningAttestation) {
     setup_chain_id();
     let key = trusted_signer();
     let validation = sample_validation();
     let signature = sign_validation(key, validation);
-    (key, validation, signature)
+    let attestation = ScreeningAttestation { issued_at: validation.issued_at, signature };
+    (key, validation, attestation)
 }
 
 #[test]
-fn test_fresh_returns_ok() {
-    let (key, validation, signature) = fresh_signed();
-    verify_depositor_validation(validation, signature, key.public_key, ISSUED_AT, MAX_AGE).unwrap();
+fn test_valid_signature_returns_true() {
+    let (key, validation, attestation) = fresh_signed();
+    assert!(is_screening_attestation_valid(validation.depositor, attestation, key.public_key));
 }
 
 #[test]
-fn test_at_max_age_boundary_returns_ok() {
-    let (key, validation, signature) = fresh_signed();
-    verify_depositor_validation(validation, signature, key.public_key, ISSUED_AT + MAX_AGE, MAX_AGE)
-        .unwrap();
-}
-
-#[test]
-fn test_expired_one_second_past_returns_expired() {
-    let (key, validation, signature) = fresh_signed();
-    let result = verify_depositor_validation(
-        validation, signature, key.public_key, ISSUED_AT + MAX_AGE + 1, MAX_AGE,
+fn test_wrong_signer_returns_false() {
+    let (_, validation, attestation) = fresh_signed();
+    assert!(
+        !is_screening_attestation_valid(
+            validation.depositor, attestation, other_signer().public_key,
+        ),
     );
-    assert!(result == Err(ValidationError::Expired));
 }
 
 #[test]
-fn test_future_dated_returns_future_dated() {
-    let (key, validation, signature) = fresh_signed();
-    let result = verify_depositor_validation(
-        validation, signature, key.public_key, ISSUED_AT - 1, MAX_AGE,
-    );
-    assert!(result == Err(ValidationError::FutureDated));
+fn test_tampered_depositor_returns_false() {
+    let (key, _, attestation) = fresh_signed();
+    // A different depositor than the one the attestation was signed for.
+    let tampered_depositor = 0xDEAD.try_into().unwrap();
+    assert!(!is_screening_attestation_valid(tampered_depositor, attestation, key.public_key));
 }
 
 #[test]
-fn test_wrong_signer_returns_invalid_signature() {
-    let (_, validation, signature) = fresh_signed();
-    let result = verify_depositor_validation(
-        validation, signature, other_signer().public_key, ISSUED_AT, MAX_AGE,
-    );
-    assert!(result == Err(ValidationError::InvalidSignature));
-}
-
-#[test]
-fn test_tampered_depositor_returns_invalid_signature() {
-    let (key, validation, signature) = fresh_signed();
-    let tampered = DepositorValidation {
-        depositor: 0xDEAD.try_into().unwrap(), issued_at: validation.issued_at,
+fn test_tampered_issued_at_returns_false() {
+    let (key, validation, attestation) = fresh_signed();
+    let tampered = ScreeningAttestation {
+        issued_at: attestation.issued_at + 1, signature: attestation.signature,
     };
-    let result = verify_depositor_validation(
-        tampered, signature, key.public_key, ISSUED_AT, MAX_AGE,
-    );
-    assert!(result == Err(ValidationError::InvalidSignature));
+    assert!(!is_screening_attestation_valid(validation.depositor, tampered, key.public_key));
 }
 
 #[test]
-fn test_tampered_issued_at_returns_invalid_signature() {
-    let (key, validation, signature) = fresh_signed();
-    let tampered = DepositorValidation {
-        depositor: validation.depositor, issued_at: validation.issued_at + 1,
+fn test_tampered_signature_r_returns_false() {
+    let (key, validation, attestation) = fresh_signed();
+    let (signature_r, signature_s) = attestation.signature;
+    let tampered = ScreeningAttestation {
+        issued_at: attestation.issued_at, signature: (signature_r + 1, signature_s),
     };
-    let result = verify_depositor_validation(
-        tampered, signature, key.public_key, ISSUED_AT + 1, MAX_AGE,
-    );
-    assert!(result == Err(ValidationError::InvalidSignature));
-}
-
-#[test]
-fn test_tampered_signature_r_returns_invalid_signature() {
-    let (key, validation, (signature_r, signature_s)) = fresh_signed();
-    let tampered_signature = (signature_r + 1, signature_s);
-    let result = verify_depositor_validation(
-        validation, tampered_signature, key.public_key, ISSUED_AT, MAX_AGE,
-    );
-    assert!(result == Err(ValidationError::InvalidSignature));
+    assert!(!is_screening_attestation_valid(validation.depositor, tampered, key.public_key));
 }

@@ -4,7 +4,9 @@ use privacy::privacy::Privacy;
 use privacy::tests::utils_for_tests::constants::{
     DEFAULT_AMOUNT, DEFAULT_FEE_AMOUNT, DEFAULT_FEE_COLLECTOR, DEFAULT_PROOF_VALIDITY_BLOCKS,
 };
-use privacy::tests::utils_for_tests::{NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait};
+use privacy::tests::utils_for_tests::{
+    NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait, screener_key_pair,
+};
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{derive_public_key, unpack};
 use snforge_std::TokenTrait;
@@ -20,6 +22,9 @@ fn test_constructor() {
     let mut test: Test = Default::default();
     // Test auditor public key.
     assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
+    // Test screener public key and contract version.
+    assert_eq!(test.privacy.get_screener_public_key(), screener_key_pair().public_key);
+    assert_eq!(test.privacy.get_version(), '2.0');
     // Test roles.
     let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
     assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
@@ -46,6 +51,7 @@ fn test_constructor_zero_auditor_public_key() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: Zero::zero(),
+        screener_public_key: derive_public_key(private_key: 'SCREENER_PRIVATE_KEY'),
         proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
     );
 }
@@ -58,6 +64,7 @@ fn test_constructor_invalid_auditor_public_key() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: 5,
+        screener_public_key: derive_public_key(private_key: 'SCREENER_PRIVATE_KEY'),
         proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
     );
 }
@@ -70,7 +77,34 @@ fn test_constructor_zero_proof_validity_blocks() {
         ref state,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
         auditor_public_key: derive_public_key(private_key: 'AUDITOR_PRIVATE_KEY'),
+        screener_public_key: derive_public_key(private_key: 'SCREENER_PRIVATE_KEY'),
         proof_validity_blocks: Zero::zero(),
+    );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_PUBLIC_KEY')]
+fn test_constructor_zero_public_key() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: derive_public_key(private_key: 'AUDITOR_PRIVATE_KEY'),
+        screener_public_key: Zero::zero(),
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
+    );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_PUBLIC_KEY')]
+fn test_constructor_invalid_public_key() {
+    let mut state = Privacy::contract_state_for_testing();
+    Privacy::constructor(
+        ref state,
+        governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
+        auditor_public_key: derive_public_key(private_key: 'AUDITOR_PRIVATE_KEY'),
+        screener_public_key: 5,
+        proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
     );
 }
 
