@@ -85,12 +85,33 @@ export type Note = {
 /** Unique identifier for a note, used for semi-transparent (preprepared) notes */
 export type NoteId = BigNumberish;
 
+/**
+ * Screening attestation relayed alongside the proof for a screened deposit.
+ * Felts are 0x-hex strings; `issued_at` is unix seconds. Absent for transactions
+ * that carry no deposit.
+ */
+export type ScreeningSignature = {
+  readonly issued_at: number;
+  readonly sig_r: string;
+  readonly sig_s: string;
+};
+
+/** Typed side-channel attached to a proof; carries the screening signature when present. */
+export type AdditionalData = {
+  readonly signature?: ScreeningSignature;
+};
+
 export type Proof = {
   readonly data: string;
   /** L2-to-L1 message payload: [class_hash, ...serialized_server_actions]. */
   readonly output: string[];
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
   readonly proofFacts: string[];
+  /**
+   * Optional side-channel from the proving service. For screened deposits it carries the
+   * screening signature, appended to `apply_actions` calldata as `Option<ScreeningAttestation>`.
+   */
+  readonly additionalData?: AdditionalData;
 };
 
 /**

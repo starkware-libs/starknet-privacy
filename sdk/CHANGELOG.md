@@ -2,7 +2,22 @@
 
 ## Unreleased
 
-## 0.14.2-RC.6
+### Added
+
+- Depositor screening support for `apply_actions`: the screening attestation is appended to the
+  calldata as a trailing Serde-encoded `Option<ScreeningAttestation>` (`[0x1]` for `None`,
+  `[0x0, issued_at, sig_r, sig_s]` for `Some`), sourced from the proof's `additionalData`. New
+  `ScreeningSignature` / `AdditionalData` types on `Proof` (`interfaces.ts`) and an internal
+  `screening-calldata.ts` packer. Required by the privacy contract's mandatory deposit screening.
+
+### Changed
+
+- Test harness (`@starkware-libs/starknet-privacy-sdk/testing`): the devnet helper now deploys the
+  privacy contract with the new `screener_public_key` constructor parameter, and
+  `CallMockProofProvider` signs a `DepositorValidation` attestation for the proven deposit's
+  depositor (under a test screener key) — mirroring the real screening service so deposits pass
+  on-chain screening end-to-end. `deployPrivacyContract` now throws the deploy `revert_reason`
+  instead of returning an undefined address when the deploy reverts.
 
 ### Changed
 

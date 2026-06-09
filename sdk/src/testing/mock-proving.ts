@@ -7,12 +7,47 @@
 
 import type { BlockIdentifier, constants, ETransactionVersion3, ProviderInterface } from "starknet";
 import { EDAMode, encode, hash, num, stark } from "starknet";
-import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
+import type {
+  AdditionalData,
+  Proof,
+  ProofInvocation,
+  ProofProviderInterface,
+} from "../interfaces.js";
 import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
 import { ProvingServiceError } from "../internal/proving-service.js";
 import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
 import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
+import { chainIdShortString, signDepositorValidation } from "./screening-signer.js";
+
+// `ServerAction` enum variant indices (declaration order in `actions.cairo`).
+const TRANSFER_FROM_VARIANT = 2n;
+const EMIT_DEPOSIT_VARIANT = 6n;
+
+/**
+ * Find the regular-pool depositor (`TransferFrom.from_addr`) in a serialized `Span<ServerAction>`,
+ * or `undefined` when there is no deposit.
+ *
+ * A `deposit` client action compiles to exactly `[TransferFrom, EmitDeposit]`, adjacent and sharing
+ * the same `(addr, token, amount)`:
+ *   `[2, from_addr, token, amount, 6, user_addr, token, amount]`.
+ * Matching that signature is a robust, unique marker — it avoids decoding the whole enum span
+ * (unreliable for the event-bearing variants) without needing per-variant length bookkeeping.
+ */
+function findDepositor(actions: string[]): string | undefined {
+  for (let i = 0; i + 7 < actions.length; i++) {
+    if (
+      BigInt(actions[i]) === TRANSFER_FROM_VARIANT &&
+      BigInt(actions[i + 4]) === EMIT_DEPOSIT_VARIANT &&
+      BigInt(actions[i + 1]) === BigInt(actions[i + 5]) &&
+      BigInt(actions[i + 2]) === BigInt(actions[i + 6]) &&
+      BigInt(actions[i + 3]) === BigInt(actions[i + 7])
+    ) {
+      return num.toHex(actions[i + 1]);
+    }
+  }
+  return undefined;
+}
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
 const VALIDATED = encode.utf8ToBigInt("VALID");
@@ -25,7 +60,14 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
 export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
     private readonly provider: ProviderInterface,
-    private readonly chainId: constants.StarknetChainId
+    private readonly chainId: constants.StarknetChainId,
+    /**
+     * Private key of the screener the privacy contract was deployed with. When set, deposits are
+     * screened: the provider signs a `DepositorValidation` for the deposit's `from_addr` and
+     * returns it as `additionalData`, mirroring the real screening service. Omit for flows that
+     * deploy without screening.
+     */
+    private readonly screenerPrivateKey?: string
   ) {}
 
   async getDefaultDetails() {
@@ -77,7 +119,33 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // This matches the real proving service behavior. The consumer must strip the
     // class_hash prefix before passing to apply_actions.
     const messagePayload = buildMessagePayload(poolClassHash, result);
-    return { output: messagePayload, data: undefined!, proofFacts };
+
+    // Screen the deposit (if any): sign a DepositorValidation for its from_addr under the
+    // configured screener key, as the real screening service would. issued_at is a recent block
+    // timestamp so the on-chain freshness check passes.
+    const additionalData = this.screenDeposit(result, Number(latestBlock.timestamp));
+    return { output: messagePayload, data: undefined!, proofFacts, additionalData };
+  }
+
+  /**
+   * Sign a screening attestation for the proven deposit's `from_addr`. Returns `undefined`
+   * (→ `Option::None`) when no screener key is configured or the tx carries no deposit.
+   */
+  private screenDeposit(actions: string[], issuedAt: number): AdditionalData | undefined {
+    if (!this.screenerPrivateKey) {
+      return undefined;
+    }
+    const depositor = findDepositor(actions);
+    if (depositor === undefined) {
+      return undefined;
+    }
+    const signature = signDepositorValidation(
+      this.screenerPrivateKey,
+      depositor,
+      issuedAt,
+      chainIdShortString(this.chainId)
+    );
+    return { signature };
   }
 
   /**

@@ -38,9 +38,14 @@ import { PrivacyPoolABI } from "../internal/abi.js";
 import type { PrivacyPoolContract } from "../internal/private-transfers.js";
 import { debugLog } from "../utils/logging.js";
 import { AddressMap } from "../utils/maps.js";
+import { screenerPublicKey } from "./screening-signer.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+
+// Screener the devnet privacy contract is deployed with. The mock proving provider signs deposit
+// attestations under this key so mandatory on-chain screening passes end-to-end in tests.
+export const DEVNET_SCREENER_PRIVATE_KEY = "0x5eec1a2b3c4d5e6f7a8b9c0d1e2f3a4b";
 
 // Contract paths
 const CONTRACT_CLASS_PATH = join(
@@ -332,13 +337,15 @@ export class Devnet {
     debugLog("devnet", "setup", "class hash:", classHash);
 
     // Deploy the contract
-    // Constructor params: governance_admin, auditor_public_key, proof_validity_blocks
+    // Constructor params: governance_admin, auditor_public_key, screener_public_key,
+    // proof_validity_blocks
     const deployResponse = await deployer.deployContract(
       {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
-          "0x1", // auditor_public_key (dummy value)
+          "0x1", // auditor_public_key (dummy on-curve value)
+          screenerPublicKey(DEVNET_SCREENER_PRIVATE_KEY), // screener_public_key
           "450", // proof_validity_blocks (~15 min at 2s/block)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
@@ -348,6 +355,14 @@ export class Devnet {
     debugLog("devnet", "setup", "deployResponse:", deployResponse);
 
     const poolContractAddress = deployResponse.contract_address;
+    // A reverted deploy yields no ContractDeployed UDC event, so starknet.js parses an undefined
+    // address and otherwise fails silently. Surface the revert reason instead of cascading.
+    if (!poolContractAddress) {
+      const receipt = await this.provider!.waitForTransaction(deployResponse.transaction_hash);
+      throw new Error(
+        `Privacy contract deploy did not return an address. Receipt: ${JSON.stringify(receipt)}`
+      );
+    }
     debugLog("devnet", "setup", "Privacy contract deployed at:", poolContractAddress);
 
     // Create typed contract instance
@@ -488,14 +503,22 @@ export async function createDevnetTestEnv(
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new CallMockProofProvider(
+        env.provider,
+        chainId,
+        DEVNET_SCREENER_PRIVATE_KEY
+      ),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new CallMockProofProvider(
+        env.provider,
+        chainId,
+        DEVNET_SCREENER_PRIVATE_KEY
+      ),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),

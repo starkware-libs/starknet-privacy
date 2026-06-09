@@ -303,16 +303,30 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
   /**
    * Apply server actions to mutate state.
+   *
+   * The calldata is the action span followed by a Serde-encoded
+   * `Option<ScreeningAttestation>` — `[0x1]` (None) or `[0x0, issued_at, sig_r, sig_s]` (Some),
+   * per Cairo's `Option` Serde (Some = 0, None = 1). The mock models no screening semantics; it
+   * only checks the suffix is well-formed.
    */
-  apply_actions(actions: string[]): void {
-    for (let i = 0; i < actions.length; i++) {
+  apply_actions(calldata: string[]): void {
+    const actionCount = this.serverActions.length;
+    for (let i = 0; i < actionCount; i++) {
       assert(
-        this.serverActions[i].type == actions[i],
-        () => `Server action ${actions[i]} does not match expected ${this.serverActions[i].type}`
+        this.serverActions[i].type == calldata[i],
+        () => `Server action ${calldata[i]} does not match expected ${this.serverActions[i].type}`
       );
       this.serverActions[i].apply();
     }
     this.serverActions = [];
+
+    const screeningSuffix = calldata.slice(actionCount);
+    const isNone = screeningSuffix.length == 1 && screeningSuffix[0] == "0x1";
+    const isSome = screeningSuffix.length == 4 && screeningSuffix[0] == "0x0";
+    assert(
+      isNone || isSome,
+      () => `Malformed screening attestation suffix: [${screeningSuffix.join(", ")}]`
+    );
   }
 
   /**
