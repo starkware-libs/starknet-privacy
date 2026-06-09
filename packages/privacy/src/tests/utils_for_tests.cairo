@@ -35,6 +35,10 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
+use privacy::snip12::{
+    DepositorValidation, ScreeningAttestation,
+    compute_message_hash as compute_screening_message_hash,
+};
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::test_contracts::mock_swap_executor::{
@@ -53,6 +57,10 @@ use privacy::utils::{
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
     is_canonical_key, pack, to_write_once_action,
 };
+use snforge_std::signature::stark_curve::{
+    StarkCurveKeyPair, StarkCurveKeyPairImpl, StarkCurveSignerImpl,
+};
+use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
     CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
     Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
@@ -61,7 +69,9 @@ use snforge_std::{
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
-use starknet::{ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED};
+use starknet::{
+    ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED, get_block_timestamp,
+};
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
@@ -157,6 +167,8 @@ pub(crate) mod constants {
     pub const DEFAULT_FEE_COLLECTOR: ContractAddress = 'FEE_COLLECTOR'.try_into().unwrap();
     pub const PAYMASTER: ContractAddress = 'PAYMASTER'.try_into().unwrap();
     pub const DEFAULT_PROOF_VALIDITY_BLOCKS: u64 = 450; // ~15 min (2 sec/block)
+    /// Secret key of the screener the test harness deploys with and signs attestations under.
+    pub const SCREENER_PRIVATE_KEY: felt252 = 'SCREENER_PRIVATE_KEY';
 }
 
 
@@ -1578,6 +1590,14 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.views.get_auditor_public_key()
     }
 
+    fn get_screener_public_key(self: @PrivacyCfg) -> felt252 {
+        self.views.get_screener_public_key()
+    }
+
+    fn get_version(self: @PrivacyCfg) -> felt252 {
+        self.views.get_version()
+    }
+
     /// Supply STRK to `caller` and approve the privacy contract for the fee.
     fn _fund_fee(self: @PrivacyCfg, caller: ContractAddress) {
         let fee_amount = self.views.get_fee_amount();
@@ -1604,7 +1624,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.server.apply_actions(:actions);
+        self.server.apply_actions(:actions, screening: self._auto_screening(:actions));
     }
 
     #[feature("safe_dispatcher")]
@@ -1614,7 +1634,7 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.safe_server.apply_actions(:actions)
+        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
     }
 
     /// Like `safe_apply_actions_as` but without auto-funding the fee.
@@ -1625,14 +1645,14 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     ) -> Result<(), Array<felt252>> {
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.safe_server.apply_actions(:actions)
+        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_actions_without_cheat(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.apply_actions(:actions)
+        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
     }
 
     #[feature("safe_dispatcher")]
@@ -1640,7 +1660,49 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, actions: Span<ServerAction>, proof_facts: ProofFacts,
     ) -> Result<(), Array<felt252>> {
         self._cheat_proof_facts(:proof_facts);
-        self.safe_server.apply_actions(:actions)
+        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
+    }
+
+    /// Auto-attaches a valid screener-signed attestation when `actions` contains a deposit
+    /// (`TransferFrom`), signing for its `from_addr` at the current block timestamp; `None`
+    /// otherwise. Keeps the bulk of the suite screening-agnostic. Screening-specific tests pass
+    /// an explicit attestation via `apply_actions_screened` / `safe_apply_actions_screened`.
+    fn _auto_screening(
+        self: @PrivacyCfg, actions: Span<ServerAction>,
+    ) -> Option<ScreeningAttestation> {
+        match deposit_depositor_of(:actions) {
+            Option::Some(depositor) => Option::Some(
+                sign_screening_attestation(:depositor, issued_at: get_block_timestamp()),
+            ),
+            Option::None => Option::None,
+        }
+    }
+
+    /// Applies `actions` with a caller-supplied `screening` (no auto-attestation) — for
+    /// exercising the screening policy directly.
+    fn apply_actions_screened(
+        self: @PrivacyCfg,
+        actions: Span<ServerAction>,
+        screening: Option<ScreeningAttestation>,
+        caller: ContractAddress,
+    ) {
+        self._fund_fee(:caller);
+        self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        self.server.apply_actions(:actions, :screening);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_apply_actions_screened(
+        self: @PrivacyCfg,
+        actions: Span<ServerAction>,
+        screening: Option<ScreeningAttestation>,
+        caller: ContractAddress,
+    ) -> Result<(), Array<felt252>> {
+        self._fund_fee(:caller);
+        self.cheat_proof_facts(:actions);
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        self.safe_server.apply_actions(:actions, :screening)
     }
 
     fn cheat_invoke_echo(
@@ -1858,6 +1920,20 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_auditor_public_key(:auditor_public_key)
     }
 
+    fn set_screener_public_key(self: @PrivacyCfg, screener_public_key: felt252) {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.roles.security_governor,
+        );
+        self.admin.set_screener_public_key(:screener_public_key);
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_set_screener_public_key(
+        self: @PrivacyCfg, screener_public_key: felt252,
+    ) -> Result<(), Array<felt252>> {
+        self.safe_admin.set_screener_public_key(:screener_public_key)
+    }
+
     fn set_fee_amount(self: @PrivacyCfg, fee_amount: u128) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.app_governor,
@@ -1990,7 +2066,11 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
         self._cheat_proof_facts(:proof_facts);
-        self.server.apply_actions(actions: server_actions);
+        self
+            .server
+            .apply_actions(
+                actions: server_actions, screening: self._auto_screening(actions: server_actions),
+            );
     }
 
     /// Build an `InvokeExternalInput` targeting the echo executor for depositing to open notes.
@@ -2018,14 +2098,57 @@ impl DefaultTestImpl of Default<Test> {
         let privacy = deploy_privacy(
             :roles,
             auditor_public_key: auditor.public_key,
+            screener_public_key: screener_key_pair().public_key,
             proof_validity_blocks: DEFAULT_PROOF_VALIDITY_BLOCKS,
         );
         Test { privacy, nonce: Zero::zero(), auditor }
     }
 }
 
+/// The screener key pair the test harness deploys with; used to sign valid attestations.
+pub(crate) fn screener_key_pair() -> StarkCurveKeyPair {
+    KeyPairTrait::from_secret_key(constants::SCREENER_PRIVATE_KEY)
+}
+
+/// Signs a screening attestation for `depositor` at `issued_at` under the screener key.
+pub(crate) fn sign_screening_attestation(
+    depositor: ContractAddress, issued_at: u64,
+) -> ScreeningAttestation {
+    sign_screening_attestation_with(key_pair: screener_key_pair(), :depositor, :issued_at)
+}
+
+/// Like `sign_screening_attestation` but signs under `key_pair` — used to forge an attestation
+/// from a key other than the configured screener (negative tests).
+pub(crate) fn sign_screening_attestation_with(
+    key_pair: StarkCurveKeyPair, depositor: ContractAddress, issued_at: u64,
+) -> ScreeningAttestation {
+    let validation = DepositorValidation { depositor, issued_at };
+    let message_hash = compute_screening_message_hash(@validation, key_pair.public_key);
+    let signature = key_pair.sign(message_hash).unwrap();
+    ScreeningAttestation { issued_at, signature }
+}
+
+/// Returns the `from_addr` of the first `TransferFrom` in `actions` (the regular-pool depositor),
+/// or `None` when there is no deposit.
+fn deposit_depositor_of(actions: Span<ServerAction>) -> Option<ContractAddress> {
+    let mut depositor: Option<ContractAddress> = Option::None;
+    for action in actions {
+        match *action {
+            ServerAction::TransferFrom(input) => {
+                depositor = Option::Some(input.from_addr);
+                break;
+            },
+            _ => {},
+        }
+    }
+    depositor
+}
+
 pub(crate) fn _deploy_privacy(
-    governance_admin: ContractAddress, auditor_public_key: felt252, proof_validity_blocks: u64,
+    governance_admin: ContractAddress,
+    auditor_public_key: felt252,
+    screener_public_key: felt252,
+    proof_validity_blocks: u64,
 ) -> ContractAddress {
     let contract_class_hash = declare(contract: "Privacy")
         .unwrap_syscall()
@@ -2037,6 +2160,7 @@ pub(crate) fn _deploy_privacy(
         :deployment_params,
         :governance_admin,
         :auditor_public_key,
+        :screener_public_key,
         :proof_validity_blocks,
     )
         .expect('Privacy deployment failed');
@@ -2045,10 +2169,16 @@ pub(crate) fn _deploy_privacy(
 
 /// Deploy a new privacy contract and set the roles.
 fn deploy_privacy(
-    roles: Roles, auditor_public_key: felt252, proof_validity_blocks: u64,
+    roles: Roles,
+    auditor_public_key: felt252,
+    screener_public_key: felt252,
+    proof_validity_blocks: u64,
 ) -> PrivacyCfg {
     let contract_address = _deploy_privacy(
-        governance_admin: roles.governance_admin, :auditor_public_key, :proof_validity_blocks,
+        governance_admin: roles.governance_admin,
+        :auditor_public_key,
+        :screener_public_key,
+        :proof_validity_blocks,
     );
     let roles = _set_privacy_roles(contract: contract_address, :roles);
     // TODO: Remove this from general deployment and only deploy when needed.

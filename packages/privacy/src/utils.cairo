@@ -65,6 +65,10 @@ pub mod constants {
         .unwrap();
     /// Half the order of the Stark curve.
     pub const HALF_ORDER: u256 = ORDER.into() / 2_u256;
+    /// Maximum allowed age (in seconds) of a depositor screening attestation.
+    pub const DEPOSITOR_VALIDATION_MAX_AGE: u64 = 300;
+    /// Contract version, exposed via `get_version`.
+    pub const CONTRACT_VERSION: felt252 = '2.0';
 }
 
 /// Returns the generator point.

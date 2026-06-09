@@ -2,6 +2,7 @@ use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
 };
+use privacy::snip12::ScreeningAttestation;
 use starknet::ContractAddress;
 use starknet::account::Call;
 
@@ -535,7 +536,34 @@ pub trait IServer<T> {
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
     /// - Reentrant calls to `apply_actions` (e.g. from a contract invoked via an Invoke action)
     ///   are rejected by the ReentrancyGuard component.
-    fn apply_actions(ref self: T, actions: Span<ServerAction>);
+    ///
+    /// #### Screening
+    /// Every regular-pool deposit (`TransferFrom`) must be authorized by a recent off-chain
+    /// screening attestation. `screening` carries the screener's signature over the deposit's
+    /// depositor (`TransferFrom.from_addr`, taken from the proven actions — not the caller) and
+    /// an `issued_at` timestamp. It must be:
+    /// - [`Option::Some`] when the tx contains a deposit, else
+    /// [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED).
+    /// - [`Option::None`] when the tx contains no deposit (transfers/withdrawals); a `Some` with no
+    /// deposit reverts with
+    /// [`UNEXPECTED_SCREENING`](privacy::errors::UNEXPECTED_SCREENING).
+    ///
+    /// All `TransferFrom` actions in one tx must share a single `from_addr`
+    /// ([`MULTIPLE_DEPOSITORS`](privacy::errors::MULTIPLE_DEPOSITORS) otherwise). Screening
+    /// reverts:
+    /// - [`SCREENING_FUTURE_DATED`](privacy::errors::SCREENING_FUTURE_DATED): `issued_at` is in the
+    /// future.
+    /// - [`SCREENING_EXPIRED`](privacy::errors::SCREENING_EXPIRED): the attestation is older than
+    /// the max age.
+    /// - [`SCREENING_INVALID_SIGNATURE`](privacy::errors::SCREENING_INVALID_SIGNATURE): the
+    /// signature does not verify against the configured screener public key for this depositor.
+    ///
+    /// #### Parameters
+    /// - `screening` (`Option<`[`ScreeningAttestation`](privacy::snip12::ScreeningAttestation)`>`):
+    /// the deposit's screening attestation, or `None` for non-deposit txs.
+    fn apply_actions(
+        ref self: T, actions: Span<ServerAction>, screening: Option<ScreeningAttestation>,
+    );
 }
 
 #[starknet::interface]
@@ -666,6 +694,24 @@ pub trait IViews<T> {
     /// - (`felt252`): The auditor public key.
     fn get_auditor_public_key(self: @T) -> felt252;
 
+    /// Returns the screener public key used to verify depositor screening attestations.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`felt252`): The screener public key.
+    fn get_screener_public_key(self: @T) -> felt252;
+
+    /// Returns the contract version.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`felt252`): The contract version as a short-string felt (e.g. `'2.0'`).
+    fn get_version(self: @T) -> felt252;
+
     /// Returns the fee amount charged per `apply_actions` call.
     ///
     /// #### Parameters
@@ -735,6 +781,31 @@ pub trait IAdmin<T> {
     /// coordination (e.g., the retiring auditor re-encrypting historical viewing keys to the
     /// new auditor before rotation).
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
+
+    /// Sets the screener public key used to verify depositor screening attestations for
+    /// regular-pool deposits.
+    ///
+    /// Mandatory screening means a rotation to a key the screener no longer holds halts all
+    /// regular deposits until corrected, so rotations must be coordinated out-of-band with the
+    /// screening service.
+    ///
+    /// #### Parameters
+    /// - `screener_public_key` (`felt252`): The new screener public key. Must be non-zero and a
+    /// valid Stark-curve x-coordinate.
+    ///
+    /// #### Events Emitted
+    /// - [`ScreenerPublicKeySet`](privacy::events::ScreenerPublicKeySet): Emitted with the new
+    /// screener public key.
+    ///
+    /// #### Reverts
+    /// - [`INVALID_PUBLIC_KEY`](privacy::errors::INVALID_PUBLIC_KEY): Thrown if
+    /// `screener_public_key` is zero.
+    /// - [`INVALID_PUBLIC_KEY`](privacy::errors::INVALID_PUBLIC_KEY): Thrown if
+    /// `screener_public_key` is not a valid Stark-curve x-coordinate.
+    ///
+    /// #### Access Control
+    /// - Only security governor.
+    fn set_screener_public_key(ref self: T, screener_public_key: felt252);
 
     /// Sets the fee amount in FRI per `apply_actions` call.
     ///

@@ -21,41 +21,29 @@ pub struct DepositorValidation {
     pub issued_at: u64,
 }
 
-#[derive(Copy, Drop, Debug, PartialEq)]
-pub enum ValidationError {
-    Expired,
-    FutureDated,
-    InvalidSignature,
+/// Off-chain screening attestation relayed into `apply_actions` for deposits.
+///
+/// Carries everything the contract needs to reconstruct and verify the screener's signature
+/// except the depositor and chain-id which are taken from the context.
+#[derive(Serde, Copy, Drop)]
+pub struct ScreeningAttestation {
+    pub issued_at: u64,
+    pub signature: (felt252, felt252),
 }
 
 /// Verifies an off-chain depositor validation signed under SNIP-12 by `signer_public_key`.
 ///
-/// `now` is the unix-second timestamp the caller treats as authoritative
-/// (typically `starknet::get_block_timestamp()`). `max_age` is the maximum
-/// allowed staleness in seconds; the validation is rejected when
-/// `now - validation.issued_at > max_age`. `FutureDated` is reported when
-/// `validation.issued_at > now` so clock skew is distinguishable from a stale
-/// signature in caller telemetry.
+/// Returns `true` iff `signature` is a valid STARK-curve ECDSA signature, by
+/// `signer_public_key`, over the SNIP-12 message hash of `validation`.
+/// This function verifies the signature validity only,
+/// it DOES NOT assert validation age.
+/// Attestation expiry must be checked by the caller.
 pub fn verify_depositor_validation(
-    validation: DepositorValidation,
-    signature: (felt252, felt252),
-    signer_public_key: felt252,
-    now: u64,
-    max_age: u64,
-) -> Result<(), ValidationError> {
-    if validation.issued_at > now {
-        return Err(ValidationError::FutureDated);
-    }
-    if now - validation.issued_at > max_age {
-        return Err(ValidationError::Expired);
-    }
+    validation: DepositorValidation, signature: (felt252, felt252), signer_public_key: felt252,
+) -> bool {
     let message_hash = compute_message_hash(@validation, signer_public_key);
     let (signature_r, signature_s) = signature;
-    if check_ecdsa_signature(message_hash, signer_public_key, signature_r, signature_s) {
-        Ok(())
-    } else {
-        Err(ValidationError::InvalidSignature)
-    }
+    check_ecdsa_signature(message_hash, signer_public_key, signature_r, signature_s)
 }
 
 /// SNIP-12 off-chain message hash for a `DepositorValidation`.
