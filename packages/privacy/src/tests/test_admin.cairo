@@ -3,8 +3,9 @@ use privacy::actions::ServerAction;
 use privacy::objects::EncUserAddr;
 use privacy::tests::utils_for_tests::{
     AuditorTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, _decrypt_private_key, constants,
+    screener_key_pair,
 };
-use privacy::utils::{ProofFacts, compute_message_hash};
+use privacy::utils::{ProofFacts, compute_message_hash, derive_public_key};
 use privacy::{errors, events};
 use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, spy_events};
 use starknet::{ContractAddress, get_block_number};
@@ -558,4 +559,60 @@ fn test_set_fee_amount_and_collector_flow() {
         strk_token.balance_of(address: fee_collector_2), (fee_amount_1 + fee_amount_2).into(),
     );
     assert_eq!(strk_token.balance_of(address: privacy_address), Zero::zero());
+}
+
+#[test]
+fn test_set_screener_public_key() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_screener_public_key(), screener_key_pair().public_key);
+
+    let new_screener_public_key = derive_public_key(private_key: 'NEW_SCREENER_SK');
+    assert_ne!(new_screener_public_key, test.privacy.get_screener_public_key());
+    let mut spy = spy_events();
+    test.privacy.set_screener_public_key(screener_public_key: new_screener_public_key);
+    assert_eq!(test.privacy.get_screener_public_key(), new_screener_public_key);
+    let expected_event = events::ScreenerPublicKeySet {
+        screener_public_key: new_screener_public_key,
+    };
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("ScreenerPublicKeySet"),
+        expected_event_name: "ScreenerPublicKeySet",
+    );
+}
+
+#[test]
+fn test_set_screener_public_key_assertions() {
+    let mut test: Test = Default::default();
+
+    // Catch ONLY_SECURITY_GOVERNOR.
+    let result = test.privacy.safe_set_screener_public_key(screener_public_key: 7);
+    assert_panic_with_error(
+        :result, expected_error: AccessErrors::ONLY_SECURITY_GOVERNOR.describe(),
+    );
+
+    // Catch INVALID_PUBLIC_KEY.
+    cheat_caller_address_once(
+        contract_address: test.privacy.address,
+        caller_address: test.privacy.roles.security_governor,
+    );
+    let result = test.privacy.safe_set_screener_public_key(screener_public_key: Zero::zero());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PUBLIC_KEY);
+
+    // Catch INVALID_PUBLIC_KEY (non-zero but not a valid Stark curve point).
+    cheat_caller_address_once(
+        contract_address: test.privacy.address,
+        caller_address: test.privacy.roles.security_governor,
+    );
+    let result = test.privacy.safe_set_screener_public_key(screener_public_key: 5);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PUBLIC_KEY);
+}
+
+#[test]
+fn test_get_version() {
+    let mut test: Test = Default::default();
+    assert_eq!(test.privacy.get_version(), '2.0');
 }

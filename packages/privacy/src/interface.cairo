@@ -2,6 +2,7 @@ use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
 };
+use privacy::snip12::ScreeningAttestation;
 use starknet::ContractAddress;
 use starknet::account::Call;
 
@@ -439,6 +440,12 @@ pub trait IServer<T> {
     ///   - [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed): Emit a
     ///   [`NoteUsed`](privacy::events::NoteUsed) event.
     ///   - [`Invoke`](privacy::actions::ServerAction::Invoke): Invoke an external contract.
+    /// - `screening` (`Option<`[`ScreeningAttestation`](privacy::snip12::ScreeningAttestation)`>`):
+    /// off-chain authorization for a regular-pool deposit. Signed by the configured screener over
+    /// the deposit's depositor (`TransferFrom.from_addr`, taken from the proven actions — not the
+    /// caller) and an `issued_at` timestamp, so it is bound to the depositor and cannot be
+    /// redirected. Must be [`Option::Some`] iff the tx contains a deposit, and [`Option::None`]
+    /// otherwise (e.g. transfers/withdrawals). See the Screening reverts below.
     ///
     /// #### Returns
     /// None
@@ -455,6 +462,12 @@ pub trait IServer<T> {
     /// - For [`Invoke`](privacy::actions::ServerAction::Invoke) actions, the invoked contract must
     /// have an [`INVOKE_SELECTOR`](privacy::utils::constants::INVOKE_SELECTOR) selector for a
     /// method that returns a `Span<`[`OpenNoteDeposit`](privacy::objects::OpenNoteDeposit)`>`.
+    /// - Every regular-pool deposit
+    /// ([`TransferFrom`](privacy::actions::ServerAction::TransferFrom))
+    /// must be accompanied by a fresh, valid `screening` attestation for its depositor, and all
+    /// deposits in one tx must share a single depositor.
+    /// - The open-note depositor (the [`Invoke`](privacy::actions::ServerAction::Invoke) target
+    /// that funds the deposit) must not be on the block list.
     ///
     /// #### Events Emitted
     /// Events are emitted based on the server actions in the input:
@@ -499,11 +512,26 @@ pub trait IServer<T> {
     /// - [`NON_ZERO_VALUE`](privacy::errors::NON_ZERO_VALUE): Thrown if the value at the specified
     /// storage path already exists (is not zero).
     ///
-    /// **Errors for [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) action:**
+    /// **Errors for [`TransferFrom`](privacy::actions::ServerAction::TransferFrom) action (a
+    /// regular-pool deposit):**
     /// - `INSUFFICIENT_BALANCE`: Thrown if the sender has insufficient token balance (from ERC20
     /// contract).
     /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance (from
     /// ERC20 contract).
+    /// - [`MULTIPLE_DEPOSITORS`](privacy::errors::internal_errors::MULTIPLE_DEPOSITORS): Thrown if
+    /// more than one distinct `from_addr` deposits in the same tx.
+    ///
+    /// **Screening errors (for the regular-pool deposit's `screening` attestation):**
+    /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx contains a
+    /// deposit but `screening` is [`Option::None`].
+    /// - [`UNEXPECTED_SCREENING`](privacy::errors::UNEXPECTED_SCREENING): Thrown if `screening` is
+    /// [`Option::Some`] but the tx contains no deposit.
+    /// - [`SCREENING_FUTURE_DATED`](privacy::errors::SCREENING_FUTURE_DATED): Thrown if the
+    /// attestation's `issued_at` is in the future.
+    /// - [`SCREENING_EXPIRED`](privacy::errors::SCREENING_EXPIRED): Thrown if the attestation is
+    /// older than the maximum age.
+    /// - [`SCREENING_INVALID_SIGNATURE`](privacy::errors::SCREENING_INVALID_SIGNATURE): Thrown if
+    /// the signature does not verify against the configured screener public key for the depositor.
     ///
     /// **Errors for [`Invoke`](privacy::actions::ServerAction::Invoke) action:**
     /// - The invoked contract may revert with any error.
@@ -524,6 +552,8 @@ pub trait IServer<T> {
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
     ///   ERC20 contract).
+    ///   - [`DEPOSITOR_BLOCKED`](privacy::errors::DEPOSITOR_BLOCKED): Thrown if the Invoke returned
+    ///   at least one deposit and the Invoke target (the open-note depositor) is on the block list.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -535,7 +565,12 @@ pub trait IServer<T> {
     /// - If any action fails, the entire transaction reverts and no state changes are applied.
     /// - Reentrant calls to `apply_actions` (e.g. from a contract invoked via an Invoke action)
     ///   are rejected by the ReentrancyGuard component.
-    fn apply_actions(ref self: T, actions: Span<ServerAction>);
+    /// - An attestation is bound to `{depositor, issued_at}` only (not the tx), so it may be reused
+    ///   for any of that depositor's deposits within the freshness window; it can never be
+    ///   redirected to a different depositor, which is proof-bound via `TransferFrom`.
+    fn apply_actions(
+        ref self: T, actions: Span<ServerAction>, screening: Option<ScreeningAttestation>,
+    );
 }
 
 #[starknet::interface]
@@ -666,6 +701,24 @@ pub trait IViews<T> {
     /// - (`felt252`): The auditor public key.
     fn get_auditor_public_key(self: @T) -> felt252;
 
+    /// Returns the screener public key used to verify depositor screening attestations.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`felt252`): The screener public key.
+    fn get_screener_public_key(self: @T) -> felt252;
+
+    /// Returns the contract version.
+    ///
+    /// #### Parameters
+    /// None
+    ///
+    /// #### Returns
+    /// - (`felt252`): The contract version as a short-string felt (e.g. `'2.0'`).
+    fn get_version(self: @T) -> felt252;
+
     /// Returns the fee amount charged per `apply_actions` call.
     ///
     /// #### Parameters
@@ -736,6 +789,31 @@ pub trait IAdmin<T> {
     /// coordination (e.g., the retiring auditor re-encrypting historical viewing keys to the
     /// new auditor before rotation).
     fn set_auditor_public_key(ref self: T, auditor_public_key: felt252);
+
+    /// Sets the screener public key used to verify depositor screening attestations for
+    /// regular-pool deposits.
+    ///
+    /// Mandatory screening means a rotation to a key the screener no longer holds halts all
+    /// regular deposits until corrected, so rotations must be coordinated out-of-band with the
+    /// screening service.
+    ///
+    /// #### Parameters
+    /// - `screener_public_key` (`felt252`): The new screener public key. Must be non-zero and a
+    /// valid Stark-curve x-coordinate.
+    ///
+    /// #### Events Emitted
+    /// - [`ScreenerPublicKeySet`](privacy::events::ScreenerPublicKeySet): Emitted with the new
+    /// screener public key.
+    ///
+    /// #### Reverts
+    /// - [`INVALID_PUBLIC_KEY`](privacy::errors::INVALID_PUBLIC_KEY): Thrown if
+    /// `screener_public_key` is zero.
+    /// - [`INVALID_PUBLIC_KEY`](privacy::errors::INVALID_PUBLIC_KEY): Thrown if
+    /// `screener_public_key` is not a valid Stark-curve x-coordinate.
+    ///
+    /// #### Access Control
+    /// - Only security governor.
+    fn set_screener_public_key(ref self: T, screener_public_key: felt252);
 
     /// Sets the fee amount in FRI per `apply_actions` call.
     ///
