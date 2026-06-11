@@ -708,7 +708,8 @@ pub trait IAdmin<T> {
     /// Sets the auditor public key used for encrypting user private keys and withdrawal addresses.
     ///
     /// This key is used to encrypt user private keys (so only the auditor can decrypt them) and to
-    /// encrypt the user address when withdrawing. Only the token admin can call this function.
+    /// encrypt the user address when withdrawing. Only the security governor can call this
+    /// function.
     ///
     /// #### Parameters
     /// - `auditor_public_key` (`felt252`): The new auditor public key. Must be non-zero.
@@ -725,7 +726,7 @@ pub trait IAdmin<T> {
     /// `auditor_public_key` is zero.
     ///
     /// #### Access Control
-    /// - Only token admin.
+    /// - Only security governor.
     ///
     /// #### Notes
     /// - Rotating the auditor key creates a persistent audit gap:

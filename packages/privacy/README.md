@@ -20,7 +20,7 @@ Read-only queries: channel/subchannel existence, note lookup, nullifier checks, 
 
 ### IAdmin
 
-Governance: auditor public key, fee amount, fee collector. Access-controlled to token admin / app governor.
+Governance: auditor public key, depositor block list, fee amount, fee collector. Access-controlled to security governor / app governor.
 
 ## Client action phases
 
@@ -48,7 +48,7 @@ Actions must be ordered by phase. Actions within the same phase can appear in an
 
 - **Reentrancy guard**: `apply_actions()` is protected by OpenZeppelin's `ReentrancyGuardComponent`. Reentrant calls (e.g. via `InvokeExternal` callbacks) are rejected.
 - **Pausable**: Both `apply_actions()` and `deposit_to_open_note()` require the contract to be unpaused (`PausableComponent`).
-- **Access control**: Admin functions use role-based access via `RolesComponent` and `AccessControlComponent`. `set_auditor_public_key` requires `token_admin` role. `set_fee_amount`, `set_fee_collector`, and `set_proof_validity_blocks` require `app_governor` role.
+- **Access control**: Admin functions use role-based access via `RolesComponent` and `AccessControlComponent`. `set_auditor_public_key` and `set_depositor_blocked` require `security_governor` role. `set_fee_amount`, `set_fee_collector`, and `set_proof_validity_blocks` require `app_governor` role.
 - **Replaceability**: Contract supports upgrades via `ReplaceabilityComponent`.
 
 ## Fees
