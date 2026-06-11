@@ -46,6 +46,12 @@ pub struct AuditorPublicKeySet {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct ScreenerPublicKeySet {
+    /// The screener public key is used to verify depositor screening attestations.
+    pub screener_public_key: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct OpenNoteCreated {
     /// Encrypted recipient address (the note owner). Can be decrypted by the auditor.
     pub enc_recipient_addr: EncUserAddr,
