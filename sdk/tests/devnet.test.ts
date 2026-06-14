@@ -169,8 +169,10 @@ describe("Devnet Integration", () => {
       .surplusTo(env.alice.address)
       .execute();
 
-    const receipt = await devnet.executeOutside(callAndProof);
-    expect(receipt.isReverted()).toBe(true);
+    // executeOutside throws on an on-chain revert rather than returning a
+    // reverted receipt. The pool can't deserialize apply_actions without the
+    // trailing screening Option, so the deposit is rejected.
+    await expect(devnet.executeOutside(callAndProof)).rejects.toThrow(/reverted|deserialize/i);
   });
 
   it("should swap STRK to ETH through Cairo mock executor and create open note", async () => {
