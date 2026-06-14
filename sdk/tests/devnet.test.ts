@@ -10,7 +10,12 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { hash } from "starknet";
-import { Devnet, createDevnetTestEnv, type DevnetTestEnv } from "../src/testing/index.js";
+import {
+  Devnet,
+  createDevnetTestEnv,
+  createCompatibilityAliceTransfers,
+  type DevnetTestEnv,
+} from "../src/testing/index.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
 import { debugLog } from "../src/utils/logging.js";
 
@@ -137,6 +142,35 @@ describe("Devnet Integration", () => {
     debugLog("test", "should deposit", "channels", channels);
 
     expect(channels!.get(env.bob.address)?.tokens.get(env.strk)?.noteNonce).toBe(1);
+  });
+
+  it("rejects a compatibility-mode deposit (no attestation) on the screening pool", async () => {
+    const { env } = testEnv;
+
+    // alice is registered and set up by the deposit test above. A compatibility
+    // client omits the screening attestation suffix, which the screening pool
+    // requires for every deposit, so the deposit must revert. This is the
+    // safety property: an un-attested deposit cannot slip through.
+    await env.alice.execute({
+      contractAddress: env.strk,
+      entrypoint: "approve",
+      calldata: [env.privacy.address, 100n, 0n],
+    });
+
+    const compatibilityAlice = createCompatibilityAliceTransfers(env);
+    const { callAndProof } = await compatibilityAlice
+      .build({
+        autoRegister: false,
+        autoSetup: false,
+        autoDiscover: { notes: "refresh", channels: "refresh" },
+      })
+      .with(env.strk)
+      .deposit({ amount: 100n })
+      .surplusTo(env.alice.address)
+      .execute();
+
+    const receipt = await devnet.executeOutside(callAndProof);
+    expect(receipt.isReverted()).toBe(true);
   });
 
   it("should swap STRK to ETH through Cairo mock executor and create open note", async () => {

@@ -31,6 +31,12 @@
   `createPrivateTransfers()` gains an optional `poolMode` override for
   deployments whose pool class hash isn't pinned (e.g. local devnet/test pools
   built from source).
+- Screening v2 (testing): `ScreeningCallMockProofProvider` signs each deposit's
+  screening attestation with the canonical fixture screener key, and
+  `createCompatibilityAliceTransfers()` builds a compatibility-mode transfers
+  object. The devnet suite deploys the screening-capable pool, exercises an
+  attested deposit (screening mode), and asserts the pool rejects an un-attested
+  deposit (compatibility mode).
 
 ## 0.14.2-RC.6
 
