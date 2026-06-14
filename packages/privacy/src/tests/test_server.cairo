@@ -14,7 +14,9 @@ use privacy::tests::utils_for_tests::{
     deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input, sign_screening_attestation,
     sign_screening_attestation_with,
 };
-use privacy::utils::constants::{DEPOSITOR_VALIDATION_MAX_AGE, OPEN_NOTE_SALT};
+use privacy::utils::constants::{
+    DEPOSITOR_VALIDATION_MAX_AGE, DEPOSITOR_VALIDATION_MAX_FUTURE, OPEN_NOTE_SALT,
+};
 use privacy::utils::{
     ProofFacts, compute_message_hash, encrypt_user_addr, open_note, to_write_once_action, unpack,
 };
@@ -907,16 +909,16 @@ fn test_deposit_to_open_note_blocked_depositor() {
     let (note_id, actions) = user.create_and_deposit_to_open_note(:create_note_input, :amount);
 
     // The depositor for echo-executor open-note deposits is the Invoke target (echo_executor).
-    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: true);
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
     let result = test.privacy.safe_apply_actions(:actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_BLOCKED);
+    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
 
     // Nothing transferred and the note is still empty (the revert undid all state).
     assert_eq!(token.balance_of(address: echo_executor), amount.into());
     assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
 
     // Unblocking lets the same deposit succeed.
-    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: false);
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: false);
     test.privacy.apply_actions(:actions);
 
     let deposited_note = test.privacy.get_note(:note_id);
@@ -934,14 +936,14 @@ fn test_invoke_from_blocked_address_without_open_note_deposit_is_allowed() {
 
     // Block the echo executor — the address that would be the open-note depositor if it funded
     // one.
-    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: true);
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
 
     // Invoke the (blocked) echo executor but have it return NO open-note deposits.
     let no_deposits: Span<OpenNoteDeposit> = array![].span();
     let actions = test.privacy.invoke_external_echo_deposits(no_deposits).into_server_actions();
 
     // The block list is only consulted when an Invoke yields open-note deposits. With none, the tx
-    // succeeds even though the Invoke target is blocked (no `DEPOSITOR_BLOCKED` revert).
+    // succeeds even though the Invoke target is blocked (no `OPEN_NOTE_DEPOSITOR_BLOCKED` revert).
     test.privacy.apply_actions(:actions);
 }
 
@@ -2247,7 +2249,7 @@ fn test_deposit_with_valid_screening_passes() {
     test
         .privacy
         .apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
 
     assert_eq!(token.balance_of(address: user.address), Zero::zero());
@@ -2272,7 +2274,7 @@ fn test_deposit_without_screening_fails() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposit, screening: Option::None, caller: constants::PAYMASTER,
+            actions: deposit, screening: None, caller: constants::PAYMASTER,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
 }
@@ -2286,7 +2288,7 @@ fn test_UNEXPECTED_SCREENING_fails() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: [].span(), screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: [].span(), screening: Some(attestation), caller: constants::PAYMASTER,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::UNEXPECTED_SCREENING);
 }
@@ -2298,7 +2300,7 @@ fn test_non_deposit_without_screening_passes() {
     test
         .privacy
         .apply_actions_screened(
-            actions: [].span(), screening: Option::None, caller: constants::PAYMASTER,
+            actions: [].span(), screening: None, caller: constants::PAYMASTER,
         );
 }
 
@@ -2325,7 +2327,7 @@ fn test_deposit_wrong_screener_key_fails() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
 }
@@ -2353,7 +2355,7 @@ fn test_deposit_depositor_mismatch_fails() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
 }
@@ -2382,7 +2384,7 @@ fn test_deposit_stale_screening_fails() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     stop_cheat_block_timestamp(test.privacy.address);
     assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_EXPIRED);
@@ -2404,12 +2406,15 @@ fn test_deposit_future_dated_screening_fails() {
         ),
     ]
         .span();
-    let attestation = sign_screening_attestation(depositor: user.address, issued_at: now + 1);
+    // One second beyond the future-skew tolerance.
+    let attestation = sign_screening_attestation(
+        depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE + 1,
+    );
     start_cheat_block_timestamp(test.privacy.address, now);
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     stop_cheat_block_timestamp(test.privacy.address);
     assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_FUTURE_DATED);
@@ -2439,7 +2444,37 @@ fn test_deposit_at_max_age_boundary_passes() {
     test
         .privacy
         .apply_actions_screened(
-            actions: deposit, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+    stop_cheat_block_timestamp(test.privacy.address);
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+}
+
+#[test]
+fn test_deposit_within_future_tolerance_passes() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let user = test.new_user();
+    let amount = constants::DEFAULT_AMOUNT;
+    user.increase_token_balance(:token, :amount);
+    user.approve(:token, amount: amount.into());
+
+    let now = 1_000_u64;
+    let deposit = [
+        ServerAction::TransferFrom(
+            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
+        ),
+    ]
+        .span();
+    // Dated in the future but within the allowed clock-skew tolerance is still accepted.
+    let attestation = sign_screening_attestation(
+        depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE,
+    );
+    start_cheat_block_timestamp(test.privacy.address, now);
+    test
+        .privacy
+        .apply_actions_screened(
+            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     stop_cheat_block_timestamp(test.privacy.address);
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
@@ -2469,7 +2504,7 @@ fn test_multiple_deposits_same_depositor_pass() {
     test
         .privacy
         .apply_actions_screened(
-            actions: deposits, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposits, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
 }
@@ -2500,7 +2535,7 @@ fn test_apply_actions_rejects_multiple_depositors() {
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: deposits, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: deposits, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     assert_panic_with_felt_error(:result, expected_error: internal_errors::MULTIPLE_DEPOSITORS);
 }
@@ -2542,20 +2577,20 @@ fn test_combined_regular_and_open_note_deposits_screened_independently() {
 
     // Blocking the open-note depositor rejects the whole tx even though the regular deposit's
     // attestation is valid — the two depositor checks are enforced independently.
-    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: true);
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
     let result = test
         .privacy
         .safe_apply_actions_screened(
-            actions: combined, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: combined, screening: Some(attestation), caller: constants::PAYMASTER,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::DEPOSITOR_BLOCKED);
+    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
 
     // Unblocking lets both deposits land under the same valid attestation.
-    test.privacy.set_depositor_blocked(depositor: echo_executor, blocked: false);
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: false);
     test
         .privacy
         .apply_actions_screened(
-            actions: combined, screening: Option::Some(attestation), caller: constants::PAYMASTER,
+            actions: combined, screening: Some(attestation), caller: constants::PAYMASTER,
         );
     let deposited_note = test.privacy.get_note(:note_id);
     let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);

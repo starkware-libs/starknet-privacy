@@ -1671,10 +1671,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Option<ScreeningAttestation> {
         match deposit_depositor_of(:actions) {
-            Option::Some(depositor) => Option::Some(
+            Some(depositor) => Some(
                 sign_screening_attestation(:depositor, issued_at: get_block_timestamp()),
             ),
-            Option::None => Option::None,
+            None => None,
         }
     }
 
@@ -1974,22 +1974,24 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_proof_validity_blocks(:proof_validity_blocks)
     }
 
-    fn set_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress, blocked: bool) {
+    fn set_open_note_depositor_blocked(
+        self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
+    ) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.security_governor,
         );
-        self.admin.set_depositor_blocked(:depositor, :blocked);
+        self.admin.set_open_note_depositor_blocked(:depositor, :blocked);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_depositor_blocked(
+    fn safe_set_open_note_depositor_blocked(
         self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
     ) -> Result<(), Array<felt252>> {
-        self.safe_admin.set_depositor_blocked(:depositor, :blocked)
+        self.safe_admin.set_open_note_depositor_blocked(:depositor, :blocked)
     }
 
-    fn is_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
-        self.views.is_depositor_blocked(:depositor)
+    fn is_open_note_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
+        self.views.is_open_note_depositor_blocked(:depositor)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
@@ -2131,11 +2133,11 @@ pub(crate) fn sign_screening_attestation_with(
 /// Returns the `from_addr` of the first `TransferFrom` in `actions` (the regular-pool depositor),
 /// or `None` when there is no deposit.
 fn deposit_depositor_of(actions: Span<ServerAction>) -> Option<ContractAddress> {
-    let mut depositor: Option<ContractAddress> = Option::None;
+    let mut depositor: Option<ContractAddress> = None;
     for action in actions {
         match *action {
             ServerAction::TransferFrom(input) => {
-                depositor = Option::Some(input.from_addr);
+                depositor = Some(input.from_addr);
                 break;
             },
             _ => {},

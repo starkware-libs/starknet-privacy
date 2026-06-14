@@ -24,8 +24,8 @@ pub mod Privacy {
     };
     use privacy::snip12::{ScreeningAttestation, is_screening_attestation_valid};
     use privacy::utils::constants::{
-        CONTRACT_VERSION, DEPOSITOR_VALIDATION_MAX_AGE, INVOKE_SELECTOR, OPEN_NOTE_SALT,
-        STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+        CONTRACT_VERSION, DEPOSITOR_VALIDATION_MAX_AGE, DEPOSITOR_VALIDATION_MAX_FUTURE,
+        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
@@ -98,7 +98,7 @@ pub mod Privacy {
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
         /// Map of depositor addresses blocked from funding open-note deposits.
-        blocked_depositors: Map<ContractAddress, bool>,
+        blocked_open_note_depositors: Map<ContractAddress, bool>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
@@ -142,7 +142,7 @@ pub mod Privacy {
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
         ProofValidityBlocksSet: events::ProofValidityBlocksSet,
-        DepositorBlockSet: events::DepositorBlockSet,
+        OpenNoteDepositorBlockSet: events::OpenNoteDepositorBlockSet,
     }
 
     #[constructor]
@@ -741,8 +741,13 @@ pub mod Privacy {
             self.pausable.assert_not_paused();
             self.validate_proof(:actions);
             self.collect_fee();
-            let depositor = self._apply_actions(:actions);
-            self._verify_screening(:screening, :depositor);
+            if let Some(depositor) = self._apply_actions(:actions) {
+                // A regular-pool deposit must carry a screening attestation.
+                self._verify_screening(screening.expect(errors::SCREENING_REQUIRED), depositor);
+            } else {
+                // No deposit: there must be nothing to screen.
+                assert(screening.is_none(), errors::UNEXPECTED_SCREENING);
+            }
             self.reentrancy_guard.end();
         }
     }
@@ -799,24 +804,26 @@ pub mod Privacy {
             }
         }
 
-        /// Applies all server actions and returns the regular-deposit depositor address.
-        fn _apply_actions(ref self: ContractState, actions: Span<ServerAction>) -> ContractAddress {
+        /// Applies all server actions and returns the regular-pool depositor (the single
+        /// `TransferFrom.from_addr`), or `None` when the tx contains no deposit.
+        fn _apply_actions(
+            ref self: ContractState, actions: Span<ServerAction>,
+        ) -> Option<ContractAddress> {
             let mut undeposited_open_notes: usize = Zero::zero();
-            // The single regular-pool depositor (`TransferFrom.from_addr`). Zero means "none yet";
-            // every `TransferFrom` in the tx must share it (`MULTIPLE_DEPOSITORS` otherwise).
-            let mut deposit_depositor: ContractAddress = Zero::zero();
+            // The single regular-pool depositor (`TransferFrom.from_addr`); every `TransferFrom`
+            // in the tx must share it (`MULTIPLE_DEPOSITORS` otherwise).
+            let mut user_depositor: Option<ContractAddress> = None;
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
                     ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => {
-                        if deposit_depositor.is_zero() {
-                            deposit_depositor = input.from_addr;
-                        } else {
+                        if let Some(depositor) = user_depositor {
                             assert(
-                                deposit_depositor == input.from_addr,
-                                internal_errors::MULTIPLE_DEPOSITORS,
+                                depositor == input.from_addr, internal_errors::MULTIPLE_DEPOSITORS,
                             );
+                        } else {
+                            user_depositor = Some(input.from_addr);
                         }
                         self._apply_transfer_from(:input);
                     },
@@ -828,8 +835,8 @@ pub mod Privacy {
                             // there can be only one open_note depositor address.
                             let open_note_depositor = input.contract_address;
                             assert(
-                                !self.blocked_depositors.read(open_note_depositor),
-                                errors::DEPOSITOR_BLOCKED,
+                                !self.blocked_open_note_depositors.read(open_note_depositor),
+                                errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
                             );
                             // Apply deposits to open notes returned by Invoke.
                             for deposit in open_note_deposits {
@@ -838,10 +845,10 @@ pub mod Privacy {
                                         depositor: open_note_depositor, deposit: *deposit,
                                     );
                             }
+                            undeposited_open_notes = undeposited_open_notes
+                                .checked_sub(open_note_deposits.len())
+                                .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
                         }
-                        undeposited_open_notes = undeposited_open_notes
-                            .checked_sub(open_note_deposits.len())
-                            .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
@@ -855,37 +862,32 @@ pub mod Privacy {
                 };
             }
             assert(undeposited_open_notes == Zero::zero(), errors::UNDEPOSITED_OPEN_NOTES);
-            deposit_depositor
+            user_depositor
         }
 
-        /// Enforces screening of a regular-pool deposit.
-        /// `depositor` is the deposit's `from_addr` (zero when the tx has no deposit).
-        /// The attestation binds only `{depositor, issued_at}`.
-        /// The depositor is proof-bound via `TransferFrom`.
+        /// Verifies a regular-pool deposit's screening attestation: it must be fresh (not older
+        /// than `DEPOSITOR_VALIDATION_MAX_AGE`, and not dated more than
+        /// `DEPOSITOR_VALIDATION_MAX_FUTURE`
+        /// ahead of `now` to tolerate clock skew) and signed by the configured screener over
+        /// `{depositor, issued_at}`. The depositor is proof-bound via `TransferFrom`.
         fn _verify_screening(
-            self: @ContractState,
-            screening: Option<ScreeningAttestation>,
-            depositor: ContractAddress,
+            self: @ContractState, attestation: ScreeningAttestation, depositor: ContractAddress,
         ) {
-            match screening {
-                // No attestation: valid case when there is no deposit to screen.
-                Option::None => assert(depositor.is_zero(), errors::SCREENING_REQUIRED),
-                Option::Some(attestation) => {
-                    assert(depositor.is_non_zero(), errors::UNEXPECTED_SCREENING);
-                    let now = get_block_timestamp();
-                    assert(attestation.issued_at <= now, errors::SCREENING_FUTURE_DATED);
-                    assert(
-                        now - attestation.issued_at <= DEPOSITOR_VALIDATION_MAX_AGE,
-                        errors::SCREENING_EXPIRED,
-                    );
-                    assert(
-                        is_screening_attestation_valid(
-                            depositor, attestation, self.screener_public_key.read(),
-                        ),
-                        errors::SCREENING_INVALID_SIGNATURE,
-                    );
-                },
-            }
+            let now = get_block_timestamp();
+            assert(
+                attestation.issued_at <= now + DEPOSITOR_VALIDATION_MAX_FUTURE,
+                errors::SCREENING_FUTURE_DATED,
+            );
+            assert(
+                now <= attestation.issued_at + DEPOSITOR_VALIDATION_MAX_AGE,
+                errors::SCREENING_EXPIRED,
+            );
+            assert(
+                is_screening_attestation_valid(
+                    depositor, attestation, self.screener_public_key.read(),
+                ),
+                errors::SCREENING_INVALID_SIGNATURE,
+            );
         }
 
         fn _apply_write_once(ref self: ContractState, input: WriteOnceInput) {
@@ -1044,8 +1046,10 @@ pub mod Privacy {
             self.proof_validity_blocks.read()
         }
 
-        fn is_depositor_blocked(self: @ContractState, depositor: ContractAddress) -> bool {
-            self.blocked_depositors.read(depositor)
+        fn is_open_note_depositor_blocked(
+            self: @ContractState, depositor: ContractAddress,
+        ) -> bool {
+            self.blocked_open_note_depositors.read(depositor)
         }
     }
 
@@ -1084,13 +1088,13 @@ pub mod Privacy {
             self._set_proof_validity_blocks(:proof_validity_blocks);
         }
 
-        fn set_depositor_blocked(
+        fn set_open_note_depositor_blocked(
             ref self: ContractState, depositor: ContractAddress, blocked: bool,
         ) {
             self.roles.only_security_governor();
             assert(depositor.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
-            self.blocked_depositors.entry(depositor).write(blocked);
-            self.emit(events::DepositorBlockSet { depositor, blocked });
+            self.blocked_open_note_depositors.entry(depositor).write(blocked);
+            self.emit(events::OpenNoteDepositorBlockSet { depositor, blocked });
         }
     }
 

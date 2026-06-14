@@ -113,8 +113,8 @@ pub struct ProofValidityBlocksSet {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct DepositorBlockSet {
-    /// The depositor address whose block state changed.
+pub struct OpenNoteDepositorBlockSet {
+    /// The open-note depositor address whose block state changed.
     #[key]
     pub depositor: ContractAddress,
     /// Whether the depositor is now blocked.

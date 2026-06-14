@@ -552,8 +552,9 @@ pub trait IServer<T> {
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
     ///   ERC20 contract).
-    ///   - [`DEPOSITOR_BLOCKED`](privacy::errors::DEPOSITOR_BLOCKED): Thrown if the Invoke returned
-    ///   at least one deposit and the Invoke target (the open-note depositor) is on the block list.
+    ///   - [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED): Thrown if
+    ///   the Invoke returned at least one deposit and the Invoke target (the open-note depositor)
+    ///   is on the block list.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -753,7 +754,7 @@ pub trait IViews<T> {
     ///
     /// #### Returns
     /// - (`bool`): `true` if the depositor is blocked, `false` otherwise.
-    fn is_depositor_blocked(self: @T, depositor: ContractAddress) -> bool;
+    fn is_open_note_depositor_blocked(self: @T, depositor: ContractAddress) -> bool;
 }
 
 #[starknet::interface]
@@ -887,7 +888,7 @@ pub trait IAdmin<T> {
     ///
     /// A blocked depositor cannot fund any open note: every `_deposit_to_open_note`
     /// originating from that depositor reverts with
-    /// [`DEPOSITOR_BLOCKED`](privacy::errors::DEPOSITOR_BLOCKED).
+    /// [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED).
     ///
     /// #### Parameters
     /// - `depositor` (`ContractAddress`): The depositor address to block or unblock. Must be
@@ -898,8 +899,8 @@ pub trait IAdmin<T> {
     /// None
     ///
     /// #### Events Emitted
-    /// - [`DepositorBlockSet`](privacy::events::DepositorBlockSet): Emitted with the depositor and
-    /// the new block state.
+    /// - [`OpenNoteDepositorBlockSet`](privacy::events::OpenNoteDepositorBlockSet): Emitted with
+    /// the depositor and the new block state.
     ///
     /// #### Reverts
     /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if `depositor`
@@ -907,5 +908,5 @@ pub trait IAdmin<T> {
     ///
     /// #### Access Control
     /// - Only security governor.
-    fn set_depositor_blocked(ref self: T, depositor: ContractAddress, blocked: bool);
+    fn set_open_note_depositor_blocked(ref self: T, depositor: ContractAddress, blocked: bool);
 }
