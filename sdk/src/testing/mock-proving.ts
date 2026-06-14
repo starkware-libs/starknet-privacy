@@ -24,8 +24,8 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
  */
 export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
-    private readonly provider: ProviderInterface,
-    private readonly chainId: constants.StarknetChainId
+    protected readonly provider: ProviderInterface,
+    protected readonly chainId: constants.StarknetChainId
   ) {}
 
   async getDefaultDetails() {

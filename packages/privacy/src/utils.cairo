@@ -65,6 +65,10 @@ pub mod constants {
         .unwrap();
     /// Half the order of the Stark curve.
     pub const HALF_ORDER: u256 = ORDER.into() / 2_u256;
+    /// Maximum allowed age (in seconds) of a depositor screening attestation.
+    pub const DEPOSITOR_VALIDATION_MAX_AGE: u64 = 300;
+    /// Contract version, exposed via `get_version`.
+    pub const CONTRACT_VERSION: felt252 = '2.0';
 }
 
 /// Returns the generator point.
@@ -105,8 +109,7 @@ fn _compute_shared_x(ephemeral_secret: felt252, public_key: felt252) -> (felt252
         .expect(internal_errors::ZERO_EPHEMERAL_PUBLIC)
         .x();
     // Compute shared point.
-    let public_point = EcPointTrait::new_from_x(x: public_key)
-        .expect(internal_errors::INVALID_PUBLIC_KEY);
+    let public_point = EcPointTrait::new_from_x(x: public_key).expect(errors::INVALID_PUBLIC_KEY);
     let shared_point = public_point.mul(scalar: ephemeral_secret);
     let shared_x = shared_point.try_into().expect(internal_errors::ZERO_SHARED).x();
     (ephemeral_pub_x, shared_x)
