@@ -58,13 +58,13 @@ const OZ_ACCOUNT_CLASS_HASH =
 const STRK_TOKEN =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
-
 const rpcUrl = requireEnv("VITE_RPC_URL");
 const allAccounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
 
 function findAdmin(entries: AccountEntry[]): AccountEntry {
   const entry = entries.find((a) => a.admin);
-  if (!entry) throw new Error("No admin account (admin: true) found in ACCOUNTS");
+  if (!entry)
+    throw new Error("No admin account (admin: true) found in ACCOUNTS");
   return entry;
 }
 
@@ -118,10 +118,7 @@ async function deployAccount(
     deployResult.transaction_hash,
   );
   if (!receipt.isSuccess()) {
-    console.error(
-      `  Deploy ${name} FAILED:`,
-      JSON.stringify(receipt, null, 2),
-    );
+    console.error(`  Deploy ${name} FAILED:`, JSON.stringify(receipt, null, 2));
     process.exit(1);
   }
   console.log(`  Deployed: ${deployResult.transaction_hash}`);
@@ -148,10 +145,7 @@ async function fundAccount(
     transferTx.transaction_hash,
   );
   if (!receipt.isSuccess()) {
-    console.error(
-      `  Fund ${name} FAILED:`,
-      JSON.stringify(receipt, null, 2),
-    );
+    console.error(`  Fund ${name} FAILED:`, JSON.stringify(receipt, null, 2));
     process.exit(1);
   }
   console.log(`  Funded: ${transferTx.transaction_hash}`);
@@ -179,12 +173,16 @@ async function main(): Promise<void> {
       console.error(
         `  ERROR: computed admin address ${computedAddress} differs from account address ${adminEntry.address}`,
       );
-      console.error(
-        "  Check class hash, salt, and public key.",
-      );
+      console.error("  Check class hash, salt, and public key.");
       process.exit(1);
     }
-    await deployAccount(adminEntry.address, adminEntry.privateKey, publicKey, addressSalt, adminEntry.name);
+    await deployAccount(
+      adminEntry.address,
+      adminEntry.privateKey,
+      publicKey,
+      addressSalt,
+      adminEntry.name,
+    );
   }
 
   const adminAccount = new Account({
@@ -214,9 +212,7 @@ async function main(): Promise<void> {
       console.warn(
         `  WARNING: computed address ${computedAddress} differs from env address ${entry.address}`,
       );
-      console.warn(
-        "  Check class hash and salt. Skipping.",
-      );
+      console.warn("  Check class hash and salt. Skipping.");
       continue;
     }
 

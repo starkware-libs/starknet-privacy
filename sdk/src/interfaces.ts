@@ -12,6 +12,7 @@ import type {
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
 import type { OhttpOption } from "./internal/ohttp-client.js";
+import type { AdditionalData } from "./internal/proving-service.js";
 
 export type Amount = bigint;
 
@@ -91,6 +92,11 @@ export type Proof = {
   readonly output: string[];
   /** Proof facts from the proving service; must be included in the tx when submitting to the chain. */
   readonly proofFacts: string[];
+  /**
+   * Typed side-channel from the prove response. For screened deposits it
+   * carries the screening signature; absent otherwise.
+   */
+  readonly additionalData?: AdditionalData;
 };
 
 /**

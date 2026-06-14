@@ -3,7 +3,6 @@ import {
   Account,
   RpcProvider,
   OutsideExecutionVersion,
-
   type constants,
   type OutsideExecutionOptions,
 } from "starknet";
@@ -166,6 +165,8 @@ describe("Privacy StarkNet integration", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: poolAddress,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     // Mint tokens to Alice (admin is the minter)
@@ -318,8 +319,7 @@ describe("Privacy StarkNet integration", () => {
     );
     expect(
       allDeposits.find(
-        (deposit) =>
-          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+        (deposit) => deposit.amount === 100n && deposit.token === BigInt(TOKEN),
       ),
     ).toBeDefined();
   }, 300_000);
@@ -373,8 +373,7 @@ describe("Privacy StarkNet integration", () => {
     );
     expect(
       allDeposits.find(
-        (deposit) =>
-          deposit.amount === 100n && deposit.token === BigInt(TOKEN),
+        (deposit) => deposit.amount === 100n && deposit.token === BigInt(TOKEN),
       ),
     ).toBeDefined();
   }, 300_000);

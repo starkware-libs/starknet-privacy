@@ -96,7 +96,8 @@ export interface AccountEntry {
  */
 export function requireEnv(name: string): string {
   const value = process.env[name] ?? process.env[`VITE_${name}`];
-  if (!value) throw new Error(`Missing required env var: ${name} (or VITE_${name})`);
+  if (!value)
+    throw new Error(`Missing required env var: ${name} (or VITE_${name})`);
   return value;
 }
 
@@ -107,9 +108,7 @@ export function setupAdmin(): {
 } {
   const rpcUrl = requireEnv("RPC_URL");
   const accounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
-  const admin = accounts.find(
-    (entry) => entry.name.toLowerCase() === "admin",
-  );
+  const admin = accounts.find((entry) => entry.name.toLowerCase() === "admin");
   if (!admin) throw new Error('No "admin" entry found in ACCOUNTS env var');
 
   const provider = new RpcProvider({ nodeUrl: rpcUrl });
@@ -185,7 +184,11 @@ export async function declareClass(
       return classHash;
     }
     if (error instanceof Error && "code" in error) {
-      const rpcError = error as Error & { code: number; data?: unknown; baseError?: unknown };
+      const rpcError = error as Error & {
+        code: number;
+        data?: unknown;
+        baseError?: unknown;
+      };
       const shortMessage = rpcError.message.split(" with params")[0];
       const dataStr = rpcError.data
         ? ` data=${JSON.stringify(rpcError.data)}`

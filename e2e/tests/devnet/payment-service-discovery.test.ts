@@ -58,6 +58,8 @@ describe("Payment Service Discovery", () => {
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
+        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+        poolMode: "compatibility",
       }),
     );
 
@@ -230,6 +232,8 @@ describe("Payment Service Discovery", () => {
       provingProvider: new CallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes } = await aliceDiscover.discoverNotes();
@@ -259,6 +263,8 @@ describe("Payment Service Discovery", () => {
       provingProvider: new CallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const allAddresses = [de.alice.address, ...users.map((u) => u.address)];
@@ -287,6 +293,8 @@ describe("Payment Service Discovery", () => {
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
+        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+        poolMode: "compatibility",
       });
 
       const { notes } = await userDiscover.discoverNotes();
@@ -314,6 +322,8 @@ describe("Payment Service Discovery", () => {
         provingProvider: new CallMockProofProvider(de.provider, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
+        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+        poolMode: "compatibility",
       });
 
       const { channels } = await userDiscover.discoverChannels([

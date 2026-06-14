@@ -27,8 +27,7 @@ interface AccountEntry {
 const rpcUrl = requireEnv("VITE_RPC_URL");
 const allAccounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
 const admin = allAccounts.find((a) => a.admin);
-if (!admin)
-  throw new Error("No admin account (admin: true) found in ACCOUNTS");
+if (!admin) throw new Error("No admin account (admin: true) found in ACCOUNTS");
 
 const provider = new RpcProvider({ nodeUrl: rpcUrl });
 const adminAccount = new Account({

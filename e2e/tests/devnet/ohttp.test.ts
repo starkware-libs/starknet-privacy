@@ -85,6 +85,8 @@ describe("E2E OHTTP", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     // Discover notes via OHTTP — if this works, the full encrypt/decrypt pipeline is correct
@@ -119,6 +121,8 @@ describe("E2E OHTTP", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
+      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
+      poolMode: "compatibility",
     });
 
     const { notes: bobNotes } = await bobOhttp.discoverNotes();

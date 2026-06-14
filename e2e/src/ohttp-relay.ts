@@ -39,7 +39,10 @@ export async function startOhttpRelay(gatewayUrl: string): Promise<OhttpRelay> {
         headers: { "content-type": "message/ohttp-req" },
       },
       (proxyResponse) => {
-        clientResponse.writeHead(proxyResponse.statusCode!, proxyResponse.headers);
+        clientResponse.writeHead(
+          proxyResponse.statusCode!,
+          proxyResponse.headers,
+        );
         proxyResponse.pipe(clientResponse);
       },
     );
