@@ -129,17 +129,26 @@ export function createHandler(options: HandlerOptions = {}) {
       return;
     }
 
-    // All interceptors allowed the transaction
+    // All interceptors allowed. A verdict signature (screened deposit) is
+    // emitted inside an opaque additional_data envelope that the prover
+    // relays verbatim; otherwise allowed-only.
     finishRequest("check_with_interceptors", {
       rpcAction: "check_with_interceptors",
       interceptorVerdict: "allow",
+      signed: interceptorVerdict.signature !== undefined,
     });
+    const result = interceptorVerdict.signature
+      ? {
+          allowed: true,
+          additional_data: { signature: interceptorVerdict.signature },
+        }
+      : { allowed: true };
     res.writeHead(200, { "content-type": "application/json" });
     res.end(
       JSON.stringify({
         jsonrpc: "2.0",
         id: verdict.requestId,
-        result: { allowed: true },
+        result,
       })
     );
   };
