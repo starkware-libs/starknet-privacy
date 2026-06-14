@@ -1974,22 +1974,24 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_proof_validity_blocks(:proof_validity_blocks)
     }
 
-    fn set_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress, blocked: bool) {
+    fn set_open_note_depositor_blocked(
+        self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
+    ) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.security_governor,
         );
-        self.admin.set_depositor_blocked(:depositor, :blocked);
+        self.admin.set_open_note_depositor_blocked(:depositor, :blocked);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_depositor_blocked(
+    fn safe_set_open_note_depositor_blocked(
         self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
     ) -> Result<(), Array<felt252>> {
-        self.safe_admin.set_depositor_blocked(:depositor, :blocked)
+        self.safe_admin.set_open_note_depositor_blocked(:depositor, :blocked)
     }
 
-    fn is_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
-        self.views.is_depositor_blocked(:depositor)
+    fn is_open_note_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
+        self.views.is_open_note_depositor_blocked(:depositor)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {

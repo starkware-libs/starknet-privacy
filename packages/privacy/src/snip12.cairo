@@ -11,14 +11,14 @@ pub const SNIP12_VERSION: felt252 = 2;
 // SNIP-12 has no `u64` primitive; the type string widens `issued_at` to `u128`,
 // while the Cairo field stays `u64`. Both reduce to the same felt under Poseidon,
 // so the encoding matches off-chain signers that follow OZ's `Permit` convention.
-pub const DEPOSITOR_VALIDATION_TYPE_HASH: felt252 = selector!(
+const DEPOSITOR_VALIDATION_TYPE_HASH: felt252 = selector!(
     "\"DepositorValidation\"(\"depositor\":\"ContractAddress\",\"issued_at\":\"u128\")",
 );
 
 #[derive(Copy, Drop, Hash)]
-pub struct DepositorValidation {
-    pub depositor: ContractAddress,
-    pub issued_at: u64,
+pub(crate) struct DepositorValidation {
+    pub(crate) depositor: ContractAddress,
+    pub(crate) issued_at: u64,
 }
 
 /// Off-chain screening attestation relayed into `apply_actions` for deposits.
@@ -54,7 +54,7 @@ pub fn is_screening_attestation_valid(
 /// SNIP-12 envelope binds the hash to this identity. Exposed so off-chain
 /// tooling (TS/Python reference signers, test-vector generators) can derive
 /// the exact hash the verifier will check against.
-pub fn compute_message_hash(validation: @DepositorValidation, signer: felt252) -> felt252 {
+pub(crate) fn compute_message_hash(validation: @DepositorValidation, signer: felt252) -> felt252 {
     let domain = StarknetDomain {
         name: SNIP12_NAME,
         version: SNIP12_VERSION,
