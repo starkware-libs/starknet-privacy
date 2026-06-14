@@ -3,11 +3,10 @@
 // Screening attestation signer. Produces a STARK-curve ECDSA signature over a
 // SNIP-12 (revision 1) typed-data message binding a deposit's source address,
 // which the privacy-pool contract verifies on-chain
-// (packages/privacy/src/snip12.cairo, verify_depositor_validation). The message
-// hash and signature stay byte-compatible with the canonical cross-language
-// vectors in fixtures/screening-vectors.json (regenerate with
-// scripts/gen_screening_fixtures.py, which signs with the reference signer
-// in scripts/address_validation_signer/py).
+// (packages/privacy/src/snip12.cairo). The message hash and signature stay
+// byte-compatible with the canonical cross-language vectors in
+// fixtures/screening-vectors.json (regenerate with
+// scripts/gen_screening_fixtures.py).
 //
 // SNIP-12 revision-1 message hash:
 //   poseidon_hash_span([
@@ -29,13 +28,10 @@ function shortStringToFelt(text: string): bigint {
 
 const STARKNET_MESSAGE = shortStringToFelt("StarkNet Message");
 // The two type hashes below are pinned felts, deliberately not derived at
-// runtime from their encodeType strings: the deployed Cairo verifier bakes the
-// same values in at compile time (selector!), so they are frozen by the
-// contract. Deriving them here would let an accidental edit to an encodeType
-// string silently shift the digest into something self-consistent off-chain
-// but rejected on-chain. The unit tests re-derive both from the documented
-// strings and assert equality, so provenance stays checked without putting the
-// derivation in the signing path.
+// runtime from their encodeType strings: the deployed Cairo verifier bakes
+// the same values in at compile time, so a runtime derivation would let an
+// encodeType edit silently shift the digest into something self-consistent
+// off-chain but rejected on-chain (the unit tests re-derive and assert them).
 //
 // starknet_keccak("StarknetDomain"("name":"shortstring","version":"shortstring",
 // "chainId":"shortstring","revision":"shortstring")) — the canonical SNIP-12

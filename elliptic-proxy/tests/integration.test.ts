@@ -4,7 +4,7 @@ import { createHandler } from "../src/handler.js";
 import { computeHmacSignature } from "../src/auth.js";
 import type { Request } from "@google-cloud/functions-framework";
 import type { Config } from "../src/config.js";
-import { LIVE_CHAIN_ID } from "./helpers.js";
+import { LIVE_CHAIN_ID, SIGNING_KEY } from "./helpers.js";
 
 describe("integration: full request flow", () => {
   it("happy path — valid screen request returns blocked verdict", async () => {
@@ -22,6 +22,7 @@ describe("integration: full request flow", () => {
       configCacheTtlSeconds: 300,
       blockedCacheTtlSeconds: 300,
       partners: { "integration-partner": partnerSecret },
+      signingPrivateKey: SIGNING_KEY,
       chainId: LIVE_CHAIN_ID,
     };
 
@@ -81,10 +82,9 @@ describe("integration: full request flow", () => {
     await handler(req, res as unknown as Parameters<typeof handler>[1]);
 
     expect(res.statusCode).toBe(200);
-    expect(JSON.parse(res.body)).toEqual({
-      blocked: false,
-      source: "elliptic",
-    });
+    const allowed = JSON.parse(res.body);
+    expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
+    expect(allowed.signature).toBeDefined();
     expect(mockForward).toHaveBeenCalledWith(
       expect.objectContaining({ address: "0xabc123" })
     );
