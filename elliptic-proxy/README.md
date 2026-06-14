@@ -38,7 +38,7 @@ The secret value must be a JSON string with this structure:
   "partners": {
     "partner-name": "<base64-encoded-partner-secret>"
   },
-  "skipElliptic": false,
+  "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": [],
   "blockOverrideAddresses": []
 }
@@ -46,7 +46,7 @@ The secret value must be a JSON string with this structure:
 
 | Field                                     | Description                                                                                                                                                                                                                                                                                                                                      |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `elliptic.url`                            | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`).                                                                                                                                                                                                                                                    |
+| `elliptic.url`                            | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`). `mock:` selects the in-process mock upstream (test deployments only).                                                                                                                                                                              |
 | `elliptic.key`                            | Real Elliptic API key                                                                                                                                                                                                                                                                                                                            |
 | `elliptic.secret`                         | Real Elliptic HMAC secret. Paste the value Elliptic provides exactly as-is. **Caution**: a base64 secret can look identical to hex — any 32-character string drawn entirely from `[0-9a-f]` is valid in both alphabets. Don't run a value through `xxd -r -p \| base64` just because it "looks like hex" — trust Elliptic's label, not the string's appearance. |
 | `elliptic.timeoutMs`                      | Timeout for upstream Elliptic requests (ms)                                                                                                                                                                                                                                                                                                      |
@@ -55,9 +55,9 @@ The secret value must be a JSON string with this structure:
 | `configCacheTtlSeconds`                   | How long to cache the config before re-reading from Secret Manager (seconds)                                                                                                                                                                                                                                                                     |
 | `blockedCacheTtlSeconds`                  | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                             |
 | `partners.<name>`                         | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                        |
-| `skipElliptic` _(optional)_               | When `true`, the proxy never calls Elliptic. Intended for non-mainnet deployments where Elliptic has no data coverage (Elliptic does not index testnets, and at the time of writing has no Starknet coverage at all), or as a kill switch on mainnet. Operator-policy lists below still apply. Defaults to `false`.                              |
-| `additionalBlockedAddresses` _(optional)_ | Lowercase hex addresses to always treat as blocked, regardless of Elliptic's verdict (or in lieu of it when `skipElliptic` is set). Operator-curated supplemental deny list — surfaces as `{blocked: true, source: "blocklist"}`.                                                                                                                |
-| `blockOverrideAddresses` _(optional)_     | Lowercase hex addresses to always treat as allowed. Wins over both `additionalBlockedAddresses` and Elliptic — use to rescue addresses we believe were wrongly flagged. Surfaces as `{blocked: false, source: "allowlist"}`.                                                                                                                     |
+| `additionalBlockedAddresses` _(optional)_ | Operator deny list (hex felts): listed addresses always screen as blocked, in every mode, regardless of the upstream verdict — covers sanctioned addresses the upstream misses (false negatives). Entries match on the canonical felt value, so zero-padded entries match stripped addresses.                                                    |
+| `blockOverrideAddresses` _(optional)_     | Operator allow list (hex felts): listed addresses always screen as allowed, winning over the deny list, the blocked cache, and the upstream verdict — rescues addresses the upstream wrongly flags (false positives).                                                                                                                            |
+| `chainId` _(required)_                    | Hex felt of the network the deployment serves. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                                                           |
 
 ### Generating partner secrets
 
@@ -97,15 +97,49 @@ field that names which code path produced the verdict:
 
 | `source`    | Meaning                                                                                                                                 |
 | ----------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `allowlist` | Operator allow override (`blockOverrideAddresses`) — always allowed, wins over everything below.                                        |
+| `blocklist` | Operator deny list (`additionalBlockedAddresses`) — always blocked, wins over the cache and the upstream.                               |
 | `elliptic`  | Verdict scored from a live Elliptic call.                                                                                               |
 | `cache`     | Verdict served from the local blocked-address cache (skips the Elliptic call for known-blocked addresses).                              |
-| `allowlist` | Operator override matched: address is in `blockOverrideAddresses`. Always `blocked: false`. Wins over every other source.               |
-| `blocklist` | Operator deny supplement matched: address is in `additionalBlockedAddresses`. Always `blocked: true`. Wins over Elliptic and the cache. |
-| `skip`      | Elliptic was not called (`skipElliptic` is set) and no operator list matched. Always `blocked: false`.                                  |
+| `mock`      | Verdict produced by the in-process mock upstream (`mock:` elliptic.url).                                                                |
 
-Precedence (first match wins): `allowlist` → `blocklist` → `skip` → `cache` → `elliptic`.
+Precedence (first match wins): `allowlist` → `blocklist` → `cache` → `elliptic` (`mock` when the mock upstream is selected).
 
 Errors (HTTP 4xx/5xx) return `{ "error": "<reason>" }` with no `source` field.
+
+## Mock Elliptic upstream
+
+Setting `elliptic.url` to `mock:` screens against an in-process mock upstream
+instead of elliptic.co — for test deployments only (elliptic.co has no coverage
+outside mainnet). The full proxy pipeline (auth, operator lists, scoring,
+caching, verdicts) runs unchanged; only the upstream response is faked: the
+mock answers every address with Elliptic's 404 "not in blockchain", which is
+allowed and reports `source: "mock"`. Deterministic blocks on a mock
+deployment come from `additionalBlockedAddresses`, which applies in every mode
+(`source: "blocklist"`). A `mock_mode` warning is logged on every config load,
+and a mock url combined with the SN_MAIN `chainId` is rejected at config load.
+
+## Rate limiting
+
+- In-memory per-partner state backed by an LRU cache: `partner → { count, windowStart }`.
+- Fixed-window limiting using 1-minute buckets (not a sliding window).
+- Per-partner limit from `config.rateLimitPerMinute`.
+- The cache is capped at 20 partners; when full, least-recently-used entries are evicted.
+- Evicted partners lose their current window state and start fresh on the next request.
+- All counters reset on cold start — acceptable for a single-instance low-traffic service.
+
+## Error handling
+
+| Condition                              | Response                  |
+| -------------------------------------- | ------------------------- |
+| Missing/invalid `x-access-key`         | `401 Unauthorized`        |
+| Bad HMAC signature                     | `401 Unauthorized`        |
+| Rate limit exceeded                    | `429 Too Many Requests`   |
+| Body exceeds `maxBodyBytes`            | `413 Payload Too Large`   |
+| Config unavailable from Secret Manager | `503 Service Unavailable` |
+| Elliptic network error / timeout       | `504 Gateway Timeout`     |
+| Elliptic 404 (subject not on chain)    | `200 { blocked: false }`  |
+| Elliptic other non-2xx response        | `502 Upstream Error`      |
 
 ## Deployment
 
@@ -182,7 +216,7 @@ All requests are logged as structured JSON to stdout (picked up by Cloud Logging
 | `latencyMs`         | Total request duration                                                                                                                                           |
 | `partner`           | Partner name (if identified)                                                                                                                                     |
 | `result`            | `allowed` / `blocked` / `cached` / `error`                                                                                                                       |
-| `source`            | Which path produced the verdict: `elliptic`, `cache`, `allowlist`, `blocklist`, or `skip`. Absent on error responses.                                            |
+| `source`            | Which path produced the verdict: `allowlist`, `blocklist`, `elliptic`, `mock`, or `cache`. Absent on error responses.                                                     |
 | `reason`            | Rejection reason (`missing_headers`, `timestamp_expired`, `unknown_partner`, `invalid_signature`, `rate_limited`, `upstream_request_failed`, `upstream_non_2xx`) |
 | `ellipticStatus`    | Upstream Elliptic response status (on success)                                                                                                                   |
 | `ellipticLatencyMs` | Upstream Elliptic response latency (on success, source=elliptic)                                                                                                 |

@@ -4,7 +4,8 @@ import type {
   Request,
   Response,
 } from "@google-cloud/functions-framework";
-import { HEX_FELT, type Config } from "./config.js";
+import { isMockEllipticUrl, type Config } from "./config.js";
+import { feltListIncludes, isHexFelt } from "./felt.js";
 import { authenticateRequest, type AuthResult } from "./auth.js";
 import { RateLimiter } from "./rate-limit.js";
 import { BlockedAddressCache } from "./cache.js";
@@ -15,11 +16,8 @@ export interface ConfigSource {
   get(): Promise<Config>;
 }
 
-// StarkNet addresses: "0x" + up to 64 hex chars.
-const MAX_ADDRESS_LENGTH = 66;
-// A StarkNet ContractAddress is < 2**251. The contract can only ever recompute
-// the screening digest over such a value, so signing a larger "address" would
-// yield a signature the on-chain verifier can never match — reject it up front.
+// A StarkNet ContractAddress is < 2**251 — larger values cannot be an
+// on-chain address, so reject them up front.
 const ADDRESS_UPPER_BOUND = 2n ** 251n;
 
 export type Forwarder = (request: {
@@ -122,7 +120,7 @@ export function createHandler(
       return;
     }
 
-    if (address.length > MAX_ADDRESS_LENGTH || !HEX_FELT.test(address)) {
+    if (!isHexFelt(address)) {
       sendResponse(400, JSON.stringify({ error: "invalid address format" }), {
         partner: partnerName,
       });
@@ -138,10 +136,10 @@ export function createHandler(
       return;
     }
 
-    // Operator overrides take precedence over Elliptic and the cache.
-    // blockOverrideAddresses wins over additionalBlockedAddresses so an
-    // explicit allow can rescue a globally-denied address.
-    if (config.blockOverrideAddresses?.includes(address)) {
+    // Operator lists win over the cache and the upstream verdict, in every
+    // mode; the allow list wins over the deny list so an explicit allow can
+    // rescue a wrongly-flagged address. Matched on the canonical felt.
+    if (feltListIncludes(config.blockOverrideAddresses, addressFelt)) {
       sendResponse(
         200,
         JSON.stringify({ blocked: false, source: "allowlist" }),
@@ -154,7 +152,7 @@ export function createHandler(
       return;
     }
 
-    if (config.additionalBlockedAddresses?.includes(address)) {
+    if (feltListIncludes(config.additionalBlockedAddresses, addressFelt)) {
       sendResponse(
         200,
         JSON.stringify({ blocked: true, source: "blocklist" }),
@@ -167,17 +165,11 @@ export function createHandler(
       return;
     }
 
-    // skipElliptic short-circuits the live screening path. Useful on
-    // non-mainnet deployments where Elliptic has no Starknet coverage,
-    // or as a kill switch. Operator lists above still apply.
-    if (config.skipElliptic) {
-      sendResponse(200, JSON.stringify({ blocked: false, source: "skip" }), {
-        partner: partnerName,
-        result: "allowed",
-        source: "skip",
-      });
-      return;
-    }
+    // Verdicts are labeled with the upstream that produced them: "mock" when
+    // the mock Elliptic upstream is selected, "elliptic" otherwise.
+    const upstreamSource = isMockEllipticUrl(config.elliptic.url)
+      ? "mock"
+      : "elliptic";
 
     // Check cache first — blocked addresses skip the Elliptic call
     if (blockedCache.isBlocked(address)) {
@@ -240,13 +232,13 @@ export function createHandler(
     if (result.status === 404) {
       sendResponse(
         200,
-        JSON.stringify({ blocked: false, source: "elliptic" }),
+        JSON.stringify({ blocked: false, source: upstreamSource }),
         {
           partner: partnerName,
           ellipticStatus: result.status,
           ellipticLatencyMs: result.durationMs,
           result: "allowed",
-          source: "elliptic",
+          source: upstreamSource,
           scoringReason: "not_in_blockchain",
           cacheSize: blockedCache.size,
         }
@@ -298,13 +290,16 @@ export function createHandler(
 
     sendResponse(
       200,
-      JSON.stringify({ blocked: scoringResult.blocked, source: "elliptic" }),
+      JSON.stringify({
+        blocked: scoringResult.blocked,
+        source: upstreamSource,
+      }),
       {
         partner: partnerName,
         ellipticStatus: result.status,
         ellipticLatencyMs: result.durationMs,
         result: blocked ? "blocked" : "allowed",
-        source: "elliptic",
+        source: upstreamSource,
         scoringReason: scoringResult.reason,
         triggeringRuleIds:
           scoringResult.triggeringRuleIds.length > 0
