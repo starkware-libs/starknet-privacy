@@ -67,6 +67,8 @@ pub mod constants {
     pub const HALF_ORDER: u256 = ORDER.into() / 2_u256;
     /// Maximum allowed age (in seconds) of a depositor screening attestation.
     pub const DEPOSITOR_VALIDATION_MAX_AGE: u64 = 300;
+    /// Maximum clock skew (in seconds) tolerated for a screening attestation dated in the future.
+    pub const DEPOSITOR_VALIDATION_MAX_FUTURE: u64 = 60;
     /// Contract version, exposed via `get_version`.
     pub const CONTRACT_VERSION: felt252 = '2.0';
 }
