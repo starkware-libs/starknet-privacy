@@ -25,6 +25,8 @@ import { TracingRpcProvider } from "./tracing-provider.js";
 import type { CallAndProof, PrivateTransfersInterface } from "../interfaces.js";
 import { createPrivateTransfers } from "../factory.js";
 import { CallMockProofProvider } from "./mock-proving.js";
+import { ScreeningCallMockProofProvider } from "./screening-mock-proving.js";
+import { SCREENING_SIGNER_PUBLIC_KEY } from "./screening-signer.js";
 import {
   ContractDiscoveryProvider,
   type DiscoveryOptions,
@@ -332,13 +334,17 @@ export class Devnet {
     debugLog("devnet", "setup", "class hash:", classHash);
 
     // Deploy the contract
-    // Constructor params: governance_admin, auditor_public_key, proof_validity_blocks
+    // Constructor params: governance_admin, auditor_public_key, screener_public_key, proof_validity_blocks
     const deployResponse = await deployer.deployContract(
       {
         classHash,
         constructorCalldata: [
           deployer.address, // governance_admin
           "0x1", // auditor_public_key (dummy value)
+          // screener_public_key: verifies deposit screening attestations. The
+          // canonical test screener key, so the signing mock provider's
+          // attestations validate on-chain.
+          "0x" + SCREENING_SIGNER_PUBLIC_KEY.toString(16),
           "450", // proof_validity_blocks (~15 min at 2s/block)
         ],
         salt: "0x0", // Deterministic salt for reproducible contract address
@@ -484,26 +490,50 @@ export async function createDevnetTestEnv(
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
-  // Source-built pool: its class hash is never pinned, so force compatibility
-  // calldata until the in-repo contract accepts the screening suffix.
+  // The in-repo pool screens deposits, so drive it in screening mode and use a
+  // proving provider that signs each deposit's attestation with the screener
+  // key the pool was deployed with. poolMode is set explicitly because the
+  // source-built pool's class hash is unpinned (auto-detection is covered by
+  // the pool-mode unit tests).
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
-      poolMode: "compatibility",
+      poolMode: "screening",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
-      poolMode: "compatibility",
+      poolMode: "screening",
     }),
   };
 
   return { devnet, env, transfers };
+}
+
+/**
+ * A compatibility-mode transfers object for `env.alice`: it omits the screening
+ * attestation suffix, exactly as a pre-screening client would. Against the
+ * in-repo screening pool a deposit through it is expected to revert, so this is
+ * used to assert the pool rejects an un-attested deposit. It shares alice's
+ * account and viewing key, so register/setup performed by the screening
+ * transfers apply to it too.
+ */
+export function createCompatibilityAliceTransfers(
+  env: DevnetEnvironment
+): PrivateTransfersInterface {
+  return createPrivateTransfers({
+    account: env.alice,
+    viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
+    provingProvider: new CallMockProofProvider(env.provider, constants.StarknetChainId.SN_SEPOLIA),
+    discoveryProvider: new ContractDiscoveryProvider(env.privacy),
+    poolContractAddress: env.privacy.address,
+    poolMode: "compatibility",
+  });
 }
