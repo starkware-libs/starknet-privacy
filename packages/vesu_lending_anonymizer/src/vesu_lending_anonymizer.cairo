@@ -69,6 +69,10 @@ pub trait IVesuLendingAnonymizer<T> {
     /// - ([`Span<OpenNoteDeposit>`](privacy::objects::OpenNoteDeposit)) - span of deposits for the
     /// privacy contract to apply.
     ///
+    /// #### Reverts
+    /// - [`CALLER_NOT_PRIVACY`](errors::CALLER_NOT_PRIVACY) - Thrown if the caller is not the
+    /// trusted privacy contract set at construction.
+    ///
     /// #### Preconditions
     /// - `in_token` must not be zero.
     /// - `out_token` must not be zero.
@@ -96,6 +100,8 @@ pub trait IVesuLendingAnonymizer<T> {
 
 /// Error codes for Vesu lending operations.
 pub mod errors {
+    pub const ZERO_PRIVACY_CONTRACT: felt252 = 'ZERO_PRIVACY_CONTRACT';
+    pub const CALLER_NOT_PRIVACY: felt252 = 'CALLER_NOT_PRIVACY';
     pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
     pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
     pub const ZERO_ASSETS: felt252 = 'ZERO_ASSETS';
@@ -111,16 +117,23 @@ pub mod VesuLendingAnonymizer {
     use core::num::traits::Zero;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use privacy::objects::OpenNoteDeposit;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use super::{
         IVTokenDispatcher, IVTokenDispatcherTrait, IVesuLendingAnonymizer, LendingOperation, errors,
     };
 
     #[storage]
-    struct Storage {}
+    struct Storage {
+        /// The privacy contract allowed to call `privacy_invoke`. Set once at construction.
+        privacy_contract: ContractAddress,
+    }
 
     #[constructor]
-    fn constructor(ref self: ContractState) {}
+    fn constructor(ref self: ContractState, privacy_contract: ContractAddress) {
+        assert(privacy_contract.is_non_zero(), errors::ZERO_PRIVACY_CONTRACT);
+        self.privacy_contract.write(privacy_contract);
+    }
 
     #[abi(embed_v0)]
     pub impl VesuLendingAnonymizerImpl of IVesuLendingAnonymizer<ContractState> {
@@ -132,13 +145,16 @@ pub mod VesuLendingAnonymizer {
             assets: u256,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
+            // Only the trusted privacy contract may invoke; otherwise an arbitrary caller would
+            // receive the output-token approval below and could drain the funds.
+            let privacy_addr = self.privacy_contract.read();
+            assert(get_caller_address() == privacy_addr, errors::CALLER_NOT_PRIVACY);
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
             assert(assets.is_non_zero(), errors::ZERO_ASSETS);
             assert(in_token != out_token, errors::TOKENS_EQUAL);
 
             let self_addr = get_contract_address();
-            let privacy_addr = get_caller_address();
             let in_erc20 = IERC20Dispatcher { contract_address: in_token };
             let out_erc20 = IERC20Dispatcher { contract_address: out_token };
 

@@ -12,6 +12,8 @@ use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
 
 pub mod errors {
+    pub const ZERO_PRIVACY_CONTRACT: felt252 = 'ZERO_PRIVACY_CONTRACT';
+    pub const CALLER_NOT_PRIVACY: felt252 = 'CALLER_NOT_PRIVACY';
     pub const ZERO_ROUTER: felt252 = 'ZERO_ROUTER';
     pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
     pub const ZERO_IN_AMOUNT: felt252 = 'ZERO_IN_AMOUNT';
@@ -48,6 +50,8 @@ pub trait IEkuboSwapAnonymizer<T> {
     /// - `token_amount.token` must be one of the two tokens in `pool_key`.
     ///
     /// #### Reverts
+    /// - [`CALLER_NOT_PRIVACY`](errors::CALLER_NOT_PRIVACY): Thrown if the caller is not the
+    ///   trusted privacy contract set at construction.
     /// - [`ZERO_ROUTER`](errors::ZERO_ROUTER): Thrown if `router_addr` is zero.
     /// - [`ZERO_IN_TOKEN`](errors::ZERO_IN_TOKEN): Thrown if `token_amount.token` is zero.
     /// - [`NEGATIVE_AMOUNT`](errors::NEGATIVE_AMOUNT): Thrown if `token_amount.amount` is negative.
@@ -86,15 +90,22 @@ pub mod EkuboSwapAnonymizer {
     use ekubo::types::keys::PoolKey;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use privacy::objects::OpenNoteDeposit;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::erc20::erc20_utils::checked_transfer;
     use super::{IEkuboSwapAnonymizer, errors};
 
     #[storage]
-    struct Storage {}
+    struct Storage {
+        /// The privacy contract allowed to call `privacy_invoke`. Set once at construction.
+        privacy_contract: ContractAddress,
+    }
 
     #[constructor]
-    fn constructor(ref self: ContractState) {}
+    fn constructor(ref self: ContractState, privacy_contract: ContractAddress) {
+        assert(privacy_contract.is_non_zero(), errors::ZERO_PRIVACY_CONTRACT);
+        self.privacy_contract.write(privacy_contract);
+    }
 
     #[abi(embed_v0)]
     pub impl EkuboSwapAnonymizerImpl of IEkuboSwapAnonymizer<ContractState> {
@@ -107,6 +118,10 @@ pub mod EkuboSwapAnonymizer {
             skip_ahead: u128,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
+            // Only the trusted privacy contract may invoke; otherwise an arbitrary caller would
+            // receive the output-token approval below and could drain swapped funds.
+            let privacy_addr = self.privacy_contract.read();
+            assert(get_caller_address() == privacy_addr, errors::CALLER_NOT_PRIVACY);
             assert(router_addr.is_non_zero(), errors::ZERO_ROUTER);
 
             let TokenAmount {
@@ -124,7 +139,6 @@ pub mod EkuboSwapAnonymizer {
             };
 
             let self_addr = get_contract_address();
-            let privacy_addr = get_caller_address();
             let out_erc20 = IERC20Dispatcher { contract_address: out_token };
 
             checked_transfer(

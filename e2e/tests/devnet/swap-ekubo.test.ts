@@ -27,7 +27,11 @@ describe("Ekubo swap on devnet", () => {
     const { admin, provider } = env.env;
     tokens = await deployTestTokens(admin, provider);
     ekubo = await deployEkuboInfra(admin, provider, tokens);
-    executorAddress = await deployEkuboExecutor(admin, provider);
+    executorAddress = await deployEkuboExecutor(
+      admin,
+      provider,
+      env.env.privacy.address,
+    );
   });
 
   afterAll(async () => {

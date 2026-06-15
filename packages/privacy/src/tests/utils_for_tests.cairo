@@ -1503,7 +1503,9 @@ pub(crate) impl TestImpl of TestTrait {
     fn deploy_vesu_components(ref self: Test) -> Vesu {
         let underlying_token = self.new_token();
         let vault = deploy_mock_vesu_vault(underlying_token: underlying_token.contract_address());
-        let lending_anonymizer = deploy_vesu_lending_anonymizer();
+        let lending_anonymizer = deploy_vesu_lending_anonymizer(
+            privacy_contract: self.privacy.address,
+        );
         Vesu { underlying_token, vault, lending_anonymizer }
     }
 
@@ -2207,14 +2209,14 @@ fn deploy_privacy(
     }
 }
 
-fn deploy_vesu_lending_anonymizer() -> ContractAddress {
+fn deploy_vesu_lending_anonymizer(privacy_contract: ContractAddress) -> ContractAddress {
     let class_hash = declare(contract: "VesuLendingAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (address, _) = VesuLendingAnonymizer::deploy_for_test(
-        class_hash: *class_hash, :deployment_params,
+        class_hash: *class_hash, :deployment_params, :privacy_contract,
     )
         .expect('VesuLending deploy failed');
     address
@@ -2407,7 +2409,7 @@ pub(crate) fn deploy_ekubo_swap_anonymizer(
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = deploy_ekubo_swap_anonymizer_for_test(
-        class_hash: *class_hash, :deployment_params,
+        class_hash: *class_hash, :deployment_params, privacy_contract: privacy_address,
     )
         .expect('EkuboSwap deploy failed');
     EkuboSwapAnonymizerCfg { address: contract_address, router, privacy_address }
@@ -2466,6 +2468,9 @@ pub(crate) impl EkuboSwapAnonymizerCfgImpl of EkuboSwapAnonymizerCfgTrait {
         skip_ahead: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
         IEkuboSwapAnonymizerSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 :router_addr, :token_amount, :pool_key, :minimum_received, :skip_ahead, :note_id,

@@ -27,7 +27,11 @@ describe("Vesu lending on devnet", () => {
     const { admin, provider } = env.env;
     tokens = await deployTestTokens(admin, provider);
     vesu = await deployVesuInfra(admin, provider, tokens);
-    anonymizerAddress = await deployVesuAnonymizer(admin, provider);
+    anonymizerAddress = await deployVesuAnonymizer(
+      admin,
+      provider,
+      env.env.privacy.address,
+    );
   });
 
   afterAll(async () => {

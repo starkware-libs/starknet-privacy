@@ -174,6 +174,7 @@ export async function deployEkuboInfra(
 export async function deployEkuboExecutor(
   admin: Account,
   provider: RpcProvider,
+  privacyAddress: string,
 ): Promise<string> {
   const executorArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
@@ -192,7 +193,7 @@ export async function deployEkuboExecutor(
     admin,
     provider,
     executorClassHash,
-    [], // stateless — no constructor args
+    [privacyAddress], // constructor: trusted privacy contract allowed to call privacy_invoke
     "0x100",
   );
 }

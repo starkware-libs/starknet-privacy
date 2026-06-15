@@ -16,7 +16,7 @@
 import { appendFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { setupAdmin } from "../src/utils.js";
+import { setupAdmin, requireEnv } from "../src/utils.js";
 import {
   deployEkuboInfra,
   deployEkuboExecutor,
@@ -86,7 +86,11 @@ const ekubo = await deployEkuboInfra(
 );
 
 console.log("\n=== Deploying Ekubo executor ===");
-const executorAddress = await deployEkuboExecutor(adminAccount, provider);
+const executorAddress = await deployEkuboExecutor(
+  adminAccount,
+  provider,
+  requireEnv("VITE_POOL_ADDRESS"),
+);
 
 const ekuboPool = {
   token0: ekubo.poolToken0,

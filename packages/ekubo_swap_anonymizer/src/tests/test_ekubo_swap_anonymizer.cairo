@@ -13,6 +13,7 @@ use ekubo_swap_anonymizer::tests::test_utils::{
 };
 use privacy::objects::OpenNoteDeposit;
 use snforge_std::TokenTrait;
+use starknet::ContractAddress;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
 
@@ -96,6 +97,35 @@ fn test_ekubo_same_anonymizer_different_pool() {
     assert_eq!(token_a.balance_of(address: anonymizer.address), Zero::zero());
     assert_eq!(token_c.balance_of(address: anonymizer.address), swap_amount.into());
     assert_eq!(token_c.balance_of(address: anonymizer.router), Zero::zero());
+}
+
+#[test]
+fn test_ekubo_privacy_invoke_unauthorized_caller() {
+    let anonymizer = deploy_anonymizer_with_router();
+    let input_token = new_token();
+    let output_token = new_token();
+    let swap_amount = DEFAULT_AMOUNT;
+
+    // Fund the anonymizer and router so the swap would otherwise succeed: the only thing that
+    // stops a non-privacy caller from draining the output is the caller-authorization guard.
+    input_token.supply(address: anonymizer.address, amount: swap_amount);
+    output_token.supply(address: anonymizer.router, amount: swap_amount);
+
+    let in_addr = input_token.contract_address();
+    let out_addr = output_token.contract_address();
+    let pool_key = pool_key_for_tokens(in_addr, out_addr);
+
+    let attacker: ContractAddress = 'ATTACKER'.try_into().unwrap();
+    let result = anonymizer
+        .safe_privacy_invoke_from(
+            caller: attacker,
+            token_amount: make_token_amount(in_addr, swap_amount),
+            :pool_key,
+            minimum_received: 0,
+            skip_ahead: 0,
+            note_id: 'note',
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_PRIVACY);
 }
 
 #[test]

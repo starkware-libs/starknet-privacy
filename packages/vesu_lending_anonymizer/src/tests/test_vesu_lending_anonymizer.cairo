@@ -1,6 +1,7 @@
 use core::num::traits::Zero;
 use privacy::objects::OpenNoteDeposit;
 use snforge_std::TokenTrait;
+use starknet::ContractAddress;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
 use vesu_lending_anonymizer::tests::test_utils::{
@@ -61,6 +62,21 @@ fn test_privacy_invoke_deposit_withdraw(preexisting_balance: u128) {
         (preexisting_balance + amount).into(),
     );
     assert_eq!(vesu.underlying_token.balance_of(address: vesu.vault), 0);
+}
+
+#[test]
+fn test_privacy_invoke_unauthorized_caller() {
+    let vesu = deploy_vesu_components();
+    let amount = DEFAULT_AMOUNT;
+    let note_id: felt252 = 'NOTE_ID';
+
+    // Fund the anonymizer so the deposit would otherwise succeed: the only thing that stops a
+    // non-privacy caller from draining the output is the caller-authorization guard.
+    vesu.underlying_token.supply(address: vesu.lending_anonymizer, amount: amount);
+
+    let attacker: ContractAddress = 'ATTACKER'.try_into().unwrap();
+    let result = vesu.safe_privacy_invoke_from(caller: attacker, :amount, :note_id);
+    assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_PRIVACY);
 }
 
 #[test]

@@ -16,7 +16,7 @@
 import { writeFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
-import { setupAdmin } from "../src/utils.js";
+import { setupAdmin, requireEnv } from "../src/utils.js";
 import {
   deployTestTokens,
   deployVesuInfra,
@@ -53,7 +53,11 @@ const vesu = await deployVesuInfra(adminAccount, provider, {
 });
 
 console.log("\n=== Deploying Vesu lending anonymizer ===");
-const anonymizerAddress = await deployVesuAnonymizer(adminAccount, provider);
+const anonymizerAddress = await deployVesuAnonymizer(
+  adminAccount,
+  provider,
+  requireEnv("VITE_POOL_ADDRESS"),
+);
 
 // Build output env vars
 const tokens = [

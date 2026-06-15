@@ -367,6 +367,7 @@ export async function deployVesuInfra(
 export async function deployVesuAnonymizer(
   admin: Account,
   provider: RpcProvider,
+  privacyAddress: string,
 ): Promise<string> {
   const anonymizerArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
@@ -381,5 +382,12 @@ export async function deployVesuAnonymizer(
     anonymizerArtifact.compiledPath,
   );
 
-  return deployContract(admin, provider, anonymizerClassHash, [], "0x700");
+  // constructor: trusted privacy contract allowed to call privacy_invoke
+  return deployContract(
+    admin,
+    provider,
+    anonymizerClassHash,
+    [privacyAddress],
+    "0x700",
+  );
 }

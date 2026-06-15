@@ -11,7 +11,13 @@ use privacy::objects::OpenNoteDeposit;
 use snforge_std::{CustomToken, DeclareResultTrait, Token, declare};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
+use starkware_utils_testing::test_utils::{Deployable, TokenConfig, cheat_caller_address_once};
+
+/// Trusted privacy contract used by the anonymizer in tests. `privacy_invoke` rejects any other
+/// caller, so the wrappers below cheat the caller to this address.
+pub fn privacy_contract() -> ContractAddress {
+    'PRIVACY_CONTRACT'.try_into().unwrap()
+}
 
 pub fn deploy_mock_ekubo_amm() -> ContractAddress {
     let class_hash = declare(contract: "MockEkuboAMM").unwrap_syscall().contract_class().class_hash;
@@ -23,14 +29,14 @@ pub fn deploy_mock_ekubo_amm() -> ContractAddress {
     contract_address
 }
 
-pub fn deploy_ekubo_swap_anonymizer() -> ContractAddress {
+pub fn deploy_ekubo_swap_anonymizer(privacy_contract: ContractAddress) -> ContractAddress {
     let class_hash = declare(contract: "EkuboSwapAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
     let (contract_address, _) = EkuboSwapAnonymizer::deploy_for_test(
-        class_hash: *class_hash, :deployment_params,
+        class_hash: *class_hash, :deployment_params, :privacy_contract,
     )
         .expect('EkuboSwap deploy failed');
     contract_address
@@ -72,6 +78,8 @@ pub fn make_token_amount(token: ContractAddress, amount: u128) -> TokenAmount {
 pub struct EkuboSwapAnonymizerCfg {
     pub address: ContractAddress,
     pub router: ContractAddress,
+    /// The privacy contract the anonymizer trusts; the wrappers cheat the caller to this address.
+    pub privacy_address: ContractAddress,
 }
 
 #[generate_trait]
@@ -84,6 +92,9 @@ pub impl EkuboSwapAnonymizerCfgImpl of EkuboSwapAnonymizerCfgTrait {
         skip_ahead: u128,
         note_id: felt252,
     ) -> Span<OpenNoteDeposit> {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
         IEkuboSwapAnonymizerDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 router_addr: *self.router,
@@ -105,15 +116,43 @@ pub impl EkuboSwapAnonymizerCfgImpl of EkuboSwapAnonymizerCfgTrait {
         skip_ahead: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        cheat_caller_address_once(
+            contract_address: *self.address, caller_address: *self.privacy_address,
+        );
         IEkuboSwapAnonymizerSafeDispatcher { contract_address: *self.address }
             .privacy_invoke(
                 :router_addr, :token_amount, :pool_key, :minimum_received, :skip_ahead, :note_id,
+            )
+    }
+
+    /// Calls `privacy_invoke` from `caller` (no cheat to the trusted privacy address), used to
+    /// exercise the caller-authorization guard.
+    #[feature("safe_dispatcher")]
+    fn safe_privacy_invoke_from(
+        self: @EkuboSwapAnonymizerCfg,
+        caller: ContractAddress,
+        token_amount: TokenAmount,
+        pool_key: PoolKey,
+        minimum_received: u256,
+        skip_ahead: u128,
+        note_id: felt252,
+    ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
+        cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
+        IEkuboSwapAnonymizerSafeDispatcher { contract_address: *self.address }
+            .privacy_invoke(
+                router_addr: *self.router,
+                :token_amount,
+                :pool_key,
+                :minimum_received,
+                :skip_ahead,
+                :note_id,
             )
     }
 }
 
 pub fn deploy_anonymizer_with_router() -> EkuboSwapAnonymizerCfg {
     let mock_router = deploy_mock_ekubo_amm();
-    let anonymizer_address = deploy_ekubo_swap_anonymizer();
-    EkuboSwapAnonymizerCfg { address: anonymizer_address, router: mock_router }
+    let privacy_address = privacy_contract();
+    let anonymizer_address = deploy_ekubo_swap_anonymizer(privacy_contract: privacy_address);
+    EkuboSwapAnonymizerCfg { address: anonymizer_address, router: mock_router, privacy_address }
 }
