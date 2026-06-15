@@ -10,9 +10,12 @@
 //! the vault (`out_token`). The vault pulls `in_token` (underlying) from the caller after prior
 //! approval.
 //!
-//! **Withdraw** (shares → underlying): Calls `withdraw(assets: u256, receiver: ContractAddress,
-//! owner: ContractAddress)` on the vault (`in_token`). Burns shares from `owner` and sends
-//! underlying to `receiver`.
+//! **Withdraw** (shares → underlying): Calls `redeem(shares: u256, receiver: ContractAddress,
+//! owner: ContractAddress)` on the vault (`in_token`). Burns the exact share count from `owner` and
+//! sends the corresponding underlying to `receiver`. `redeem` (burn an exact number of shares) is
+//! used rather than `withdraw` (receive an exact amount of underlying) because the pool holds and
+//! spends vToken shares: at any exchange rate above 1:1, `withdraw(shares)` would burn fewer shares
+//! than the pool transferred in and strand the remainder in this stateless contract.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
@@ -40,6 +43,15 @@ pub trait IVToken<T> {
     fn withdraw(
         ref self: T, assets: u256, receiver: ContractAddress, owner: ContractAddress,
     ) -> u256;
+    /// Redeems an exact number of vTokens (shares), burning them from `owner` and sending the
+    /// corresponding underlying assets to `receiver`.
+    /// # Arguments
+    /// * `shares` - amount of vToken shares to burn [SCALE]
+    /// * `receiver` - address to receive the withdrawn underlying assets
+    /// * `owner` - address of the owner of the vToken shares
+    /// # Returns
+    /// * amount of underlying assets withdrawn [asset scale]
+    fn redeem(ref self: T, shares: u256, receiver: ContractAddress, owner: ContractAddress) -> u256;
 }
 
 /// Lending operation to perform on a Vesu vault.
@@ -62,7 +74,8 @@ pub trait IVesuLendingAnonymizer<T> {
     /// vToken).
     /// - `out_token` (`ContractAddress`) - The token address of the output funds (in deposit -
     /// vToken).
-    /// - `assets` (`u256`) - amount of assets to deposit/withdraw.
+    /// - `assets` (`u256`) - For Deposit, the amount of underlying assets to deposit. For Withdraw,
+    /// the number of vToken shares to redeem.
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
     ///
     /// #### Returns
@@ -171,8 +184,9 @@ pub mod VesuLendingAnonymizer {
                         .deposit(:assets, receiver: self_addr)
                 },
                 LendingOperation::Withdraw => {
+                    // `assets` carries the vToken share count to redeem (see `assets` doc).
                     IVTokenDispatcher { contract_address: in_token }
-                        .withdraw(:assets, receiver: self_addr, owner: self_addr)
+                        .redeem(shares: assets, receiver: self_addr, owner: self_addr)
                 },
             }
 

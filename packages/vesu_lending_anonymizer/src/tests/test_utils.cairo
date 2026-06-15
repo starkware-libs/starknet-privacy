@@ -11,6 +11,7 @@ pub fn privacy_contract() -> ContractAddress {
     'PRIVACY_CONTRACT'.try_into().unwrap()
 }
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
+use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultInterest::deploy_for_test as deploy_mock_vesu_vault_interest_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
 use vesu_lending_anonymizer::vesu_lending_anonymizer::{
@@ -201,6 +202,25 @@ pub fn deploy_mock_vesu_vault_overflow(underlying_token: ContractAddress) -> Con
         :underlying_token,
     )
         .expect('MockVesuVaultOverflow failed');
+    address
+}
+
+/// Deploys a vault whose shares redeem for twice as much underlying (2:1), modeling accrued
+/// interest so withdraw exercises an exchange rate above 1:1.
+pub fn deploy_mock_vesu_vault_interest(underlying_token: ContractAddress) -> ContractAddress {
+    let class_hash = declare(contract: "MockVesuVaultInterest")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 1, deploy_from_zero: true };
+    let (address, _) = deploy_mock_vesu_vault_interest_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        name: "MockVesuVaultInterest",
+        symbol: "MVI",
+        :underlying_token,
+    )
+        .expect('MockVesuVaultInterest failed');
     address
 }
 

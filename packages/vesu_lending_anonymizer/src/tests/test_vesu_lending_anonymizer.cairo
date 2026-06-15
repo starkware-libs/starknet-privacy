@@ -5,7 +5,8 @@ use starknet::ContractAddress;
 use starkware_utils::constants::MAX_U128;
 use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
 use vesu_lending_anonymizer::tests::test_utils::{
-    VesuTrait, deploy_mock_vesu_vault_noop, deploy_mock_vesu_vault_overflow, deploy_vesu_components,
+    VesuTrait, deploy_mock_vesu_vault_interest, deploy_mock_vesu_vault_noop,
+    deploy_mock_vesu_vault_overflow, deploy_vesu_components,
 };
 use vesu_lending_anonymizer::vesu_lending_anonymizer::{LendingOperation, errors};
 
@@ -151,6 +152,39 @@ fn test_privacy_invoke_assertions() {
             operation: withdraw, :in_token, out_token: in_token, assets: amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
+}
+
+/// At an exchange rate above 1:1, withdraw must redeem the exact share count the pool transferred
+/// in (burning all of it) rather than treating the amount as underlying assets, which would strand
+/// the unburned shares in the stateless anonymizer.
+#[test]
+fn test_privacy_invoke_withdraw_redeems_exact_shares() {
+    let mut vesu = deploy_vesu_components();
+    let amount = DEFAULT_AMOUNT;
+
+    // Swap in a vault whose shares redeem for 2x underlying (models accrued interest).
+    let vault = deploy_mock_vesu_vault_interest(
+        underlying_token: vesu.underlying_token.contract_address(),
+    );
+    vesu.vault = vault;
+
+    // Deposit `amount` underlying → anonymizer receives `amount` shares (1:1 deposit).
+    vesu.underlying_token.supply(address: vesu.lending_anonymizer, amount: amount);
+    vesu.privacy_invoke_deposit(:amount, note_id: 'DEPOSIT_NOTE');
+    assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), amount.into());
+
+    // Pre-fund the vault so it can pay out the 2x redemption.
+    vesu.underlying_token.supply(address: vesu.vault, amount: amount);
+
+    // Withdraw redeems the exact share count (`amount`), not an underlying amount.
+    let deposits = vesu.privacy_invoke_withdraw(:amount, note_id: 'WITHDRAW_NOTE');
+    let OpenNoteDeposit { note_id: _, token: ret_out_token, amount: ret_out_amount } = *deposits[0];
+
+    // All shares burned: nothing stranded in the stateless anonymizer.
+    assert_eq!(vesu.vault_balance_of(address: vesu.lending_anonymizer), 0);
+    // Received the full 2x underlying value of the redeemed shares.
+    assert_eq!(ret_out_token, vesu.underlying_token.contract_address());
+    assert_eq!(ret_out_amount, amount * 2);
 }
 
 #[test]

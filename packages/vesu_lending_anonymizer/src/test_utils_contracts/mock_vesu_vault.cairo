@@ -66,6 +66,18 @@ pub mod MockVesuVault {
                 .transfer(recipient: receiver, amount: assets);
             assets
         }
+
+        fn redeem(
+            ref self: ContractState,
+            shares: u256,
+            receiver: ContractAddress,
+            owner: ContractAddress,
+        ) -> u256 {
+            self.erc20.burn(account: owner, amount: shares);
+            IERC20Dispatcher { contract_address: self.underlying_token.read() }
+                .transfer(recipient: receiver, amount: shares);
+            shares
+        }
     }
 }
 
@@ -123,6 +135,15 @@ pub mod MockVesuVaultNoop {
         fn withdraw(
             ref self: ContractState,
             assets: u256,
+            receiver: ContractAddress,
+            owner: ContractAddress,
+        ) -> u256 {
+            Zero::zero()
+        }
+
+        fn redeem(
+            ref self: ContractState,
+            shares: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
         ) -> u256 {
@@ -197,6 +218,110 @@ pub mod MockVesuVaultOverflow {
             IERC20Dispatcher { contract_address: self.underlying_token.read() }
                 .transfer(recipient: receiver, amount: overflow_amount);
             Zero::zero()
+        }
+
+        fn redeem(
+            ref self: ContractState,
+            shares: u256,
+            receiver: ContractAddress,
+            owner: ContractAddress,
+        ) -> u256 {
+            let overflow_amount: u256 = MAX_U128.into() + 1;
+            IERC20Dispatcher { contract_address: self.underlying_token.read() }
+                .transfer(recipient: receiver, amount: overflow_amount);
+            Zero::zero()
+        }
+    }
+}
+
+/// Mock Vesu vault modeling accrued interest at a 2:1 share→asset rate. `deposit` mints one share
+/// per underlying asset; `redeem` burns the exact share count and pays out twice as many underlying
+/// assets (so the vault must be pre-funded with the extra underlying). Used to verify the
+/// anonymizer redeems an exact share count instead of treating the amount as underlying.
+#[starknet::contract]
+pub mod MockVesuVaultInterest {
+    use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin::token::erc20::{DefaultConfig, ERC20Component, ERC20HooksEmptyImpl};
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use vesu_lending_anonymizer::vesu_lending_anonymizer::IVToken;
+
+    /// Underlying assets per share on redeem (and shares burned per asset on withdraw).
+    const REDEEM_RATE: u256 = 2;
+
+    component!(path: ERC20Component, storage: erc20, event: ERC20Event);
+
+    #[abi(embed_v0)]
+    impl ERC20Impl = ERC20Component::ERC20Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC20CamelOnlyImpl = ERC20Component::ERC20CamelOnlyImpl<ContractState>;
+    impl InternalImpl = ERC20Component::InternalImpl<ContractState>;
+
+    #[storage]
+    struct Storage {
+        #[substorage(v0)]
+        erc20: ERC20Component::Storage,
+        underlying_token: ContractAddress,
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        #[flat]
+        ERC20Event: ERC20Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+    }
+
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        name: ByteArray,
+        symbol: ByteArray,
+        underlying_token: ContractAddress,
+    ) {
+        self.erc20.initializer(name, symbol);
+        self.underlying_token.write(underlying_token);
+    }
+
+    #[abi(embed_v0)]
+    impl MockVesuVaultImpl of IVToken<ContractState> {
+        fn deposit(ref self: ContractState, assets: u256, receiver: ContractAddress) -> u256 {
+            IERC20Dispatcher { contract_address: self.underlying_token.read() }
+                .transfer_from(
+                    sender: get_caller_address(), recipient: get_contract_address(), amount: assets,
+                );
+            self.erc20.mint(recipient: receiver, amount: assets);
+            assets
+        }
+
+        fn withdraw(
+            ref self: ContractState,
+            assets: u256,
+            receiver: ContractAddress,
+            owner: ContractAddress,
+        ) -> u256 {
+            // ERC-4626 withdraw semantics: burn `assets / rate` shares to return `assets`
+            // underlying.
+            let shares = assets / REDEEM_RATE;
+            self.erc20.burn(account: owner, amount: shares);
+            IERC20Dispatcher { contract_address: self.underlying_token.read() }
+                .transfer(recipient: receiver, amount: assets);
+            shares
+        }
+
+        fn redeem(
+            ref self: ContractState,
+            shares: u256,
+            receiver: ContractAddress,
+            owner: ContractAddress,
+        ) -> u256 {
+            self.erc20.burn(account: owner, amount: shares);
+            let assets = shares * REDEEM_RATE;
+            IERC20Dispatcher { contract_address: self.underlying_token.read() }
+                .transfer(recipient: receiver, amount: assets);
+            assets
         }
     }
 }
