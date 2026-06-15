@@ -144,7 +144,7 @@ describe("Vesu lending on devnet", () => {
             1n, // LendingOperation::Withdraw
             vesu.usdVToken,
             tokens.usdToken,
-            lendAmount, // withdraw same amount of underlying assets
+            vTokenAmount, // redeem the exact vToken (share) count transferred to the anonymizer
             0n,
             openNote.noteId,
           ],

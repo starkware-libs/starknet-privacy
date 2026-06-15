@@ -32,6 +32,7 @@ build-external-contracts = [
     "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault",
     "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop",
     "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow",
+    "vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultInterest",
 ]
 
 [scripts]
