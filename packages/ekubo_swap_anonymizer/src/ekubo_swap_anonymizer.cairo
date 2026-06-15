@@ -89,16 +89,32 @@ pub mod EkuboSwapAnonymizer {
     use ekubo::types::i129::i129;
     use ekubo::types::keys::PoolKey;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::objects::OpenNoteDeposit;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::erc20::erc20_utils::checked_transfer;
     use super::{IEkuboSwapAnonymizer, errors};
 
+    component!(
+        path: ReentrancyGuardComponent, storage: reentrancy_guard, event: ReentrancyGuardEvent,
+    );
+
+    impl ReentrancyGuardInternalImpl = ReentrancyGuardComponent::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
+        #[substorage(v0)]
+        reentrancy_guard: ReentrancyGuardComponent::Storage,
         /// The privacy contract allowed to call `privacy_invoke`. Set once at construction.
         privacy_contract: ContractAddress,
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        #[flat]
+        ReentrancyGuardEvent: ReentrancyGuardComponent::Event,
     }
 
     #[constructor]
@@ -118,6 +134,9 @@ pub mod EkuboSwapAnonymizer {
             skip_ahead: u128,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
+            // Guard the whole flow: `router_addr` is caller-controlled, so a malicious router's
+            // `swap` callback must not be able to re-enter and corrupt the balance accounting.
+            self.reentrancy_guard.start();
             // Only the trusted privacy contract may invoke; otherwise an arbitrary caller would
             // receive the output-token approval below and could drain swapped funds.
             let privacy_addr = self.privacy_contract.read();
@@ -171,7 +190,10 @@ pub mod EkuboSwapAnonymizer {
             assert(out_amount.is_non_zero(), errors::ZERO_OUT_AMOUNT);
 
             out_erc20.approve(spender: privacy_addr, amount: out_amount.into());
-            [OpenNoteDeposit { note_id, token: out_token, amount: out_amount }].span()
+            let deposits = [OpenNoteDeposit { note_id, token: out_token, amount: out_amount }]
+                .span();
+            self.reentrancy_guard.end();
+            deposits
         }
     }
 }

@@ -11,6 +11,7 @@ use ekubo_swap_anonymizer::tests::test_utils::{
     EkuboSwapAnonymizerCfgTrait, deploy_anonymizer_with_router, make_token_amount, new_token,
     pool_key_for_tokens,
 };
+use openzeppelin::security::ReentrancyGuardComponent::Errors as ReentrancyGuardErrors;
 use privacy::objects::OpenNoteDeposit;
 use snforge_std::TokenTrait;
 use starknet::ContractAddress;
@@ -126,6 +127,35 @@ fn test_ekubo_privacy_invoke_unauthorized_caller() {
             note_id: 'note',
         );
     assert_panic_with_felt_error(:result, expected_error: errors::CALLER_NOT_PRIVACY);
+}
+
+#[test]
+fn test_ekubo_privacy_invoke_reentrancy_guarded() {
+    let anonymizer = deploy_anonymizer_with_router();
+    let input_token = new_token();
+    let output_token = new_token();
+    let swap_amount = DEFAULT_AMOUNT;
+
+    input_token.supply(address: anonymizer.address, amount: swap_amount);
+    output_token.supply(address: anonymizer.router, amount: swap_amount);
+
+    // Make the router re-enter privacy_invoke during the swap callback.
+    IMockEkuboAMMControlDispatcher { contract_address: anonymizer.router }
+        .set_swap_behavior(SwapBehavior::Reentrant);
+
+    let in_addr = input_token.contract_address();
+    let out_addr = output_token.contract_address();
+    let pool_key = pool_key_for_tokens(in_addr, out_addr);
+    let result = anonymizer
+        .safe_privacy_invoke(
+            router_addr: anonymizer.router,
+            token_amount: make_token_amount(in_addr, swap_amount),
+            :pool_key,
+            minimum_received: 0,
+            skip_ahead: 0,
+            note_id: 'note',
+        );
+    assert_panic_with_felt_error(:result, expected_error: ReentrancyGuardErrors::REENTRANT_CALL);
 }
 
 #[test]

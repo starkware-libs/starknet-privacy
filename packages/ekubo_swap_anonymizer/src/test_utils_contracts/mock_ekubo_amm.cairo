@@ -7,6 +7,8 @@
 //! - `Noop` – consumes all input but `clear` returns 0 (simulates zero output).
 //! - `PartialSwap` – consumes half the input, clears the output (simulates a partial fill
 //!   that leaves input tokens on the router).
+//! - `Reentrant` – re-enters the calling anonymizer's `privacy_invoke` during `swap`
+//!   (simulates a malicious router); used to exercise the reentrancy guard.
 
 use ekubo::interfaces::erc20::IERC20Dispatcher as EkuboIERC20Dispatcher;
 use ekubo::interfaces::router::{RouteNode, TokenAmount};
@@ -19,6 +21,7 @@ pub enum SwapBehavior {
     Normal,
     Noop,
     PartialSwap,
+    Reentrant,
 }
 
 #[starknet::interface]
@@ -50,6 +53,9 @@ pub mod MockEkuboAMM {
     use ekubo::types::i129::i129;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use crate::ekubo_swap_anonymizer::{
+        IEkuboSwapAnonymizerDispatcher, IEkuboSwapAnonymizerDispatcherTrait,
+    };
     use super::{IClear, IMockEkuboAMMControl, IRouter, SwapBehavior};
 
     const DEAD_ADDRESS: ContractAddress = 'DEAD_ADDRESS'.try_into().unwrap();
@@ -79,6 +85,20 @@ pub mod MockEkuboAMM {
             let consumed = match self.swap_behavior.read() {
                 SwapBehavior::Noop | SwapBehavior::Normal => amount_u128,
                 SwapBehavior::PartialSwap => amount_u128 / 2,
+                SwapBehavior::Reentrant => {
+                    // Re-enter the calling anonymizer mid-swap. A correctly guarded anonymizer
+                    // panics with `REENTRANT_CALL` here, which propagates out of `swap`.
+                    IEkuboSwapAnonymizerDispatcher { contract_address: get_caller_address() }
+                        .privacy_invoke(
+                            router_addr: get_contract_address(),
+                            :token_amount,
+                            pool_key: node.pool_key,
+                            minimum_received: 0,
+                            skip_ahead: 0,
+                            note_id: 'reentry',
+                        );
+                    amount_u128
+                },
             };
 
             // Simulate consuming input tokens so clear(in_token) returns the remainder.
@@ -106,8 +126,8 @@ pub mod MockEkuboAMM {
         ) -> u256 {
             match self.swap_behavior.read() {
                 SwapBehavior::Noop => Zero::zero(),
-                SwapBehavior::Normal |
-                SwapBehavior::PartialSwap => {
+                SwapBehavior::Normal | SwapBehavior::PartialSwap |
+                SwapBehavior::Reentrant => {
                     let balance = token.balanceOf(get_contract_address());
                     assert(balance >= minimum, 'CLEAR_MINIMUM_NOT_MET');
                     if balance.is_non_zero() {
