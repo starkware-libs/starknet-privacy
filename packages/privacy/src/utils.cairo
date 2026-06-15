@@ -5,6 +5,7 @@ use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
+use core::pedersen::pedersen;
 use core::poseidon::poseidon_hash_span;
 use privacy::actions::{ClientAction, ServerAction, WriteOnceInput};
 use privacy::errors;
@@ -18,7 +19,8 @@ use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
+    ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT,
+    STARKNET_OS_CONFIG_HASH_VERSION, STRK_TOKEN_ADDRESS, TWO_POW_120,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -63,6 +65,10 @@ pub mod constants {
         0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
         .try_into()
         .unwrap();
+    /// Version prefix of the Starknet OS config hash (`shortstring("StarknetOsConfig3")`), folded
+    /// into the hash alongside chain id and the fee token. Matches the sequencer's
+    /// `STARKNET_OS_CONFIG_HASH_VERSION`.
+    pub const STARKNET_OS_CONFIG_HASH_VERSION: felt252 = 'StarknetOsConfig3';
     /// Half the order of the Stark curve.
     pub const HALF_ORDER: u256 = ORDER.into() / 2_u256;
     /// Maximum allowed age (in seconds) of a depositor screening attestation.
@@ -431,6 +437,22 @@ pub struct ProofFacts {
     pub message_to_l1_hashes: Span<felt252>,
 }
 
+/// Expected `starknet_os_config_hash` for a proof generated for this chain.
+///
+/// Matches the sequencer's `OsChainInfo::compute_virtual_os_config_hash`: a Pedersen array hash
+/// over `[STARKNET_OS_CONFIG_HASH_VERSION, chain_id, strk_token]` following the
+/// `compute_hash_on_elements` convention (fold each element into the accumulator, then fold in the
+/// element count). The hash is the only proof field binding it to a chain, so comparing it against
+/// the live `chain_id` rejects a proof produced for a different chain.
+pub fn compute_os_config_hash(chain_id: felt252) -> felt252 {
+    let elements = [STARKNET_OS_CONFIG_HASH_VERSION, chain_id, STRK_TOKEN_ADDRESS.into()].span();
+    let mut hash = 0;
+    for element in elements {
+        hash = pedersen(hash, *element);
+    }
+    pedersen(hash, elements.len().into())
+}
+
 #[cfg(test)]
 pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
     fn default() -> ProofFacts {
@@ -441,7 +463,9 @@ pub(crate) impl ProofFactsDefaultImpl of Default<ProofFacts> {
             starknet_os_output_version: VIRTUAL_SNOS0,
             base_block_number: starknet::get_block_number() - 1,
             base_block_hash: 0,
-            starknet_os_config_hash: 0,
+            starknet_os_config_hash: compute_os_config_hash(
+                starknet::get_tx_info().unbox().chain_id,
+            ),
             message_to_l1_hashes: [].span(),
         }
     }

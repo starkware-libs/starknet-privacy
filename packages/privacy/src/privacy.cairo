@@ -29,9 +29,9 @@ pub mod Privacy {
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs,
+        compute_os_config_hash, decode_note_amount, derive_public_key, enc_note_packed_value,
+        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, extract_compile_actions_inputs,
         extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
         panic_with_server_actions, send_message_to_server, storage_path_to_felt252,
         to_write_once_action, unpack,
@@ -764,13 +764,20 @@ pub mod Privacy {
                 starknet_os_output_version,
                 base_block_number,
                 base_block_hash: _,
-                starknet_os_config_hash: _,
+                starknet_os_config_hash,
                 message_to_l1_hashes,
             } = proof_facts;
 
             // Assert program variant and output version are correct.
             assert(program_variant == VIRTUAL_SNOS, errors::INVALID_PROGRAM_VARIANT);
             assert(starknet_os_output_version == VIRTUAL_SNOS0, errors::INVALID_OS_OUTPUT_VERSION);
+
+            // Bind the proof to this chain: the OS config hash encodes the chain id, so a proof
+            // produced for another chain (e.g. Sepolia replayed on Mainnet) fails this check.
+            let expected_os_config_hash = compute_os_config_hash(execution_info.tx_info.chain_id);
+            assert(
+                starknet_os_config_hash == expected_os_config_hash, errors::INVALID_OS_CONFIG_HASH,
+            );
 
             // Assert base block number is recent.
             let current_block_number = execution_info.block_info.block_number;

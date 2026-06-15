@@ -716,6 +716,16 @@ fn test_apply_actions_assertions() {
         );
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_OS_OUTPUT_VERSION);
 
+    // Catch INVALID_OS_CONFIG_HASH (proof bound to a different chain's config hash).
+    let mut proof_facts_invalid_os_config_hash = proof_facts;
+    proof_facts_invalid_os_config_hash.starknet_os_config_hash += 1;
+    let result = test
+        .privacy
+        .safe_apply_actions_with_proof_facts(
+            :actions, proof_facts: proof_facts_invalid_os_config_hash,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_OS_CONFIG_HASH);
+
     // Catch INVALID_PROOF_MSG.
     let result = test.privacy.safe_apply_actions_with_proof_facts(:actions, :proof_facts);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_PROOF_MSG);

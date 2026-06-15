@@ -500,6 +500,8 @@ pub trait IServer<T> {
     /// program variant is invalid.
     /// - [`INVALID_OS_OUTPUT_VERSION`](privacy::errors::INVALID_OS_OUTPUT_VERSION): Thrown if the
     /// proof OS output version is invalid.
+    /// - [`INVALID_OS_CONFIG_HASH`](privacy::errors::INVALID_OS_CONFIG_HASH): Thrown if the proof's
+    /// Starknet OS config hash does not match this chain's (binds the proof to the chain).
     /// - [`INVALID_BASE_BLOCK_NUMBER`](privacy::errors::INVALID_BASE_BLOCK_NUMBER): Thrown if the
     /// proof block number is in the future.
     /// - [`PROOF_EXPIRED`](privacy::errors::PROOF_EXPIRED): Thrown if the proof is too old.
