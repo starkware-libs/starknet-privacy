@@ -27,8 +27,7 @@ pub mod MockReentrancy {
     impl ReentrancyMockImpl of IReentrancyMock<ContractState> {
         fn privacy_invoke(ref self: ContractState) {
             let privacy_addr = get_caller_address();
-            IServerDispatcher { contract_address: privacy_addr }
-                .apply_actions([].span(), Option::None);
+            IServerDispatcher { contract_address: privacy_addr }.apply_actions([].span(), None);
         }
     }
 }

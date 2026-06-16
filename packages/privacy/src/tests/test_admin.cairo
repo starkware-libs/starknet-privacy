@@ -442,45 +442,45 @@ fn test_set_fee_collector_assertions() {
 }
 
 #[test]
-fn test_set_depositor_blocked() {
+fn test_set_open_note_depositor_blocked() {
     let test: Test = Default::default();
     let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
 
-    assert!(!test.privacy.is_depositor_blocked(:depositor));
+    assert!(!test.privacy.is_open_note_depositor_blocked(:depositor));
 
     let mut spy = spy_events();
-    test.privacy.set_depositor_blocked(:depositor, blocked: true);
-    assert!(test.privacy.is_depositor_blocked(:depositor));
+    test.privacy.set_open_note_depositor_blocked(:depositor, blocked: true);
+    assert!(test.privacy.is_open_note_depositor_blocked(:depositor));
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
-        expected_event: events::DepositorBlockSet { depositor, blocked: true },
-        expected_event_selector: @selector!("DepositorBlockSet"),
-        expected_event_name: "DepositorBlockSet",
+        expected_event: events::OpenNoteDepositorBlockSet { depositor, blocked: true },
+        expected_event_selector: @selector!("OpenNoteDepositorBlockSet"),
+        expected_event_name: "OpenNoteDepositorBlockSet",
     );
 
     // Unblocking clears the flag and emits with `blocked: false`.
     let mut spy = spy_events();
-    test.privacy.set_depositor_blocked(:depositor, blocked: false);
-    assert!(!test.privacy.is_depositor_blocked(:depositor));
+    test.privacy.set_open_note_depositor_blocked(:depositor, blocked: false);
+    assert!(!test.privacy.is_open_note_depositor_blocked(:depositor));
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
-        expected_event: events::DepositorBlockSet { depositor, blocked: false },
-        expected_event_selector: @selector!("DepositorBlockSet"),
-        expected_event_name: "DepositorBlockSet",
+        expected_event: events::OpenNoteDepositorBlockSet { depositor, blocked: false },
+        expected_event_selector: @selector!("OpenNoteDepositorBlockSet"),
+        expected_event_name: "OpenNoteDepositorBlockSet",
     );
 }
 
 #[test]
-fn test_set_depositor_blocked_assertions() {
+fn test_set_open_note_depositor_blocked_assertions() {
     let test: Test = Default::default();
     let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
 
     // Catch ONLY_SECURITY_GOVERNOR: default caller lacks the role.
-    let result = test.privacy.safe_set_depositor_blocked(:depositor, blocked: true);
+    let result = test.privacy.safe_set_open_note_depositor_blocked(:depositor, blocked: true);
     assert_panic_with_error(
         :result, expected_error: AccessErrors::ONLY_SECURITY_GOVERNOR.describe(),
     );
@@ -490,7 +490,9 @@ fn test_set_depositor_blocked_assertions() {
         contract_address: test.privacy.address,
         caller_address: test.privacy.roles.security_governor,
     );
-    let result = test.privacy.safe_set_depositor_blocked(depositor: Zero::zero(), blocked: true);
+    let result = test
+        .privacy
+        .safe_set_open_note_depositor_blocked(depositor: Zero::zero(), blocked: true);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
 }
 
