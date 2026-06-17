@@ -6,6 +6,7 @@ use core::ec::{EcPoint, EcPointTrait};
 use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
 use core::poseidon::poseidon_hash_span;
+use openzeppelin::interfaces::introspection::{ISRC5Dispatcher, ISRC5DispatcherTrait};
 use privacy::actions::{ClientAction, ServerAction, WriteOnceInput};
 use privacy::errors;
 use privacy::errors::internal_errors;
@@ -17,6 +18,7 @@ use privacy::hashes::{
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
 };
+use privacy::snip12::compute_call_set_hash;
 use privacy::utils::constants::{
     ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
 };
@@ -28,6 +30,18 @@ use starknet::{ContractAddress, Store, SyscallResultTrait, TxInfo, VALIDATED};
 #[starknet::interface]
 pub(crate) trait IAccount<TState> {
     fn is_valid_signature(self: @TState, hash: felt252, signature: Array<felt252>) -> felt252;
+}
+
+/// SRC5 interface ID advertised by accounts that require custom signature validation.
+/// selector(is_custom_signature_valid) =
+/// 0x2eb9faa4ce06e09879e93803798b87d22877b73964334356bf9e0d8cc22ded
+pub(crate) const ICUSTOM_SIGNATURE_VALIDATION_ID: felt252 = selector!("is_custom_signature_valid");
+
+#[starknet::interface]
+pub(crate) trait ICustomSignatureValidation<TState> {
+    fn is_custom_signature_valid(
+        self: @TState, calls: Span<Call>, signature: Span<felt252>,
+    ) -> felt252;
 }
 
 pub mod constants {
@@ -325,7 +339,7 @@ pub(crate) fn unpack(packed_value: felt252) -> (u128, u128) {
 /// Asserts that the calls are valid and deserializes the calldata.
 /// Returns the input for `compile_actions` function: (user_addr, user_private_key, client_actions).
 pub(crate) fn extract_compile_actions_inputs(
-    calls: Array<Call>, contract_address: ContractAddress,
+    calls: Span<Call>, contract_address: ContractAddress,
 ) -> (ContractAddress, felt252, Span<ClientAction>) {
     assert(calls.len() == 1, errors::EXPECTED_ONE_CALL);
     let call = calls[0];
@@ -340,13 +354,41 @@ pub(crate) fn extract_compile_actions_inputs(
     (user_addr, user_private_key, client_actions)
 }
 
-pub(crate) fn assert_valid_signature(user_addr: ContractAddress, tx_info: Box<TxInfo>) {
-    let tx_hash = tx_info.transaction_hash;
-    let signature = tx_info.signature.into();
+/// Authenticates the user account that authorized `calls`.
+/// Three cases:
+///
+/// I. **Custom validation** (e.g. an Eth712Account advertising SRC5):
+///    delegate to the account's `is_custom_signature_valid(calls, signature)`.
+/// II. Supported SN Wallet:
+///    `is_valid_signature` is checked against the SN tx hash that was signed by the SN Wallet.
+/// III. Legacy SN Wallet:
+///    `is_valid_signature` is checked against the SNIP-12 `CallSet` hash of `calls`.
+pub(crate) fn assert_valid_signature(
+    user_addr: ContractAddress, calls: Span<Call>, tx_info: Box<TxInfo>,
+) {
+    if supports_custom_validation(user_addr) {
+        let res = ICustomSignatureValidationDispatcher { contract_address: user_addr }
+            .is_custom_signature_valid(calls, tx_info.signature);
+        assert(res == VALIDATED, errors::INVALID_SIGNATURE);
+    } else {
+        let user_account = IAccountDispatcher { contract_address: user_addr };
+        let is_valid = user_account
+            .is_valid_signature(
+                hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
+            ) == VALIDATED
+            || user_account
+                .is_valid_signature(
+                    hash: compute_call_set_hash(user_addr, calls),
+                    signature: tx_info.signature.into(),
+                ) == VALIDATED;
+        assert(is_valid, errors::INVALID_SIGNATURE);
+    }
+}
 
-    let user_account = IAccountDispatcher { contract_address: user_addr };
-    let is_valid = user_account.is_valid_signature(hash: tx_hash, :signature);
-    assert(is_valid == VALIDATED, errors::INVALID_SIGNATURE);
+/// Returns whether `user_addr` advertises SRC5 `ICUSTOM_SIGNATURE_VALIDATION_ID`.
+fn supports_custom_validation(user_addr: ContractAddress) -> bool {
+    ISRC5Dispatcher { contract_address: user_addr }
+        .supports_interface(ICUSTOM_SIGNATURE_VALIDATION_ID)
 }
 
 /// Sends server actions to L1.
