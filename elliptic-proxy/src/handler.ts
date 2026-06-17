@@ -13,7 +13,11 @@ import { BlockedAddressCache } from "./cache.js";
 import { scoreResponse, type ScoringResult } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
 import { signScreening, type ScreeningSignature } from "./signing.js";
-import { metricsContentType, renderMetrics } from "./metrics.js";
+import {
+  ellipticRequests,
+  metricsContentType,
+  renderMetrics,
+} from "./metrics.js";
 
 const BEARER_PREFIX = "Bearer ";
 
@@ -258,6 +262,12 @@ export function createHandler(
       });
       return;
     }
+
+    // Counts every dispatched upstream call — the abuse/cost signal. Recorded
+    // at the dispatch site so it captures only requests that survive auth,
+    // rate-limiting, the operator lists, and the blocked cache (each of which
+    // returns earlier without spending an Elliptic call).
+    ellipticRequests.inc({ partner: partnerName, upstream: upstreamSource });
 
     let result: ForwardResponse;
     try {
