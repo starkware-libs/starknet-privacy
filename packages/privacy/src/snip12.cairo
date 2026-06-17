@@ -1,12 +1,18 @@
 use core::ecdsa::check_ecdsa_signature;
 use core::hash::{HashStateExTrait, HashStateTrait};
-use core::poseidon::PoseidonTrait;
+use core::poseidon::{PoseidonTrait, poseidon_hash_span};
+use openzeppelin::account::extensions::src9::snip12_utils::CallStructHash;
 use openzeppelin::utils::cryptography::snip12::{StarknetDomain, StructHash};
+use starknet::account::Call;
 use starknet::{ContractAddress, get_tx_info};
 
-pub const SNIP12_NAME: felt252 = 'Screening';
+pub const SCREENING_SNIP12_NAME: felt252 = 'Screening';
 // Numeric felt (not shortstring `'2'`), matching the starknet.js/starknet-py convention.
-pub const SNIP12_VERSION: felt252 = 2;
+pub const SCREENING_SNIP12_VERSION: felt252 = 2;
+
+// SNIP-12 domain for the generic `CallSet` authorization message.
+pub const CALL_SET_SNIP12_NAME: felt252 = 'CallSet';
+pub const CALL_SET_SNIP12_VERSION: felt252 = 1;
 
 // SNIP-12 has no `u64` primitive; the type string widens `issued_at` to `u128`,
 // while the Cairo field stays `u64`. Both reduce to the same felt under Poseidon,
@@ -43,30 +49,40 @@ pub fn is_screening_attestation_valid(
     depositor: ContractAddress, attestation: ScreeningAttestation, signer_public_key: felt252,
 ) -> bool {
     let validation = DepositorValidation { depositor, issued_at: attestation.issued_at };
-    let message_hash = compute_message_hash(@validation, signer_public_key);
+    let message_hash = compute_screening_message_hash(@validation, signer_public_key);
     let (r, s) = attestation.signature;
     check_ecdsa_signature(message_hash, signer_public_key, r, s)
 }
 
-/// SNIP-12 off-chain message hash for a `DepositorValidation`.
-///
-/// `signer` is the trusted signer's STARK-curve public key (felt252). The
-/// SNIP-12 envelope binds the hash to this identity. Exposed so off-chain
-/// tooling (TS/Python reference signers, test-vector generators) can derive
-/// the exact hash the verifier will check against.
-pub(crate) fn compute_message_hash(validation: @DepositorValidation, signer: felt252) -> felt252 {
+/// SNIP-12 off-chain message hash envelope:
+/// `poseidon('StarkNet Message', hash(domain), signer, struct_hash)`, the domain bound to the
+/// current chain (revision 1). `signer` is the identity the envelope binds — a STARK-curve public
+/// key (screening) or the depositor account address (`CallSet`).
+fn snip12_message_hash(
+    name: felt252, version: felt252, signer: felt252, struct_hash: felt252,
+) -> felt252 {
     let domain = StarknetDomain {
-        name: SNIP12_NAME,
-        version: SNIP12_VERSION,
-        chain_id: get_tx_info().unbox().chain_id,
-        revision: 1,
+        name, version, chain_id: get_tx_info().unbox().chain_id, revision: 1,
     };
     PoseidonTrait::new()
         .update_with('StarkNet Message')
         .update_with(domain.hash_struct())
         .update_with(signer)
-        .update_with(validation.hash_struct())
+        .update_with(struct_hash)
         .finalize()
+}
+
+/// SNIP-12 off-chain message hash for a `DepositorValidation`.
+///
+/// `signer` is the trusted signer's STARK-curve public key (felt252). Exposed so off-chain tooling
+/// (TS/Python reference signers, test-vector generators) can derive the exact hash the verifier
+/// will check against.
+pub(crate) fn compute_screening_message_hash(
+    validation: @DepositorValidation, signer: felt252,
+) -> felt252 {
+    snip12_message_hash(
+        SCREENING_SNIP12_NAME, SCREENING_SNIP12_VERSION, signer, validation.hash_struct(),
+    )
 }
 
 impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
@@ -76,4 +92,39 @@ impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
             .update_with(*self)
             .finalize()
     }
+}
+
+// SNIP-12 type hash `CallSet`.
+const CALL_SET_TYPE_HASH: felt252 = selector!(
+    "\"CallSet\"(\"Calls\":\"Call*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
+);
+
+#[derive(Drop)]
+pub(crate) struct CallSet {
+    pub(crate) calls: Span<Call>,
+}
+
+impl CallSetStructHashImpl of StructHash<CallSet> {
+    fn hash_struct(self: @CallSet) -> felt252 {
+        let mut hashed_calls = array![];
+        for call in *self.calls {
+            hashed_calls.append(call.hash_struct());
+        }
+        PoseidonTrait::new()
+            .update_with(CALL_SET_TYPE_HASH)
+            .update_with(poseidon_hash_span(hashed_calls.span()))
+            .finalize()
+    }
+}
+
+/// SNIP-12 off-chain message hash for a `CallSet` authorized by `signer` (the depositor account
+/// address — the SNIP-12 envelope binds the signing account, matching starknet.js
+/// `typedData.getMessageHash(td, accountAddress)`). The off-chain golden oracle for the SDK.
+pub(crate) fn compute_call_set_hash(signer: ContractAddress, calls: Span<Call>) -> felt252 {
+    snip12_message_hash(
+        CALL_SET_SNIP12_NAME,
+        CALL_SET_SNIP12_VERSION,
+        signer.into(),
+        CallSet { calls }.hash_struct(),
+    )
 }
