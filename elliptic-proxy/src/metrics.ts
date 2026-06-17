@@ -22,6 +22,17 @@ export const ellipticRequests = new Counter({
   registers: [register],
 });
 
+// Every response the proxy returns, by HTTP status. Drives the pipeline-health
+// alerts: 500/503 (our fault, alert on one), 502/504 (Elliptic down, alert on a
+// rate), 401 by partner (a partner-secret problem). The partner label is bounded
+// to known partners or "unknown" — see the handler's sanitizer.
+export const httpResponses = new Counter({
+  name: "elliptic_proxy_http_responses_total",
+  help: "Total HTTP responses returned by the proxy, by status code.",
+  labelNames: ["status", "partner"],
+  registers: [register],
+});
+
 // The Prometheus text exposition served for a scrape.
 export function renderMetrics(): Promise<string> {
   return register.metrics();
