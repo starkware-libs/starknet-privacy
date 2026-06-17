@@ -36,8 +36,7 @@ use privacy::objects::{
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
 use privacy::snip12::{
-    DepositorValidation, ScreeningAttestation,
-    compute_message_hash as compute_screening_message_hash,
+    DepositorValidation, ScreeningAttestation, compute_screening_message_hash,
 };
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
@@ -46,10 +45,12 @@ use privacy::test_contracts::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
 use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
+use privacy::tests::mock_stark_account::MockStarkAccount::deploy_for_test as deploy_mock_stark_account_for_test;
 use privacy::tests::utils_for_tests::constants::DEFAULT_PROOF_VALIDITY_BLOCKS;
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
@@ -1407,6 +1408,19 @@ pub(crate) impl TestImpl of TestTrait {
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
+    /// Like `new_user_with_is_valid`, but with account that supports custom-signature-validation.
+    fn new_user_with_custom(ref self: Test, is_valid: bool) -> User {
+        self.nonce += 1;
+        let mut private_key = 'PRIVATE_KEY' + self.nonce.into();
+        if !is_canonical_key(key: private_key) {
+            private_key = Neg::neg(private_key);
+        }
+        let public_key = derive_public_key(:private_key);
+        self.nonce += 1;
+        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid);
+        User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
+    }
+
     /// Mock function to generate a new token address.
     fn mock_new_token(ref self: Test) -> ContractAddress {
         self.nonce += 1;
@@ -2301,6 +2315,35 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
         class_hash: *contract_class_hash, :deployment_params, :is_valid,
     )
         .expect('MockAccount deployment failed');
+    contract_address
+}
+
+/// Deploy a depositor account with custom-signature-validation.
+/// `is_valid` controls the signature validation result.
+pub(crate) fn deploy_mock_custom_account(salt: felt252, is_valid: bool) -> ContractAddress {
+    let contract_class_hash = declare(contract: "MockCustomAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_custom_account_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :is_valid,
+    )
+        .expect('MockCustomAccount deploy failed');
+    contract_address
+}
+
+/// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
+pub(crate) fn deploy_mock_stark_account(salt: felt252, public_key: felt252) -> ContractAddress {
+    let contract_class_hash = declare(contract: "MockStarkAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_stark_account_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :public_key,
+    )
+        .expect('MockStarkAccount deploy failed');
     contract_address
 }
 
