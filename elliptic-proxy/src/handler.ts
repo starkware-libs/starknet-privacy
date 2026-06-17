@@ -15,11 +15,22 @@ import type { ForwardResponse } from "./elliptic.js";
 import { signScreening, type ScreeningSignature } from "./signing.js";
 import {
   ellipticRequests,
+  httpResponses,
   metricsContentType,
   renderMetrics,
 } from "./metrics.js";
 
 const BEARER_PREFIX = "Bearer ";
+
+// Bounds the partner metric label to known partners. The x-access-key header
+// is attacker-controlled, so an unknown value collapses to "unknown" rather
+// than minting an unbounded metric series (a memory-exhaustion vector).
+function sanitizePartner(
+  name: string | undefined,
+  partners: Record<string, string>
+): string {
+  return name && Object.hasOwn(partners, name) ? name : "unknown";
+}
 
 // Serves the Prometheus exposition on GET /metrics, gated by a bearer token.
 // Bypasses the screening response path so scrapes never count toward the
@@ -56,6 +67,30 @@ function bearerTokenMatches(
   return timingSafeEqual(providedBuf, expectedBuf);
 }
 
+// Catches any exception that escapes the inner handler — a bug in our code, not
+// the partner's or Elliptic's. Records it as a 500 (so the single-occurrence
+// alert fires) and fails closed. Normal responses are counted by sendResponse,
+// so only the unhandled path reaches here; no double counting.
+function withMetrics(handler: HttpFunction): HttpFunction {
+  return async (req, res) => {
+    try {
+      await handler(req, res);
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          error: "unhandled_exception",
+          message: error instanceof Error ? error.message : String(error),
+        })
+      );
+      httpResponses.inc({ status: "500", partner: "unknown" });
+      if (!res.headersSent) {
+        res.set("content-type", "application/json");
+        res.status(500).send(JSON.stringify({ error: "internal error" }));
+      }
+    }
+  };
+}
+
 export interface ConfigSource {
   get(): Promise<Config>;
 }
@@ -86,8 +121,11 @@ export function createHandler(
   let blockedCache: BlockedAddressCache | null = null;
   let currentCacheTtlMs = 0;
 
-  return async (req: Request, res: Response) => {
+  const handler: HttpFunction = async (req: Request, res: Response) => {
     const startTime = Date.now();
+    // Bounded to a known partner or "unknown" once auth runs (see below); read
+    // by sendResponse so every counted response is attributed safely.
+    let metricsPartner = "unknown";
 
     function sendResponse(status: number, body: string, logFields?: object) {
       const latencyMs = Date.now() - startTime;
@@ -100,6 +138,7 @@ export function createHandler(
           ...logFields,
         })
       );
+      httpResponses.inc({ status: String(status), partner: metricsPartner });
       res.set("content-type", "application/json");
       res.status(status).send(body);
     }
@@ -139,6 +178,7 @@ export function createHandler(
     }
 
     const authResult = authenticateRequest(req, config);
+    metricsPartner = sanitizePartner(authResult.partnerName, config.partners);
     if (!isAuthenticated(authResult)) {
       sendResponse(401, JSON.stringify({ error: authResult.error }), {
         partner: authResult.partnerName,
@@ -393,4 +433,6 @@ export function createHandler(
       cacheSize: blockedCache.size,
     });
   };
+
+  return withMetrics(handler);
 }

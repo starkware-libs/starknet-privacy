@@ -4,6 +4,7 @@ import type { Request } from "@google-cloud/functions-framework";
 import { createHandler } from "../src/handler.js";
 import {
   ellipticRequests,
+  httpResponses,
   metricsContentType,
   resetMetricsForTest,
 } from "../src/metrics.js";
@@ -25,6 +26,14 @@ async function ellipticCount(
   const metric = await ellipticRequests.get();
   const series = metric.values.find(
     (v) => v.labels.partner === partner && v.labels.upstream === upstream
+  );
+  return series?.value ?? 0;
+}
+
+async function httpCount(status: string, partner: string): Promise<number> {
+  const metric = await httpResponses.get();
+  const series = metric.values.find(
+    (v) => v.labels.status === status && v.labels.partner === partner
   );
   return series?.value ?? 0;
 }
@@ -134,5 +143,71 @@ describe("elliptic_proxy_elliptic_requests_total", () => {
     await handler(req, makeResponse());
     expect(forward).not.toHaveBeenCalled();
     expect(await ellipticCount("test-partner", "elliptic")).toBe(0);
+  });
+});
+
+describe("elliptic_proxy_http_responses_total", () => {
+  beforeEach(() => resetMetricsForTest());
+
+  function handlerFor(config = makeConfig(), forward = vi.fn()) {
+    const configLoader = { get: vi.fn().mockResolvedValue(config) };
+    return { handler: createHandler(configLoader, forward), forward };
+  }
+
+  it("counts an allowed verdict as a 200 for the partner", async () => {
+    const { handler, forward } = handlerFor();
+    forward.mockResolvedValue(NOT_ON_CHAIN);
+    await handler(makeRequest(), makeResponse());
+    expect(await httpCount("200", "test-partner")).toBe(1);
+  });
+
+  it("labels an unknown-partner 401 as unknown", async () => {
+    const { handler } = handlerFor();
+    await handler(makeRequest({ headers: {} }), makeResponse());
+    expect(await httpCount("401", "unknown")).toBe(1);
+  });
+
+  it("attributes an invalid-signature 401 to the known partner", async () => {
+    const { handler } = handlerFor();
+    const req = makeRequest({
+      headers: {
+        "x-access-key": "test-partner",
+        "x-access-sign": "bad-signature",
+        "x-access-timestamp": Date.now().toString(),
+      },
+    });
+    await handler(req, makeResponse());
+    expect(await httpCount("401", "test-partner")).toBe(1);
+    expect(await httpCount("401", "unknown")).toBe(0);
+  });
+
+  it("counts a non-2xx upstream reply as a 502", async () => {
+    const { handler, forward } = handlerFor();
+    forward.mockResolvedValue({ status: 500, body: "{}", durationMs: 5 });
+    await handler(makeRequest(), makeResponse());
+    expect(await httpCount("502", "test-partner")).toBe(1);
+  });
+
+  it("counts an upstream network failure as a 504", async () => {
+    const { handler, forward } = handlerFor();
+    forward.mockRejectedValue(new Error("fetch failed"));
+    await handler(makeRequest(), makeResponse());
+    expect(await httpCount("504", "test-partner")).toBe(1);
+  });
+
+  it("records a 500 when an unexpected error escapes the handler", async () => {
+    // A malformed chainId makes BigInt() throw mid-flow — an uncaught bug path.
+    const { handler } = handlerFor(makeConfig({ chainId: "0xnothex" }));
+    const res = makeResponse();
+    await handler(makeRequest(), res);
+    expect(res.statusCode).toBe(500);
+    expect(await httpCount("500", "unknown")).toBe(1);
+  });
+
+  it("does not count a /metrics scrape", async () => {
+    const { handler } = handlerFor(makeConfig({ metricsAuthToken: "tok" }));
+    await handler(makeMetricsRequest("Bearer tok"), makeResponse());
+    expect(await httpCount("200", "unknown")).toBe(0);
+    expect(await httpCount("200", "test-partner")).toBe(0);
   });
 });
