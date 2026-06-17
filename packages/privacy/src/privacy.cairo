@@ -196,12 +196,13 @@ pub mod Privacy {
                 caller_address: execution_info.caller_address, tx_version: tx_info.version,
             );
 
+            let calls = calls.span();
             let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
                 :calls, contract_address: execution_info.contract_address,
             );
             let server_actions = self
                 .compile_actions(:user_addr, :user_private_key, :client_actions);
-            assert_valid_signature(:user_addr, :tx_info);
+            assert_valid_signature(:user_addr, :calls, :tx_info);
             send_message_to_server(
                 :server_actions, contract_address: execution_info.contract_address,
             );

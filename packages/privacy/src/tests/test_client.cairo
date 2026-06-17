@@ -6633,3 +6633,29 @@ fn test_send_message_to_server() {
     let message_hash = poseidon_hash_span(message_data.span());
     assert_eq!(expected_message_hash, message_hash);
 }
+
+// ── Custom-signature-validation depositor (L2)
+// ──────────────────────────────────────────────────
+
+/// A depositor account that advertises the custom-signature-validation interface and approves the
+/// transaction takes the custom path. Its raw-hash `is_valid_signature` returns 0, so success here
+/// proves the pool used the custom path (a fallback to the legacy check would reject).
+#[test]
+fn test_deposit_custom_account_valid() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user_with_custom(is_valid: true);
+    let random = user.get_random();
+    let result = user.safe_set_viewing_key(:random);
+    assert!(result.is_ok());
+}
+
+/// A capable account whose `is_custom_signature_valid` returns 0 must hard-fail with
+/// INVALID_SIGNATURE — no silent fallback to the legacy raw-hash check.
+#[test]
+fn test_deposit_custom_account_rejected() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user_with_custom(is_valid: false);
+    let random = user.get_random();
+    let result = user.safe_set_viewing_key(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+}
