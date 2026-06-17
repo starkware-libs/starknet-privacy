@@ -174,6 +174,10 @@ so they are only coherent while a single instance serves the function — deploy
 `--max-instances=1` if you intend to alert on them. `process_start_time_seconds` (from
 prom-client's default metrics) marks the cold start that zeroed them.
 
+| Metric                                   | Labels                | Meaning                                                                                                                                                                                       |
+| ---------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `elliptic_proxy_elliptic_requests_total` | `partner`, `upstream` | Calls actually forwarded to Elliptic — the billed, allotment-capped resource. Counted at the dispatch site, so requests short-circuited by auth, the rate limiter, the operator lists, or the blocked cache are excluded. `upstream` separates live `elliptic` cost from `mock` traffic. |
+
 ## Error handling
 
 | Condition                              | Response                  |
