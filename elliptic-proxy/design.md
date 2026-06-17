@@ -46,7 +46,8 @@ re-reads it according to `configCacheTtlSeconds`.
   },
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
-  "additionalBlockedAddresses": []
+  "additionalBlockedAddresses": [],
+  "metricsAuthToken": "<bearer-token-for-GET-/metrics>"
 }
 ```
 
@@ -66,6 +67,7 @@ re-reads it according to `configCacheTtlSeconds`.
 | `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
 | `signingPrivateKey` _(required)_      | STARK-curve private key (felt hex) signing screening attestations; production key is FPI-managed.                                                                        |
 | `chainId` _(required)_                | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN + mock `elliptic.url` is rejected at config load.                               |
+| `metricsAuthToken` _(opt.)_           | Bearer token gating `GET /metrics` (timing-safe compare). When unset, `/metrics` is disabled (`404`) — the exposition leaks partner names and traffic volumes, so it fails closed. |
 
 ### Verdict precedence
 
@@ -162,6 +164,51 @@ block), everything else returns Elliptic's 404 "not in blockchain" and is
 allowed. Mock verdicts report `source: "mock"` (cached repeats report
 `cache`). A `mock_mode` warning is logged on every config load, and a mock url
 combined with the SN_MAIN `chainId` is rejected at config load.
+
+## Metrics & Alerting
+
+`GET /metrics` serves a Prometheus text exposition, gated by a bearer token
+(`Authorization: Bearer <metricsAuthToken>`; `404` when the token is unset).
+FPI deploys the function and holds its logs, so this endpoint is how we observe
+the proxy: point a Prometheus / GCP Managed Service for Prometheus scrape at the
+function URL with the token. The endpoint bypasses the screening response path,
+so scrapes never count toward the traffic metrics and a wrong scraper token
+never trips the `401` alert.
+
+| Metric                                    | Type    | Labels             | Meaning                                                                  |
+| ----------------------------------------- | ------- | ------------------ | ------------------------------------------------------------------------ |
+| `elliptic_proxy_elliptic_requests_total`  | counter | `partner`, `upstream` | Calls forwarded to the Elliptic upstream — the billed, allotment-capped resource. Counted at dispatch, so auth failures, rate-limits, operator-list hits, and blocked-cache hits are excluded. |
+| `elliptic_proxy_http_responses_total`     | counter | `status`, `partner`   | Every response the proxy returns, by HTTP status. `partner` is a known partner or `"unknown"`. |
+| `process_*`                               | various | —                  | prom-client default metrics; `process_start_time_seconds` reveals cold-start counter resets. |
+
+**Single-instance assumption.** Counters are per-instance in-memory state, like
+the rate-limiter and blocked-address cache. They are coherent under the
+recommended `--max-instances=1`; multiple instances would each keep independent
+counters that the function URL load-balances across opaquely.
+
+### Alert rules
+
+```promql
+# Elliptic abuse by partner — names whose partner secret to revoke under a DDoS
+sum by (partner) (rate(elliptic_proxy_elliptic_requests_total{upstream="elliptic"}[5m])) > <rate>
+
+# Absolute Elliptic usage over the budget window — increase() tolerates resets
+sum(increase(elliptic_proxy_elliptic_requests_total{upstream="elliptic"}[30d])) > <budget>
+
+# Our bug — alert on a single 500/503
+sum(increase(elliptic_proxy_http_responses_total{status=~"500|503"}[10m])) > 0
+
+# Elliptic upstream down — high rate of 502/504
+sum(rate(elliptic_proxy_http_responses_total{status=~"502|504"}[5m])) > <rate>
+
+# Partner-secret problem — high rate of 401, by partner
+sum by (partner) (rate(elliptic_proxy_http_responses_total{status="401"}[5m])) > <rate>
+```
+
+Pick `<rate>`/`<budget>` thresholds from observed baseline traffic and the
+Elliptic allotment. Cross-check the absolute-usage alert against
+`changes(process_start_time_seconds[1h])` to spot a restart that zeroed the
+counters.
 
 ## Deployment
 

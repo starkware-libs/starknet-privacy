@@ -41,7 +41,8 @@ The secret value must be a JSON string with this structure:
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": [],
-  "blockOverrideAddresses": []
+  "blockOverrideAddresses": [],
+  "metricsAuthToken": "<bearer-token-for-GET-/metrics>"
 }
 ```
 
@@ -60,6 +61,7 @@ The secret value must be a JSON string with this structure:
 | `blockOverrideAddresses` _(optional)_     | Operator allow list (hex felts): listed addresses always screen as allowed, winning over the deny list, the blocked cache, and the upstream verdict — rescues addresses the upstream wrongly flags (false positives).                                                                                                                            |
 | `signingPrivateKey` _(required)_          | STARK-curve private key (felt hex, `1 <= key < curve order`) signing screening attestations; the production key is FPI-managed.                                                                                                                                                                                                                  |
 | `chainId` _(required)_                    | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                         |
+| `metricsAuthToken` _(optional)_           | Bearer token gating `GET /metrics` (timing-safe compare). When unset, `/metrics` is disabled (`404`); the exposition leaks partner names and traffic volumes, so it fails closed. See [Metrics & alerting](#metrics--alerting).                                                                                                                   |
 
 ### Generating partner secrets
 
@@ -260,3 +262,39 @@ Errors are logged to stderr:
 - `error: "config_load_failed"` — Secret Manager fetch / parse failure.
 - `error: "upstream_request_failed"` — fetch to Elliptic threw at the transport layer (DNS, TLS, TCP, timeout). Includes `cause.code` (e.g. `ENOTFOUND`, `ECONNREFUSED`) so the underlying reason is visible without code changes.
 - `error: "upstream_error"` — Elliptic returned a non-2xx response. Includes `ellipticStatus` and the first 2KB of the response body, so HTTP-level errors (`401 AuthenticationError`, `400 ValidationError`, etc.) are diagnosable from logs alone.
+- `error: "unhandled_exception"` — a bug escaped the handler; the proxy fails closed with a `500`. Surfaced as a metric too (see below), since FPI holds the logs.
+
+## Metrics & alerting
+
+`GET /metrics` serves a Prometheus exposition gated by a bearer token
+(`Authorization: Bearer <metricsAuthToken>`; `404` when the token is unset).
+FPI deploys the function and holds its logs, so this endpoint is how we observe
+the proxy — point a Prometheus / GCP Managed Service for Prometheus scrape at
+the function URL with the token. Scrapes bypass the screening response path, so
+they never count toward the traffic metrics.
+
+| Metric                                   | Type    | Labels                | Meaning                                                                                                        |
+| ---------------------------------------- | ------- | --------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `elliptic_proxy_elliptic_requests_total` | counter | `partner`, `upstream` | Calls forwarded to the Elliptic upstream — the billed resource. Counted at dispatch, so short-circuited requests (auth failure, rate-limit, operator lists, blocked cache) are excluded. |
+| `elliptic_proxy_http_responses_total`    | counter | `status`, `partner`   | Every response by HTTP status. `partner` is a known partner or `"unknown"` (the `x-access-key` header is untrusted). |
+| `process_*`                              | various | —                     | prom-client defaults; `process_start_time_seconds` reveals a cold-start counter reset.                          |
+
+Counters are per-instance in-memory state (like the rate-limiter and blocked
+cache); they are coherent under the recommended `--max-instances=1`.
+
+```promql
+# Elliptic abuse by partner — names whose secret to revoke under a DDoS
+sum by (partner) (rate(elliptic_proxy_elliptic_requests_total{upstream="elliptic"}[5m])) > <rate>
+
+# Absolute Elliptic usage over the budget window — increase() tolerates resets
+sum(increase(elliptic_proxy_elliptic_requests_total{upstream="elliptic"}[30d])) > <budget>
+
+# Our bug — alert on a single 500/503
+sum(increase(elliptic_proxy_http_responses_total{status=~"500|503"}[10m])) > 0
+
+# Elliptic upstream down — high rate of 502/504
+sum(rate(elliptic_proxy_http_responses_total{status=~"502|504"}[5m])) > <rate>
+
+# Partner-secret problem — high rate of 401, by partner
+sum by (partner) (rate(elliptic_proxy_http_responses_total{status="401"}[5m])) > <rate>
+```
