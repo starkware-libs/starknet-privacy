@@ -7,11 +7,13 @@ use privacy::actions::{
 };
 use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr, OpenNoteDeposit};
+use privacy::snip12::compute_call_set_hash;
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
+    deploy_mock_stark_account,
 };
 use privacy::utils::constants::{ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
 use privacy::utils::{
@@ -19,9 +21,14 @@ use privacy::utils::{
     is_canonical_key, to_write_once_action, unpack,
 };
 use privacy::{errors, events};
+use snforge_std::signature::stark_curve::{
+    StarkCurveKeyPair, StarkCurveKeyPairImpl, StarkCurveSignerImpl,
+};
+use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, MessageToL1SpyTrait, TokenTrait, cheat_tip,
     cheat_transaction_version, get_class_hash, map_entry_address, spy_events, spy_messages_to_l1,
+    start_cheat_chain_id_global, start_cheat_signature, stop_cheat_chain_id_global,
 };
 use starknet::account::Call;
 use starknet::{ContractAddress, VALIDATED};
@@ -6632,4 +6639,83 @@ fn test_send_message_to_server() {
     (*message).serialize(ref message_data);
     let message_hash = poseidon_hash_span(message_data.span());
     assert_eq!(expected_message_hash, message_hash);
+}
+
+// ── Custom-signature-validation depositor (L2)
+// ──────────────────────────────────────────────────
+
+/// A depositor account that advertises the custom-signature-validation interface and approves the
+/// transaction takes the custom path. Its raw-hash `is_valid_signature` returns 0, so success here
+/// proves the pool used the custom path (a fallback to the legacy check would reject).
+#[test]
+fn test_deposit_custom_account_valid() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user_with_custom(is_valid: true);
+    let random = user.get_random();
+    let result = user.safe_set_viewing_key(:random);
+    assert!(result.is_ok());
+}
+
+/// A capable account whose `is_custom_signature_valid` returns 0 must hard-fail with
+/// INVALID_SIGNATURE — no silent fallback to the legacy raw-hash check.
+#[test]
+fn test_deposit_custom_account_rejected() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user_with_custom(is_valid: false);
+    let random = user.get_random();
+    let result = user.safe_set_viewing_key(:random);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+}
+
+/// A legacy SN wallet that signs the SNIP-12 `CallSet` message (not the tx hash).
+/// The account verifies a real STARK signature over the SNIP-12 message.
+/// The pool's OR-fallback must reach the SNIP-12 branch
+/// (the first branch over the tx hash fails, since the signature is over the CallSet hash).
+#[test]
+fn test_deposit_legacy_sn_wallet_via_snip12_call_set() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
+    let depositor = deploy_mock_stark_account(salt: 7, public_key: key.public_key);
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CALLSET_PROTOCOL_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "case II (SNIP-12 CallSet) deposit should succeed");
+    stop_cheat_chain_id_global();
+}
+
+/// A STARK signature over the wrong message (a different CallSet) must fail both OR branches.
+#[test]
+fn test_deposit_legacy_sn_wallet_wrong_call_set_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
+    let depositor = deploy_mock_stark_account(salt: 8, public_key: key.public_key);
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CALLSET_PROTOCOL_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
 }

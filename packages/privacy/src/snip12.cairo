@@ -1,12 +1,18 @@
 use core::ecdsa::check_ecdsa_signature;
 use core::hash::{HashStateExTrait, HashStateTrait};
-use core::poseidon::PoseidonTrait;
+use core::poseidon::{PoseidonTrait, poseidon_hash_span};
+use openzeppelin::account::extensions::src9::snip12_utils::CallStructHash;
 use openzeppelin::utils::cryptography::snip12::{StarknetDomain, StructHash};
+use starknet::account::Call;
 use starknet::{ContractAddress, get_tx_info};
 
 pub const SNIP12_NAME: felt252 = 'Screening';
 // Numeric felt (not shortstring `'2'`), matching the starknet.js/starknet-py convention.
 pub const SNIP12_VERSION: felt252 = 2;
+
+// SNIP-12 domain for the generic `CallSet` authorization message.
+pub const CALL_SET_SNIP12_NAME: felt252 = 'CallSet';
+pub const CALL_SET_SNIP12_VERSION: felt252 = 1;
 
 // SNIP-12 has no `u64` primitive; the type string widens `issued_at` to `u128`,
 // while the Cairo field stays `u64`. Both reduce to the same felt under Poseidon,
@@ -76,4 +82,50 @@ impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
             .update_with(*self)
             .finalize()
     }
+}
+
+// SNIP-12 type hash `CallSet`.
+const CALL_SET_TYPE_HASH: felt252 = selector!(
+    "\"CallSet\"(\"Calls\":\"Call*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
+);
+
+/// A generic authorization over a set of `calls` — the depositor attests to exactly these calls,
+/// independent of any transaction metadata. The off-chain signer (a "legacy" SN wallet) signs this
+/// SNIP-12 message; the pool reconstructs the hash and checks it via the account's
+/// `is_valid_signature`.
+#[derive(Drop)]
+pub struct CallSet {
+    pub calls: Span<Call>,
+}
+
+impl CallSetStructHashImpl of StructHash<CallSet> {
+    fn hash_struct(self: @CallSet) -> felt252 {
+        let mut hashed_calls = array![];
+        for call in *self.calls {
+            hashed_calls.append(call.hash_struct());
+        }
+        PoseidonTrait::new()
+            .update_with(CALL_SET_TYPE_HASH)
+            .update_with(poseidon_hash_span(hashed_calls.span()))
+            .finalize()
+    }
+}
+
+/// SNIP-12 off-chain message hash for a `CallSet` authorized by `signer`
+/// SNIP-12 message binds the signing account, matching starknet.js
+/// `typedData.getMessageHash(td, accountAddress)`).
+pub fn compute_call_set_hash(signer: ContractAddress, calls: Span<Call>) -> felt252 {
+    let domain = StarknetDomain {
+        name: CALL_SET_SNIP12_NAME,
+        version: CALL_SET_SNIP12_VERSION,
+        chain_id: get_tx_info().unbox().chain_id,
+        revision: 1,
+    };
+    let call_set = CallSet { calls };
+    PoseidonTrait::new()
+        .update_with('StarkNet Message')
+        .update_with(domain.hash_struct())
+        .update_with(signer)
+        .update_with(call_set.hash_struct())
+        .finalize()
 }
