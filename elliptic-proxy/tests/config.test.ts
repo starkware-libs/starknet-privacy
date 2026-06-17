@@ -251,6 +251,33 @@ describe("ConfigLoader", () => {
     );
   });
 
+  it("parses an optional metricsAuthToken", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        JSON.stringify({ ...VALID_CONFIG, metricsAuthToken: "scrape-token" })
+      );
+    const config = await new ConfigLoader(fetcher).get();
+    expect(config.metricsAuthToken).toBe("scrape-token");
+  });
+
+  it("leaves metricsAuthToken undefined when omitted", async () => {
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
+    const config = await new ConfigLoader(fetcher).get();
+    expect(config.metricsAuthToken).toBeUndefined();
+  });
+
+  it("rejects a non-string metricsAuthToken", async () => {
+    const fetcher = vi
+      .fn()
+      .mockResolvedValue(
+        JSON.stringify({ ...VALID_CONFIG, metricsAuthToken: 123 })
+      );
+    await expect(new ConfigLoader(fetcher).get()).rejects.toThrow(
+      "metricsAuthToken"
+    );
+  });
+
   describe("load-time warnings", () => {
     async function loadAndCaptureWarnings(
       config: Record<string, unknown>
