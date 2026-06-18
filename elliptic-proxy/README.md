@@ -43,7 +43,8 @@ The secret value must be a JSON string with this structure:
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": [],
-  "blockOverrideAddresses": []
+  "blockOverrideAddresses": [],
+  "allowByok": false
 }
 ```
 
@@ -60,6 +61,7 @@ The secret value must be a JSON string with this structure:
 | `blockOverrideAddresses` _(optional)_     | Operator allow list (hex felts): listed addresses always screen as allowed, winning over the deny list, the blocked cache, and the upstream verdict — rescues addresses the upstream wrongly flags (false positives).                                                                                                                            |
 | `signingPrivateKey` _(required)_          | STARK-curve private key (felt hex, `1 <= key < curve order`) signing screening attestations; the production key is FPI-managed.                                                                                                                                                                                                                  |
 | `chainId` _(required)_                    | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                         |
+| `allowByok` _(optional)_                  | Enables the [BYOK](#byok-bring-your-own-key) path when set to the literal `true`; absent or any other value is `false`. Off by default — enabling it is a security decision (BYOK verdicts are signed with this deployment's key).                                                                                                                |
 
 ### Generating partner secrets
 
@@ -87,6 +89,32 @@ Required headers on every request:
 | `x-access-key`       | Partner name (matches a key in `config.partners`) |
 | `x-access-sign`      | Base64-encoded HMAC-SHA256 signature              |
 | `x-access-timestamp` | Unix timestamp in milliseconds                    |
+
+## BYOK (bring-your-own-key)
+
+When `allowByok` is enabled, a client that is **not** a registered partner can
+screen by supplying its own Elliptic credentials. Instead of `x-access-key`, send:
+
+| Header               | Value                                                            |
+| -------------------- | ---------------------------------------------------------------- |
+| `x-elliptic-key`     | The client's own Elliptic API key                                |
+| `x-elliptic-secret`  | The client's own Elliptic HMAC secret (base64)                   |
+| `x-access-sign`      | `HMAC-SHA256(x-elliptic-secret, ts + method + lowercase(path) + body)` |
+| `x-access-timestamp` | Unix timestamp in milliseconds                                   |
+
+The client self-signs with its own Elliptic secret (proving possession + body
+integrity, replay-bounded by the 5-minute window); the proxy forwards using the
+client's key + secret. Credentials are sent in headers only and never logged.
+Verdicts report `source: "byok"` and are rate-limited under a synthetic
+`byok:<hash>` id. A registered partner always takes the partner path.
+
+> **⚠️ Security:** a BYOK allowed verdict is signed with this deployment's
+> `signingPrivateKey`, and the on-chain verifier cannot distinguish it from a
+> vetted partner's attestation (the verdict `source` is not in the signed
+> struct). Enabling BYOK lets anyone with any Elliptic key obtain a pool-trusted
+> attestation. Enable deliberately; keep `allowByok` off unless that trade-off is
+> intended, and never reuse a mainnet-trusted signing key on a testnet/mock
+> deployment.
 
 ## Response shape
 
