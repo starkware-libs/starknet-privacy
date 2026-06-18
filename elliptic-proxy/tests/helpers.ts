@@ -107,6 +107,46 @@ export function makeRequest(
   } as unknown as Request;
 }
 
+// A BYOK client's own Elliptic credentials. The raw pre-base64 secret string is
+// asserted-against in the no-leak test, so keep it recognizable.
+export const BYOK_ELLIPTIC_KEY = "client-elliptic-key";
+export const BYOK_ELLIPTIC_SECRET = Buffer.from(
+  "client-elliptic-secret"
+).toString("base64");
+
+// A BYOK request: no x-access-key, the client's Elliptic key + secret in
+// headers, and x-access-sign HMAC-signed with the client's own Elliptic secret.
+export function makeByokRequest(
+  overrides: Record<string, unknown> = {},
+  address = "0xabc123",
+  ellipticKey = BYOK_ELLIPTIC_KEY,
+  ellipticSecret = BYOK_ELLIPTIC_SECRET
+): Request {
+  const body = JSON.stringify({ address });
+  const timestamp = Date.now().toString();
+  const signature = computeHmacSignature(
+    ellipticSecret,
+    timestamp,
+    "POST",
+    "/screen",
+    body
+  );
+
+  return {
+    method: "POST",
+    path: "/screen",
+    headers: {
+      "x-elliptic-key": ellipticKey,
+      "x-elliptic-secret": ellipticSecret,
+      "x-access-sign": signature,
+      "x-access-timestamp": timestamp,
+    },
+    rawBody: Buffer.from(body),
+    body: { address },
+    ...overrides,
+  } as unknown as Request;
+}
+
 export function makeResponse(): Response & {
   statusCode: number;
   body: string;

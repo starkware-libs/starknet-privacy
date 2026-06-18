@@ -141,10 +141,13 @@ export function createHandler(
     const chainIdFelt = BigInt(config.chainId);
 
     // Verdicts are labeled with the upstream that produced them: "mock" when
-    // the mock Elliptic upstream is selected, "elliptic" otherwise.
+    // the mock Elliptic upstream is selected, "elliptic" otherwise. A BYOK
+    // request screened the client's own Elliptic account, so its upstream-
+    // derived verdicts are labeled "byok".
     const upstreamSource = isMockEllipticUrl(config.elliptic.url)
       ? "mock"
       : "elliptic";
+    const verdictSource = authResult.byok ? "byok" : upstreamSource;
 
     // Every allowed verdict is signed — the response IS the attestation the
     // caller relays on-chain. Signing runs after the verdict over a fresh
@@ -215,12 +218,21 @@ export function createHandler(
       return;
     }
 
+    // BYOK requests forward the client's own Elliptic credentials; registered
+    // partners forward the credentials stored under their name. The ?? only
+    // evaluates the partners lookup on the partner path, so a synthetic BYOK
+    // partnerName never indexes config.partners.
+    const ellipticKey =
+      authResult.ellipticKey ?? config.partners[partnerName].ellipticKey;
+    const ellipticSecret =
+      authResult.ellipticSecret ?? config.partners[partnerName].ellipticSecret;
+
     let result: ForwardResponse;
     try {
       result = await forward({
         ellipticUrl: config.elliptic.url,
-        ellipticKey: config.partners[partnerName].ellipticKey,
-        ellipticSecret: config.partners[partnerName].ellipticSecret,
+        ellipticKey,
+        ellipticSecret,
         ellipticTimeoutMs: config.elliptic.timeoutMs,
         address,
       });
@@ -262,7 +274,7 @@ export function createHandler(
     // blockchain" — e.g. a freshly derived StarkNet address with no on-chain
     // history. There is no exposure to score, so allow the address.
     if (result.status === 404) {
-      sendAllowed(upstreamSource, {
+      sendAllowed(verdictSource, {
         partner: partnerName,
         ellipticStatus: result.status,
         ellipticLatencyMs: result.durationMs,
@@ -313,13 +325,13 @@ export function createHandler(
       blockedCache.markBlocked(address);
       sendResponse(
         200,
-        JSON.stringify({ blocked: true, source: upstreamSource }),
+        JSON.stringify({ blocked: true, source: verdictSource }),
         {
           partner: partnerName,
           ellipticStatus: result.status,
           ellipticLatencyMs: result.durationMs,
           result: "blocked",
-          source: upstreamSource,
+          source: verdictSource,
           scoringReason: scoringResult.reason,
           triggeringRuleIds:
             scoringResult.triggeringRuleIds.length > 0
@@ -331,7 +343,7 @@ export function createHandler(
       return;
     }
 
-    sendAllowed(upstreamSource, {
+    sendAllowed(verdictSource, {
       partner: partnerName,
       ellipticStatus: result.status,
       ellipticLatencyMs: result.durationMs,
