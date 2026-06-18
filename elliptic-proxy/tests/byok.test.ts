@@ -72,6 +72,15 @@ describe("BYOK screening path", () => {
     expect(forward).not.toHaveBeenCalled();
   });
 
+  it("maps an upstream 401 to 'elliptic rejected credentials' (not 502)", async () => {
+    const { handler, forward } = handlerFor();
+    forward.mockResolvedValue({ status: 401, body: "{}", durationMs: 5 });
+    const res = makeResponse();
+    await handler(makeByokRequest(), res);
+    expect(res.statusCode).toBe(401);
+    expect(JSON.parse(res.body).error).toBe("elliptic rejected credentials");
+  });
+
   it("never leaks the client Elliptic secret in the response or logs", async () => {
     const captured: string[] = [];
     const sink = (...args: unknown[]) => captured.push(args.join(" "));

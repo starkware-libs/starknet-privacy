@@ -287,6 +287,24 @@ export function createHandler(
     // Only score successful Elliptic responses — non-2xx indicates an upstream
     // error and must not be interpreted as a screening result.
     if (result.status < 200 || result.status >= 300) {
+      // A BYOK client supplied its own Elliptic credentials, so a 401/403 from
+      // Elliptic means *its* credentials are bad — surface that distinctly
+      // instead of the generic 502 a BYOK client would otherwise read as
+      // "Elliptic is down". Partner credentials are operator-managed, so the
+      // partner path keeps the 502.
+      if (authResult.byok && (result.status === 401 || result.status === 403)) {
+        sendResponse(
+          401,
+          JSON.stringify({ error: "elliptic rejected credentials" }),
+          {
+            partner: partnerName,
+            result: "error",
+            errorType: "byok_elliptic_auth",
+            ellipticStatus: result.status,
+          }
+        );
+        return;
+      }
       console.error(
         JSON.stringify({
           error: "upstream_error",
