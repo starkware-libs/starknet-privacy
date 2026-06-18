@@ -18,20 +18,14 @@ assert_macros = "2.17.0"
 # flags from CI workflows and sdk/package.json scripts
 openzeppelin = "3.0.0"
 ekubo = { git = "https://github.com/EkuboProtocol/starknet-contracts", rev = "8b4de8b5701d10b101c06b786740bf45b6cf15cb" }
-starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
-starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }
+starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="8e88731c6afd11f36f1fb3b70d19ffd34a284522" }
+starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="8e88731c6afd11f36f1fb3b70d19ffd34a284522" }
 
 [workspace.tool.fmt]
 sort-module-level-items = true
 
 [workspace.tool.scarb]
 allow-prebuilt-plugins = ["snforge_std"]
-
-# Redirect transitive `starkware_utils_testing` requests for snforge_std (pinned to
-# scarbs.dev) to the stable 0.59.0 release on scarbs.xyz, so we don't end up with
-# two snforge_scarb_plugin copies from incompatible registries.
-[patch."https://scarbs.dev/"]
-snforge_std = "0.59.0"
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"
