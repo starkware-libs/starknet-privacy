@@ -21,12 +21,11 @@ jobs:
         run: |
           scarb fmt -w --check
 
-      # TODO: remove SCARB_IGNORE_CAIRO_VERSION once openzeppelin upgrades to Cairo >=2.17
       - name: Check unused imports and variables
         run: |
           scarb cache clean
           echo "::group::scarb build output"
-          output=$(SCARB_IGNORE_CAIRO_VERSION=true scarb build -t 2>&1) || {
+          output=$(scarb build -t 2>&1) || {
             echo "$output"
             echo "::endgroup::"
             echo "::error::scarb build failed"

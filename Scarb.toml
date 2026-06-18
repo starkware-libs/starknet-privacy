@@ -14,8 +14,6 @@ license-file = "LICENSE"
 starknet = "2.17.0"
 snforge_std = "0.59.0"
 assert_macros = "2.17.0"
-# TODO: once openzeppelin upgrades to Cairo >=2.17, remove all SCARB_IGNORE_CAIRO_VERSION
-# flags from CI workflows and sdk/package.json scripts
 openzeppelin = "3.0.0"
 ekubo = { git = "https://github.com/EkuboProtocol/starknet-contracts", rev = "8b4de8b5701d10b101c06b786740bf45b6cf15cb" }
 starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="0e12df09afe29f59a877a5b04801fedd8b31c50d" }

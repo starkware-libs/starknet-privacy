@@ -30,10 +30,7 @@ jobs:
 
       # Build Cairo contracts (release for class hash + artifacts)
       - name: Build contracts
-        # TODO: remove SCARB_IGNORE_CAIRO_VERSION once openzeppelin upgrades to Cairo >=2.17
         run: scarb --profile release build -p privacy
-        env:
-          SCARB_IGNORE_CAIRO_VERSION: "true"
 
       # Build SDK (e2e depends on it via file: link)
       - name: Build SDK
