@@ -4,8 +4,8 @@
 
 A GCP Cloud Function (TypeScript/Node.js) that screens blockchain addresses via
 Elliptic's API. Third-party partners send an address; the proxy authenticates
-the request, re-signs with real Elliptic credentials, forwards to Elliptic,
-scores the response, and returns a `{ blocked: true/false }` verdict.
+the request, re-signs with that partner's own Elliptic credentials, forwards to
+Elliptic, scores the response, and returns a `{ blocked: true/false }` verdict.
 
 ## Request Flow
 
@@ -16,7 +16,7 @@ Partner → Cloud Function → Elliptic API
          3. Verify partner's HMAC signature
          4. Check request body size limit
          5. Check rate limit
-         6. Re-sign with real Elliptic key + secret
+         6. Re-sign with the partner's own Elliptic key + secret
          7. Forward address to Elliptic for screening
          8. Score Elliptic response and return blocked/allowed verdict
 ```
@@ -32,8 +32,6 @@ re-reads it according to `configCacheTtlSeconds`.
 {
   "elliptic": {
     "url": "https://api.elliptic.co",
-    "key": "real-elliptic-api-key",
-    "secret": "real-elliptic-hmac-secret-base64",
     "timeoutMs": 10000
   },
   "rateLimitPerMinute": 100,
@@ -41,8 +39,16 @@ re-reads it according to `configCacheTtlSeconds`.
   "configCacheTtlSeconds": 300,
   "blockedCacheTtlSeconds": 3600,
   "partners": {
-    "partner-a": "issued-hmac-secret-base64",
-    "partner-b": "issued-hmac-secret-base64"
+    "partner-a": {
+      "hmacSecret": "issued-hmac-secret-base64",
+      "ellipticKey": "partner-a-elliptic-api-key",
+      "ellipticSecret": "partner-a-elliptic-hmac-secret-base64"
+    },
+    "partner-b": {
+      "hmacSecret": "issued-hmac-secret-base64",
+      "ellipticKey": "partner-b-elliptic-api-key",
+      "ellipticSecret": "partner-b-elliptic-hmac-secret-base64"
+    }
   },
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
@@ -55,14 +61,12 @@ re-reads it according to `configCacheTtlSeconds`.
 | Field                                 | Description                                                                                                                                                              |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `elliptic.url`                        | Elliptic API base URL; `mock:` selects the in-process mock upstream (test deployments only)                                                                              |
-| `elliptic.key`                        | Real Elliptic API key                                                                                                                                                    |
-| `elliptic.secret`                     | Real Elliptic HMAC secret (base64)                                                                                                                                       |
 | `elliptic.timeoutMs`                  | Timeout for upstream Elliptic requests (ms)                                                                                                                              |
 | `rateLimitPerMinute`                  | Global per-partner rate limit                                                                                                                                            |
 | `maxBodyBytes`                        | Max request body size                                                                                                                                                    |
 | `configCacheTtlSeconds`               | How often the proxy re-reads config from Secret Manager (seconds)                                                                                                        |
 | `blockedCacheTtlSeconds`              | How long to cache blocked address verdicts (seconds)                                                                                                                     |
-| `partners.<name>`                     | Partner HMAC secret (base64). The key is the partner name, sent in `x-access-key`                                                                                        |
+| `partners.<name>`                     | Per-partner credentials object, keyed by partner name (sent in `x-access-key`). Fields: `hmacSecret` (base64, verifies inbound auth), `ellipticKey` + `ellipticSecret` (base64) — the partner's own Elliptic credentials, used to re-sign that partner's upstream calls. |
 | `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
 | `signingPrivateKey` _(required)_      | STARK-curve private key (felt hex) signing screening attestations; production key is FPI-managed.                                                                        |
 | `chainId` _(required)_                | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN + mock `elliptic.url` is rejected at config load.                               |
@@ -94,9 +98,9 @@ signature = HMAC-SHA256(
 The proxy:
 
 1. Looks up the partner's HMAC secret by name (`x-access-key` header value)
-2. Recomputes the HMAC using the partner's secret and verifies it matches
+2. Recomputes the HMAC using the partner's `hmacSecret` and verifies it matches
    `x-access-sign`
-3. Re-signs the request with the real Elliptic key and secret
+3. Re-signs the request with that partner's own Elliptic key and secret
 4. Forwards with the new `x-access-key`, `x-access-sign`, `x-access-timestamp`
 
 ## Rate Limiting

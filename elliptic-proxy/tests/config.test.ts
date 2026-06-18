@@ -6,8 +6,6 @@ import { LIVE_CHAIN_ID, SN_MAIN_CHAIN_ID } from "./helpers.js";
 const VALID_CONFIG = {
   elliptic: {
     url: "https://api.elliptic.co",
-    key: "elliptic-key",
-    secret: btoa("elliptic-secret"),
     timeoutMs: 10000,
   },
   rateLimitPerMinute: 100,
@@ -15,8 +13,16 @@ const VALID_CONFIG = {
   configCacheTtlSeconds: 2,
   blockedCacheTtlSeconds: 300,
   partners: {
-    "prover-proxy": btoa("secret-aaa"),
-    "other-service": btoa("secret-bbb"),
+    "prover-proxy": {
+      hmacSecret: btoa("secret-aaa"),
+      ellipticKey: "prover-proxy-key",
+      ellipticSecret: btoa("prover-proxy-elliptic"),
+    },
+    "other-service": {
+      hmacSecret: btoa("secret-bbb"),
+      ellipticKey: "other-service-key",
+      ellipticSecret: btoa("other-service-elliptic"),
+    },
   },
   signingPrivateKey: "0x1234",
   chainId: LIVE_CHAIN_ID,
@@ -33,8 +39,14 @@ describe("ConfigLoader", () => {
     const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
     const loader = new ConfigLoader(fetcher);
     const config = await loader.get();
-    expect(config.elliptic.key).toBe("elliptic-key");
-    expect(config.partners["prover-proxy"]).toBe(btoa("secret-aaa"));
+    expect(config.elliptic.url).toBe("https://api.elliptic.co");
+    expect(config.partners["prover-proxy"].hmacSecret).toBe(btoa("secret-aaa"));
+    expect(config.partners["prover-proxy"].ellipticKey).toBe(
+      "prover-proxy-key"
+    );
+    expect(config.partners["prover-proxy"].ellipticSecret).toBe(
+      btoa("prover-proxy-elliptic")
+    );
   });
 
   it("returns cached config within TTL", async () => {
@@ -105,15 +117,32 @@ describe("ConfigLoader", () => {
     );
   });
 
-  it("throws when a partner secret is not a string", async () => {
+  it("throws when a partner entry is not an object", async () => {
     const invalidConfig = {
       ...VALID_CONFIG,
-      partners: { "bad-partner": 123 },
+      partners: { "bad-partner": "just-a-secret" },
     };
     const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
     const loader = new ConfigLoader(fetcher);
     await expect(loader.get()).rejects.toThrow(
-      "partners.bad-partner must be a non-empty string"
+      "partners.bad-partner must be a non-null object"
+    );
+  });
+
+  it("throws when a partner is missing its Elliptic key", async () => {
+    const invalidConfig = {
+      ...VALID_CONFIG,
+      partners: {
+        "bad-partner": {
+          hmacSecret: btoa("secret"),
+          ellipticSecret: btoa("elliptic"),
+        },
+      },
+    };
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(invalidConfig));
+    const loader = new ConfigLoader(fetcher);
+    await expect(loader.get()).rejects.toThrow(
+      "partners.bad-partner.ellipticKey must be a non-empty string"
     );
   });
 
