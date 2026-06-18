@@ -37,6 +37,12 @@ export interface Config {
   // SN_MAIN must never be combined with a mock elliptic.url — config load
   // rejects it.
   chainId: string;
+  // When true, clients may screen without being a registered partner by
+  // supplying their own Elliptic key + secret (BYOK). Such verdicts are still
+  // signed with this deployment's signingPrivateKey, so the attestation is
+  // pool-trusted exactly like a partner's — enable deliberately. Defaults
+  // false (opt-in per deployment).
+  allowByok: boolean;
 }
 
 // 'SN_MAIN' as a Cairo short string: the felt is the big-endian ASCII bytes.
@@ -187,6 +193,9 @@ function validateConfig(raw: unknown): Config {
     ),
     signingPrivateKey: requireString(root, "signingPrivateKey"),
     chainId,
+    // Only the literal `true` enables BYOK; absent/any other value is false, so
+    // the path stays off unless a deployment opts in explicitly (fail closed).
+    allowByok: root.allowByok === true,
   };
 }
 

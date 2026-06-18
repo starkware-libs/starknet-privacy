@@ -235,6 +235,24 @@ describe("ConfigLoader", () => {
     expect(loaded.chainId).toBe(SN_MAIN_CHAIN_ID);
   });
 
+  it("defaults allowByok to false when absent", async () => {
+    const fetcher = vi.fn().mockResolvedValue(JSON.stringify(VALID_CONFIG));
+    const loader = new ConfigLoader(fetcher);
+    expect((await loader.get()).allowByok).toBe(false);
+  });
+
+  it("honors allowByok only for the literal true", async () => {
+    const enabled = vi
+      .fn()
+      .mockResolvedValue(JSON.stringify({ ...VALID_CONFIG, allowByok: true }));
+    expect((await new ConfigLoader(enabled).get()).allowByok).toBe(true);
+    // A truthy non-boolean must not enable the path.
+    const truthy = vi
+      .fn()
+      .mockResolvedValue(JSON.stringify({ ...VALID_CONFIG, allowByok: "yes" }));
+    expect((await new ConfigLoader(truthy).get()).allowByok).toBe(false);
+  });
+
   it("throws when additionalBlockedAddresses is not a string array", async () => {
     const invalidConfig = {
       ...VALID_CONFIG,

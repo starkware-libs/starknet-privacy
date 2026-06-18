@@ -66,6 +66,7 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
     },
     signingPrivateKey: SIGNING_KEY,
     chainId: LIVE_CHAIN_ID,
+    allowByok: false,
     ...overrides,
   };
 }
