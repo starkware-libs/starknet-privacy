@@ -9,19 +9,25 @@ import { LIVE_CHAIN_ID, SIGNING_KEY } from "./helpers.js";
 describe("integration: full request flow", () => {
   it("happy path — valid screen request returns blocked verdict", async () => {
     const partnerSecret = Buffer.from("integration-secret").toString("base64");
+    const ellipticKey = "real-key";
+    const ellipticSecret = Buffer.from("real-secret").toString("base64");
 
     const config: Config = {
       elliptic: {
         url: "https://api.elliptic.co",
-        key: "real-key",
-        secret: Buffer.from("real-secret").toString("base64"),
         timeoutMs: 10000,
       },
       rateLimitPerMinute: 100,
       maxBodyBytes: 10240,
       configCacheTtlSeconds: 300,
       blockedCacheTtlSeconds: 300,
-      partners: { "integration-partner": partnerSecret },
+      partners: {
+        "integration-partner": {
+          hmacSecret: partnerSecret,
+          ellipticKey,
+          ellipticSecret,
+        },
+      },
       signingPrivateKey: SIGNING_KEY,
       chainId: LIVE_CHAIN_ID,
     };
@@ -85,8 +91,13 @@ describe("integration: full request flow", () => {
     const allowed = JSON.parse(res.body);
     expect(allowed).toMatchObject({ blocked: false, source: "elliptic" });
     expect(allowed.signature).toBeDefined();
+    // The partner's own Elliptic credentials are used for the upstream call.
     expect(mockForward).toHaveBeenCalledWith(
-      expect.objectContaining({ address: "0xabc123" })
+      expect.objectContaining({
+        address: "0xabc123",
+        ellipticKey,
+        ellipticSecret,
+      })
     );
   });
 });
