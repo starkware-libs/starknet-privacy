@@ -52,7 +52,8 @@ re-reads it according to `configCacheTtlSeconds`.
   },
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
-  "additionalBlockedAddresses": []
+  "additionalBlockedAddresses": [],
+  "allowByok": false
 }
 ```
 
@@ -70,6 +71,7 @@ re-reads it according to `configCacheTtlSeconds`.
 | `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
 | `signingPrivateKey` _(required)_      | STARK-curve private key (felt hex) signing screening attestations; production key is FPI-managed.                                                                        |
 | `chainId` _(required)_                | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN + mock `elliptic.url` is rejected at config load.                               |
+| `allowByok` _(opt.)_                  | Enables the BYOK path when the literal `true`; absent/any other value is `false`. See [BYOK](#byok-bring-your-own-key). Off by default.                                  |
 
 ### Verdict precedence
 
@@ -102,6 +104,50 @@ The proxy:
    `x-access-sign`
 3. Re-signs the request with that partner's own Elliptic key and secret
 4. Forwards with the new `x-access-key`, `x-access-sign`, `x-access-timestamp`
+
+## BYOK (bring-your-own-key)
+
+When `allowByok` is `true`, a client that is **not** a registered partner may
+screen by supplying its own Elliptic credentials. It is detected when the
+request carries no known `x-access-key` but both BYOK headers are present:
+
+- `x-elliptic-key` — the client's Elliptic API key (sent upstream as `x-access-key`)
+- `x-elliptic-secret` — the client's Elliptic HMAC secret (base64), used to re-sign
+  the upstream call
+
+The client signs the request the same way a partner does — `x-access-sign` =
+`HMAC-SHA256(x-elliptic-secret, timestamp + method + lowercase(path) + body)` —
+but with its **own** Elliptic secret. The proxy verifies that HMAC with the
+supplied secret (proving possession + body integrity, replay-bounded by the same
+5-minute window) and forwards using the client's key + secret. There is no
+pre-registration: the client's Elliptic account pays for the screening call.
+
+Credentials travel in headers only — never in the body or any signed payload —
+and never appear in logs. BYOK requests are rate-limited and logged under a
+synthetic `byok:<sha256(key)[..16]>` id, never the raw key. Verdicts report
+`source: "byok"`.
+
+Precedence: a known partner always takes the partner path (a BYOK header can
+never shadow a registered partner). Errors: `byok_disabled` (gate off),
+`byok_incomplete` (only one BYOK header), `invalid_signature` (bad self-signed
+HMAC) — all `401`.
+
+### ⚠️ Trust implication
+
+A BYOK allowed verdict is **signed with this deployment's `signingPrivateKey`**,
+exactly like a partner's. The on-chain verifier hashes only `{depositor,
+issued_at}` with `chain_id` — the `source` is **not** in the signed struct — so a
+BYOK attestation is **indistinguishable on-chain from a vetted partner's**.
+Enabling BYOK therefore lets anyone holding any Elliptic key (including a
+permissive tenant, or via the `404 → allowed` path for fresh addresses) obtain a
+pool-trusted attestation. This is an explicit operator decision, contained by:
+
+- `allowByok` defaults `false` (opt-in per deployment).
+- The SNIP-12 domain binds `chain_id`, so a testnet-chain BYOK signature cannot be
+  relayed on mainnet — **provided the deployment's `chainId` matches its network**.
+- The existing config guard still rejects a `mock:` upstream with `SN_MAIN`.
+- Operators must not reuse a mainnet-trusted `signingPrivateKey` on a testnet/mock
+  deployment.
 
 ## Rate Limiting
 
