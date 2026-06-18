@@ -1,18 +1,28 @@
 // src/config.ts
 import { isHexFelt } from "./felt.js";
 
+// Each partner carries its own Elliptic credentials: the proxy re-signs that
+// partner's upstream calls with the partner's own key + secret, so usage and
+// revocation are isolated per partner.
+export interface PartnerCredentials {
+  // Partner's HMAC auth secret (base64) — verifies the inbound x-access-sign.
+  hmacSecret: string;
+  // Partner's own Elliptic API key, sent as x-access-key to Elliptic.
+  ellipticKey: string;
+  // Partner's own Elliptic HMAC secret (base64), used to sign the upstream call.
+  ellipticSecret: string;
+}
+
 export interface Config {
   elliptic: {
     url: string;
-    key: string;
-    secret: string;
     timeoutMs: number;
   };
   rateLimitPerMinute: number;
   maxBodyBytes: number;
   configCacheTtlSeconds: number;
   blockedCacheTtlSeconds: number;
-  partners: Record<string, string>; // partner name -> HMAC secret
+  partners: Record<string, PartnerCredentials>; // partner name -> credentials
   // Operator deny list (hex felts): always blocked, in every mode — covers
   // upstream false negatives.
   additionalBlockedAddresses?: string[];
@@ -119,10 +129,26 @@ function validateConfig(raw: unknown): Config {
     throw new Error("config: partners must be a non-null object");
   }
   const partners = root.partners as Record<string, unknown>;
-  for (const [name, secret] of Object.entries(partners)) {
-    if (typeof secret !== "string" || secret.length === 0) {
-      throw new Error(`config: partners.${name} must be a non-empty string`);
+  const parsedPartners: Record<string, PartnerCredentials> = {};
+  for (const [name, value] of Object.entries(partners)) {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      throw new Error(`config: partners.${name} must be a non-null object`);
     }
+    const entry = value as Record<string, unknown>;
+    const requirePartnerField = (field: string): string => {
+      const fieldValue = entry[field];
+      if (typeof fieldValue !== "string" || fieldValue.length === 0) {
+        throw new Error(
+          `config: partners.${name}.${field} must be a non-empty string`
+        );
+      }
+      return fieldValue;
+    };
+    parsedPartners[name] = {
+      hmacSecret: requirePartnerField("hmacSecret"),
+      ellipticKey: requirePartnerField("ellipticKey"),
+      ellipticSecret: requirePartnerField("ellipticSecret"),
+    };
   }
 
   const ellipticUrl = requireString(elliptic, "url");
@@ -141,8 +167,6 @@ function validateConfig(raw: unknown): Config {
   return {
     elliptic: {
       url: ellipticUrl,
-      key: requireString(elliptic, "key"),
-      secret: requireString(elliptic, "secret"),
       timeoutMs: requirePositiveNumber(elliptic, "timeoutMs"),
     },
     rateLimitPerMinute: requirePositiveNumber(root, "rateLimitPerMinute"),
@@ -152,7 +176,7 @@ function validateConfig(raw: unknown): Config {
       root,
       "blockedCacheTtlSeconds"
     ),
-    partners: root.partners as Record<string, string>,
+    partners: parsedPartners,
     additionalBlockedAddresses: parseLowercaseHexList(
       root,
       "additionalBlockedAddresses"
