@@ -13,7 +13,9 @@ use snforge_std::TokenTrait;
 use starkware_utils::components::replaceability::interface::{
     IReplaceableDispatcher, IReplaceableDispatcherTrait,
 };
-use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDispatcherTrait};
+use starkware_utils::components::roles::interface::{
+    ICommonRolesDispatcher, ICommonRolesDispatcherTrait, Role,
+};
 use starkware_utils_testing::test_utils::assert_panic_with_error;
 
 
@@ -26,12 +28,18 @@ fn test_constructor() {
     assert_eq!(test.privacy.get_screener_public_key(), screener_key_pair().public_key);
     assert_eq!(test.privacy.get_version(), '2.0');
     // Test roles.
-    let contract_roles = IRolesDispatcher { contract_address: test.privacy.address };
-    assert!(contract_roles.is_governance_admin(account: test.privacy.roles.governance_admin));
-    assert!(contract_roles.is_security_admin(account: test.privacy.roles.governance_admin));
+    let contract_roles = ICommonRolesDispatcher { contract_address: test.privacy.address };
+    assert!(
+        contract_roles
+            .has_role(role: Role::GovernanceAdmin, account: test.privacy.roles.governance_admin),
+    );
+    assert!(
+        contract_roles
+            .has_role(role: Role::SecurityAdmin, account: test.privacy.roles.governance_admin),
+    );
     let user = test.new_user();
-    assert!(!contract_roles.is_governance_admin(account: user.address));
-    assert!(!contract_roles.is_security_admin(account: user.address));
+    assert!(!contract_roles.has_role(role: Role::GovernanceAdmin, account: user.address));
+    assert!(!contract_roles.has_role(role: Role::SecurityAdmin, account: user.address));
     // Test replaceability.
     let contract_replaceability = IReplaceableDispatcher { contract_address: test.privacy.address };
     assert_eq!(contract_replaceability.get_upgrade_delay(), Zero::zero());

@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Breaking
+
+- Privacy pool role-management ABI changed (`PrivacyPoolABI` regenerated). The
+  `starkware_utils` upgrade replaced the monolithic `RolesComponent` with
+  `CommonRolesComponent`, so the per-role typed selectors
+  (`is_app_governor`/`register_app_governor`/`remove_security_governor`/…) are
+  removed and replaced by the generic `grant_role(role, account)`,
+  `revoke_role(role, account)`, `has_role(role, account)`, and `renounce(role)`
+  taking a `Role` enum. Tooling that called the old role selectors must migrate.
+
 ### Added
 
 - Screening v2: `ProveTransactionResult.additional_data` (typed, optional)
