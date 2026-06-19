@@ -53,6 +53,7 @@ pub mod Privacy {
         ContractAddress, SyscallResultTrait, VALIDATED, get_block_timestamp, get_caller_address,
         get_contract_address, get_execution_info,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
@@ -63,6 +64,7 @@ pub mod Privacy {
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: AccessControlComponent, storage: access_control, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(
@@ -77,6 +79,8 @@ pub mod Privacy {
         replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
         roles: RolesComponent::Storage,
+        #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         access_control: AccessControlComponent::Storage,
         #[substorage(v0)]
@@ -125,6 +129,8 @@ pub mod Privacy {
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
@@ -169,6 +175,8 @@ pub mod Privacy {
         ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
     #[abi(embed_v0)]
     impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
