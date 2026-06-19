@@ -51,15 +51,19 @@ export function makeConfig(overrides: Partial<Config> = {}): Config {
   return {
     elliptic: {
       url: "https://api.elliptic.co",
-      key: "elliptic-key",
-      secret: Buffer.from("elliptic-secret").toString("base64"),
       timeoutMs: 10000,
     },
     rateLimitPerMinute: 100,
     maxBodyBytes: 10240,
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
-    partners: { "test-partner": PARTNER_SECRET },
+    partners: {
+      "test-partner": {
+        hmacSecret: PARTNER_SECRET,
+        ellipticKey: "elliptic-key",
+        ellipticSecret: Buffer.from("elliptic-secret").toString("base64"),
+      },
+    },
     signingPrivateKey: SIGNING_KEY,
     chainId: LIVE_CHAIN_ID,
     ...overrides,

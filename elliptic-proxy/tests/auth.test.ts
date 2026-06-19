@@ -102,15 +102,19 @@ describe("authenticateRequest timestamp validation", () => {
   const config: Config = {
     elliptic: {
       url: "https://api.elliptic.co",
-      key: "key",
-      secret: "secret",
       timeoutMs: 10000,
     },
     rateLimitPerMinute: 100,
     maxBodyBytes: 10240,
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
-    partners: { "test-partner": partnerSecret },
+    partners: {
+      "test-partner": {
+        hmacSecret: partnerSecret,
+        ellipticKey: "key",
+        ellipticSecret: "secret",
+      },
+    },
   };
 
   function makeSignedRequest(timestamp: string): Request {
