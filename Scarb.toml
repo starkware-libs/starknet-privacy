@@ -19,8 +19,8 @@ assert_macros = "2.17.0"
 # flags from CI workflows and sdk/package.json scripts
 openzeppelin = "3.0.0"
 ekubo = { git = "https://github.com/EkuboProtocol/starknet-contracts", rev = "8b4de8b5701d10b101c06b786740bf45b6cf15cb" }
-starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="f74a835454a692fbb1e4bc828ea896a3ee3d5c6a" }
-starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="f74a835454a692fbb1e4bc828ea896a3ee3d5c6a" }
+starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="72de622127788d66db2426b7af8c83fdffcc431b" }
+starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="72de622127788d66db2426b7af8c83fdffcc431b" }
 
 [workspace.tool.fmt]
 sort-module-level-items = true
