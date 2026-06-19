@@ -4,6 +4,12 @@ use starknet::{ClassHash, ContractAddress};
 
 #[starknet::interface]
 pub trait ISubAccountAnonymizer<T> {
+    /// Derives the commitment identifying the sub-account for a `(identity_key, dapp_name, seq_nonce)`
+    /// triple. The commitment is the Poseidon hash of the three inputs.
+    fn privacy_compute(
+        self: @T, identity_key: felt252, dapp_name: felt252, seq_nonce: felt252,
+    ) -> felt252;
+
     /// Returns the sub-account address bound to `commitment`, or zero if none has been deployed
     /// yet.
     fn get_sub_account(self: @T, commitment: felt252) -> ContractAddress;
@@ -17,6 +23,8 @@ pub trait ISubAccountAnonymizer<T> {
 
 #[starknet::contract]
 pub mod SubAccountAnonymizer {
+    use core::hash::HashStateTrait;
+    use core::poseidon::PoseidonTrait;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
@@ -46,6 +54,12 @@ pub mod SubAccountAnonymizer {
 
     #[abi(embed_v0)]
     pub impl SubAccountAnonymizerImpl of ISubAccountAnonymizer<ContractState> {
+        fn privacy_compute(
+            self: @ContractState, identity_key: felt252, dapp_name: felt252, seq_nonce: felt252,
+        ) -> felt252 {
+            PoseidonTrait::new().update(identity_key).update(dapp_name).update(seq_nonce).finalize()
+        }
+
         fn get_sub_account(self: @ContractState, commitment: felt252) -> ContractAddress {
             self.sub_accounts.read(commitment)
         }

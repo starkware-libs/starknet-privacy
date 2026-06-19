@@ -1,10 +1,20 @@
+use core::hash::HashStateTrait;
 use core::num::traits::Zero;
+use core::poseidon::PoseidonTrait;
 use snforge_std::{DeclareResultTrait, declare};
 use starknet::SyscallResultTrait;
 use sub_account_anonymizer::sub_account_anonymizer::ISubAccountAnonymizerDispatcherTrait;
 use sub_account_anonymizer::tests::test_utils::{
     PRIVACY, anonymizer_disp, deploy_sub_account_anonymizer,
 };
+
+#[test]
+fn test_privacy_compute_matches_poseidon() {
+    let anonymizer = deploy_sub_account_anonymizer();
+    let commitment = anonymizer_disp(anonymizer).privacy_compute('USER', 'DAPP', 7);
+    let expected = PoseidonTrait::new().update('USER').update('DAPP').update(7).finalize();
+    assert_eq!(commitment, expected);
+}
 
 #[test]
 fn test_get_privacy_contract() {
