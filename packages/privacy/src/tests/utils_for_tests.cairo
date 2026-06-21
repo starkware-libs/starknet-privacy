@@ -12,16 +12,18 @@ use ekubo_swap_anonymizer::ekubo_swap_anonymizer::{
 use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::actions::{
-    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput, ServerAction,
-    SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    AppendInput, ClientAction, ComputeAndInvokeInput, CreateEncNoteInput, CreateOpenNoteInput,
+    DepositInput, InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput,
+    WithdrawInput,
 };
 use privacy::events;
 use privacy::hashes::{
     compute_channel_key, compute_channel_marker, compute_enc_channel_key_hash,
     compute_enc_private_key_hash, compute_enc_recipient_addr_hash, compute_enc_sender_addr_hash,
-    compute_enc_token_hash, compute_enc_user_addr_hash, compute_note_id, compute_nullifier,
-    compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
+    compute_enc_token_hash, compute_enc_user_addr_hash, compute_identity_key, compute_note_id,
+    compute_nullifier, compute_outgoing_channel_id, compute_subchannel_id,
+    compute_subchannel_marker, hash,
 };
 use privacy::interface::{
     IAdminDispatcher, IAdminDispatcherTrait, IAdminSafeDispatcher, IAdminSafeDispatcherTrait,
@@ -46,6 +48,8 @@ use privacy::test_contracts::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_invoke_returns::MockCompute::deploy_for_test as deploy_mock_compute_for_test;
+use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::deploy_for_test as deploy_mock_compute_multi_felt_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
@@ -394,6 +398,22 @@ pub(crate) impl UserImpl of UserTrait {
             || {
                 let mut state = Privacy::contract_state_for_testing();
                 state.invoke_external(:input)
+            },
+        )
+            .span()
+    }
+
+    fn internal_compute_and_invoke(
+        self: @User, input: ComputeAndInvokeInput,
+    ) -> Span<ServerAction> {
+        interact_with_state(
+            *self.privacy.address,
+            || {
+                let mut state = Privacy::contract_state_for_testing();
+                state
+                    .compute_and_invoke(
+                        user_addr: *self.address, user_private_key: *self.private_key, :input,
+                    )
             },
         )
             .span()
@@ -905,6 +925,12 @@ pub(crate) impl UserImpl of UserTrait {
             ephemeral_secret: random,
             auditor_public_key: self.privacy.get_auditor_public_key(),
             user_addr: *self.address,
+        )
+    }
+
+    fn compute_identity_key(self: @User, contract_address: ContractAddress) -> felt252 {
+        compute_identity_key(
+            user_addr: *self.address, user_private_key: *self.private_key, :contract_address,
         )
     }
 
@@ -1748,6 +1774,20 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_apply_actions(actions.span())
     }
 
+    #[feature("safe_dispatcher")]
+    fn safe_create_open_note_and_compute_invoke(
+        self: @PrivacyCfg,
+        create_actions: Span<ServerAction>,
+        note_id: felt252,
+        token_addr: ContractAddress,
+        amount: u128,
+    ) -> Result<(), Array<felt252>> {
+        let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+        let mut actions: Array<ServerAction> = create_actions.into();
+        actions.append(self.invoke_with_computation_echo_deposits([deposit].span()));
+        self.safe_apply_actions(actions.span())
+    }
+
     fn pause(self: @PrivacyCfg) {
         cheat_caller_address_once(
             contract_address: *self.address, caller_address: *self.roles.security_agent,
@@ -2092,6 +2132,18 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         deposits.serialize(ref calldata);
         InvokeExternalInput { contract_address: executor, calldata: calldata.span() }
     }
+
+    /// Build an `InvokeWithComputation` server action targeting the echo executor, with the given
+    /// deposits serialized as the forwarded calldata.
+    fn invoke_with_computation_echo_deposits(
+        self: @PrivacyCfg, deposits: Span<OpenNoteDeposit>,
+    ) -> ServerAction {
+        let mut calldata: Array<felt252> = array![];
+        deposits.serialize(ref calldata);
+        ServerAction::InvokeWithComputation(
+            InvokeInput { contract_address: *self.echo_executor, calldata: calldata.span() },
+        )
+    }
 }
 
 impl DefaultTestImpl of Default<Test> {
@@ -2341,6 +2393,36 @@ fn deploy_mock_amm() -> ContractAddress {
         class_hash: *class_hash, :deployment_params,
     )
         .expect('MockAMM deployment failed');
+    contract_address
+}
+
+/// Deploys a `MockCompute` target for the `ComputeAndInvoke` / `InvokeWithComputation` path. The
+/// flags make `privacy_compute` / `privacy_invoke_with_computation` panic, to exercise
+/// panic-propagation and call-deferral.
+pub(crate) fn deploy_mock_compute(
+    panic_on_compute: bool, panic_on_invoke: bool,
+) -> ContractAddress {
+    let class_hash = declare(contract: "MockCompute").unwrap_syscall().contract_class().class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_compute_for_test(
+        class_hash: *class_hash, :deployment_params, :panic_on_compute, :panic_on_invoke,
+    )
+        .expect('MOCK_COMPUTE_DEPLOY_FAIL');
+    contract_address
+}
+
+/// Deploys a `MockComputeMultiFelt` target, whose `privacy_compute` takes no `compute_data` and
+/// returns a two-felt `computed_data`.
+pub(crate) fn deploy_mock_compute_multi_felt() -> ContractAddress {
+    let class_hash = declare(contract: "MockComputeMultiFelt")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_compute_multi_felt_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MOCK_COMPUTE_MULTI_DEPLOY_FAIL');
     contract_address
 }
 
