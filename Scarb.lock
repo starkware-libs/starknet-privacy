@@ -166,6 +166,7 @@ dependencies = [
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
+ "sub_account_anonymizer",
  "vesu_lending_anonymizer",
 ]
 
