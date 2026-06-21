@@ -210,6 +210,73 @@ Rule of thumb: any on-chain state that the pool proof reads — account viewing 
 | `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                                                |
 | `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction                                          |
 
+### Account signers (native-wallet support)
+
+`account.signer` authorizes the user account's privacy-pool invocations. The SDK is
+**signer-agnostic**: `account.signer` is any starknet.js `SignerInterface`; the SDK calls
+`signer.signTransaction(calls, details)` and attaches the result verbatim. Which signature scheme is
+accepted is decided **on-chain** by the pool (SRC5-capable account → custom-validation path; otherwise
+an OR-fallback over the proving-tx hash or a `CallSet` message hash). So the bound signer is
+self-describing: **your app declares the wallet kind from its own config and binds the matching
+signer.** Three kinds are supported:
+
+| Kind | Wallet | Signer to bind | Notes |
+| --- | --- | --- | --- |
+| **I** | Full SN account (Ready / Xverse) | your normal starknet.js `Account` / `Signer` | Signs the proving-tx hash. Unchanged — no new code. |
+| **II** | Legacy SN wallet (e.g. Fordefi / Braavos) | `Snip12CallSetSigner` | Signs a SNIP-12 `CallSet` message. |
+| **III** | EVM wallet (MetaMask) / EVM server key for an `Eth712Account` | `Eip712CallSetSigner` | Signs an EIP-712 `CallSet`, emits the 6-felt signature. |
+
+The app owns the `kind → signer` switch:
+
+```typescript
+import {
+  createPrivateTransfers,
+  Snip12CallSetSigner,
+  Eip712CallSetSigner,
+  secp256k1SignFn,
+} from "starknet-sdk";
+import { Account, ec, num } from "starknet";
+
+let signer;
+switch (walletKind) {
+  // I — full SN account: bind your normal Account/Signer (signs the proving tx hash).
+  case "sn-account":
+    signer = new Account(provider, accountAddress, starkPrivateKey).signer;
+    break;
+
+  // II — legacy SN wallet: SNIP-12 CallSet.
+  case "sn-legacy":
+    signer = new Snip12CallSetSigner({
+      accountAddress,
+      chainId, // e.g. constants.StarknetChainId.SN_SEPOLIA
+      sign: (h) => ec.starkCurve.sign(num.toHex(h), starkPrivateKey),
+    });
+    break;
+
+  // III — EVM wallet / EVM server key for an Eth712Account: EIP-712 CallSet (6-felt sig).
+  case "evm":
+    signer = new Eip712CallSetSigner({
+      accountAddress,
+      snChainName: "SN_SEPOLIA",
+      evmChainId,
+      sign: secp256k1SignFn(evmPrivateKey), // server key; or wrap a browser wallet
+    });
+    break;
+}
+
+const transfers = createPrivateTransfers({ account: { address: accountAddress, signer }, /* … */ });
+```
+
+**Transport.** Both `CallSet` signers take a `sign(messageHash)` callback — given the precomputed
+message hash, return the signature components. `secp256k1SignFn(privateKey)` is the built-in transport
+for a raw EVM server key (case III); a STARK server key (case II) is `(h) => ec.starkCurve.sign(...)`.
+Wiring a real browser wallet's typed-data transport (`starknet_signTypedData` / `eth_signTypedData_v4`)
+is a future addition — the callback shape already accommodates it.
+
+**Off-chain golden oracles.** `computeCallSetHash` (SNIP-12) and `computeCallSet712Hash` (EIP-712)
+compute the exact message hash the on-chain verifiers check, cross-tested against the Cairo verifiers.
+Use them to debug or pre-sign.
+
 ### Discovery providers
 
 **`ContractDiscoveryProvider`** — Queries the privacy pool contract directly via Starknet RPC. Best for development and testing.
