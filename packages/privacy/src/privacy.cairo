@@ -830,26 +830,12 @@ pub mod Privacy {
                     },
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::Invoke(input) => {
-                        let open_note_deposits = self._apply_invoke(:input);
-                        if !open_note_deposits.is_empty() {
-                            // As we set the input.contract_address as the open_note depositor,
-                            // there can be only one open_note depositor address.
-                            let open_note_depositor = input.contract_address;
-                            assert(
-                                !self.blocked_open_note_depositors.read(open_note_depositor),
-                                errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
+                        self
+                            ._apply_invoke_and_deposits(
+                                :input,
+                                selector: INVOKE_SELECTOR,
+                                ref :undeposited_open_notes,
                             );
-                            // Apply deposits to open notes returned by Invoke.
-                            for deposit in open_note_deposits {
-                                self
-                                    ._deposit_to_open_note(
-                                        depositor: open_note_depositor, deposit: *deposit,
-                                    );
-                            }
-                            undeposited_open_notes = undeposited_open_notes
-                                .checked_sub(open_note_deposits.len())
-                                .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
-                        }
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
@@ -929,17 +915,46 @@ pub mod Privacy {
             checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
-        fn _apply_invoke(ref self: ContractState, input: InvokeInput) -> Span<OpenNoteDeposit> {
+        fn _apply_invoke_and_deposits(
+            ref self: ContractState,
+            input: InvokeInput,
+            selector: felt252,
+            ref undeposited_open_notes: usize,
+        ) {
             let InvokeInput { contract_address, calldata } = input;
             let mut return_data = call_contract_syscall(
-                address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
+                address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
             assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
-            deposits
+            self
+                ._apply_open_note_deposits(
+                    :deposits, depositor: contract_address, ref :undeposited_open_notes,
+                );
+        }
+
+        fn _apply_open_note_deposits(
+            ref self: ContractState,
+            deposits: Span<OpenNoteDeposit>,
+            depositor: ContractAddress,
+            ref undeposited_open_notes: usize,
+        ) {
+            if !deposits.is_empty() {
+                assert(
+                    !self.blocked_open_note_depositors.read(depositor),
+                    errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
+                );
+                // Apply deposits to open notes returned by Invoke.
+                for deposit in deposits {
+                    self._deposit_to_open_note(:depositor, deposit: *deposit);
+                }
+                undeposited_open_notes = undeposited_open_notes
+                    .checked_sub(deposits.len())
+                    .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
+            }
         }
 
         /// Applies a single deposit to an open note. Used when applying the span returned by an
