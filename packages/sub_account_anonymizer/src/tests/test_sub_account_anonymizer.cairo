@@ -352,3 +352,4 @@ fn test_collected_amount_overflow() {
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
 }
+
