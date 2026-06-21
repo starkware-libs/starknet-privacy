@@ -113,7 +113,9 @@ pub mod SubAccountAnonymizer {
     use core::hash::HashStateTrait;
     use core::num::traits::Zero;
     use core::poseidon::PoseidonTrait;
+    use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin::introspection::src5::SRC5Component;
     use privacy::objects::OpenNoteDeposit;
     use starknet::account::Call;
     use starknet::storage::{
@@ -124,13 +126,36 @@ pub mod SubAccountAnonymizer {
     use starknet::{
         ClassHash, ContractAddress, SyscallResultTrait, get_caller_address, get_contract_address,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
+    use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
+    use starkware_utils::components::replaceability::ReplaceabilityComponent;
+    use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::contracts::sub_account::{
         ISubAccountDispatcher, ISubAccountDispatcherTrait,
     };
     use super::{ISubAccountAnonymizer, OpenNote, PrivacyComputeCommitment, errors};
 
+    component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
+    component!(path: AccessControlComponent, storage: access_control, event: AccessControlEvent);
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
+
+    #[abi(embed_v0)]
+    impl ReplaceabilityImpl =
+        ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
+
     #[storage]
     struct Storage {
+        #[substorage(v0)]
+        replaceability: ReplaceabilityComponent::Storage,
+        #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
+        #[substorage(v0)]
+        access_control: AccessControlComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
         /// Address of the authorized privacy contract.
         privacy_contract: ContractAddress,
         /// Class hash of the `SubAccount` contract deployed per commitment.
@@ -140,14 +165,30 @@ pub mod SubAccountAnonymizer {
         sub_accounts: Map<PrivacyComputeCommitment, ContractAddress>,
     }
 
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        #[flat]
+        ReplaceabilityEvent: ReplaceabilityComponent::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
+        AccessControlEvent: AccessControlComponent::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
         privacy_contract: ContractAddress,
         sub_account_class_hash: ClassHash,
+        governance_admin: ContractAddress,
     ) {
         self.privacy_contract.write(privacy_contract);
         self.sub_account_class_hash.write(sub_account_class_hash);
+        self.common_roles.initialize(:governance_admin);
+        self.replaceability.initialize(upgrade_delay: Zero::zero());
     }
 
     #[abi(embed_v0)]

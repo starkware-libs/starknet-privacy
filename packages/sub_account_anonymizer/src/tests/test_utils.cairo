@@ -10,6 +10,9 @@ use sub_account_anonymizer::sub_account_anonymizer::{
 /// The address configured as the privacy contract; the only authorized caller.
 pub const PRIVACY: ContractAddress = 'PRIVACY'.try_into().unwrap();
 
+/// The address configured as the governance admin; authorized to manage roles and upgrades.
+pub const GOVERNANCE_ADMIN: ContractAddress = 'GOVERNANCE_ADMIN'.try_into().unwrap();
+
 pub fn anonymizer_disp(anonymizer: ContractAddress) -> ISubAccountAnonymizerDispatcher {
     ISubAccountAnonymizerDispatcher { contract_address: anonymizer }
 }
@@ -58,7 +61,7 @@ pub fn deploy_sub_account_anonymizer() -> ContractAddress {
         .class_hash;
     let contract = declare("SubAccountAnonymizer").unwrap_syscall().contract_class();
     let (address, _) = contract
-        .deploy(@array![PRIVACY.into(), sub_account_class_hash.into()])
+        .deploy(@array![PRIVACY.into(), sub_account_class_hash.into(), GOVERNANCE_ADMIN.into()])
         .unwrap_syscall();
     address
 }
