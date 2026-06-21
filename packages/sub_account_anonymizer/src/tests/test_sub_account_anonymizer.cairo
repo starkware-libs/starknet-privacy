@@ -1,19 +1,25 @@
 use core::hash::HashStateTrait;
 use core::num::traits::{Bounded, Zero};
 use core::poseidon::PoseidonTrait;
+use openzeppelin::interfaces::ownable::{IOwnableDispatcher, IOwnableDispatcherTrait};
+use openzeppelin::interfaces::upgrades::{
+    IUpgradeableSafeDispatcher, IUpgradeableSafeDispatcherTrait,
+};
 use privacy::objects::OpenNoteDeposit;
-use snforge_std::{DeclareResultTrait, TokenTrait, declare};
+use snforge_std::{DeclareResultTrait, TokenTrait, declare, get_class_hash};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils::contracts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
-use starkware_utils_testing::test_utils::{TokenHelperTrait, assert_panic_with_felt_error};
+use starkware_utils_testing::test_utils::{
+    TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
+};
 use sub_account_anonymizer::sub_account_anonymizer::{
     ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
     ISubAccountAnonymizerSafeDispatcherTrait, errors,
 };
 use sub_account_anonymizer::tests::test_utils::{
-    ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components, deploy_sub_account_anonymizer,
-    deploy_token, pay_out_call,
+    ComponentsTrait, OWNER, PRIVACY, anonymizer_disp, deploy_components,
+    deploy_sub_account_anonymizer, deploy_token, pay_out_call,
 };
 
 const AMOUNT: u128 = 1_000_000;
@@ -341,4 +347,25 @@ fn test_collected_amount_overflow() {
             ],
             open_notes: array![(NOTE_ID, token)].span(),
         );
+}
+
+#[test]
+fn test_owner_is_configured() {
+    let anonymizer = deploy_sub_account_anonymizer();
+    assert_eq!(IOwnableDispatcher { contract_address: anonymizer }.owner(), OWNER);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_upgrade_rejects_non_owner_and_allows_owner() {
+    let anonymizer = deploy_sub_account_anonymizer();
+    let new_class_hash = *declare("SubAccount").unwrap_syscall().contract_class().class_hash;
+    let safe = IUpgradeableSafeDispatcher { contract_address: anonymizer };
+
+    let result = safe.upgrade(new_class_hash);
+    assert_panic_with_felt_error(:result, expected_error: 'Caller is not the owner');
+
+    cheat_caller_address_once(contract_address: anonymizer, caller_address: OWNER);
+    assert!(safe.upgrade(new_class_hash).is_ok());
+    assert_eq!(get_class_hash(anonymizer), new_class_hash);
 }
