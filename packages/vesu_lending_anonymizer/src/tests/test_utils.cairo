@@ -1,9 +1,9 @@
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::objects::OpenNoteDeposit;
-use snforge_std::{CustomToken, DeclareResultTrait, Token, TokenTrait, declare};
+use snforge_std::{DeclareResultTrait, Token, TokenTrait, declare};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
+use starkware_utils_testing::test_utils::deploy_mock_erc20_token;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
@@ -166,18 +166,11 @@ pub fn deploy_mock_vesu_vault_overflow(underlying_token: ContractAddress) -> Con
 }
 
 fn deploy_test_erc20_token() -> Token {
-    let config = TokenConfig {
+    deploy_mock_erc20_token(
         name: "VesuTestToken",
         symbol: "VTT",
         decimals: 18,
         initial_supply: 1_000_000_000_000_000_000_000_000_000_000_u256,
         owner: 'TOKEN_OWNER'.try_into().unwrap(),
-    };
-    let token = config.deploy();
-    Token::Custom(
-        CustomToken {
-            contract_address: token.address,
-            balances_variable_selector: selector!("ERC20_balances"),
-        },
     )
 }

@@ -62,8 +62,8 @@ use snforge_std::signature::stark_curve::{
 };
 use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
-    CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
-    Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
+    CheatSpan, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
+    TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
     map_entry_address, spy_messages_to_l1, store,
 };
 use starknet::account::Call;
@@ -79,7 +79,7 @@ use starkware_utils::components::roles::interface::{
     ICommonRolesDispatcher, ICommonRolesDispatcherTrait, Role,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
+    TokenHelperTrait, cheat_caller_address_once, deploy_mock_erc20_token, generic_load,
 };
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
@@ -1477,20 +1477,12 @@ pub(crate) impl TestImpl of TestTrait {
 
     fn new_token(ref self: Test) -> Token {
         self.nonce += 1;
-        let config = TokenConfig {
+        deploy_mock_erc20_token(
             name: format!("Token {}", self.nonce),
             symbol: format!("Token {}", self.nonce),
             decimals: constants::DECIMALS,
             initial_supply: constants::TOKEN_SUPPLY,
             owner: constants::TOKEN_OWNER,
-        };
-        let token = config.deploy();
-
-        Token::Custom(
-            CustomToken {
-                contract_address: token.address,
-                balances_variable_selector: selector!("ERC20_balances"),
-            },
         )
     }
 
