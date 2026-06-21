@@ -218,6 +218,28 @@ pub(crate) impl InvokeExternalInputValid of InputValidation<InvokeExternalInput>
     }
 }
 
+/// Input for the `ComputeAndInvoke` client action.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct ComputeAndInvokeInput {
+    /// The target contract address whose `privacy_compute` is queried and
+    /// `privacy_invoke_with_computation` is later invoked.
+    pub contract_address: ContractAddress,
+    /// Extra calldata forwarded after the derived `identity_key` when calling `privacy_compute`.
+    pub compute_additional_data: Span<felt252>,
+    /// Extra calldata forwarded to `privacy_invoke_with_computation` in addition to (appended
+    /// after) the `privacy_compute` result.
+    pub invoke_additional_data: Span<felt252>,
+}
+
+pub(crate) impl ComputeAndInvokeInputValid of InputValidation<ComputeAndInvokeInput> {
+    fn assert_valid(self: ComputeAndInvokeInput) {
+        let ComputeAndInvokeInput {
+            contract_address, compute_additional_data: _, invoke_additional_data: _,
+        } = self;
+        assert(contract_address.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
+    }
+}
+
 /// An action to be executed by the client.
 #[derive(Serde, Copy, Drop, Debug, PartialEq)]
 pub enum ClientAction {
@@ -243,6 +265,9 @@ pub enum ClientAction {
     /// Invokes an external contract: forwards the contract address and calldata as a server-side
     /// Invoke action.
     InvokeExternal: InvokeExternalInput,
+    /// Runs `privacy_compute` on the client and forwards its result as a server-side
+    /// `InvokeWithComputation` action.
+    ComputeAndInvoke: ComputeAndInvokeInput,
 }
 
 #[generate_trait]
@@ -268,12 +293,14 @@ pub(crate) impl ClientActionImpl of ClientActionTrait {
             ClientAction::UseNote(_) => Self::USE_NOTES_PHASE,
             ClientAction::Withdraw(_) => Self::WITHDRAW_PHASE,
             ClientAction::InvokeExternal(_) => Self::INVOKE_PHASE,
+            ClientAction::ComputeAndInvoke(_) => Self::INVOKE_PHASE,
         }
     }
 
     /// Asserts action_phase >= curr_phase (ACTIONS_OUT_OF_ORDER) and update `curr_phase` to the
     /// phase to advance to.
-    /// InvokeExternal is only allowed once per Tx.
+    /// At most one of the invoke-phase actions (InvokeExternal, ComputeAndInvoke) is allowed per
+    /// Tx.
     fn assert_and_advance_phase(self: @ClientAction, ref curr_phase: u8) {
         let action_phase = self.phase();
         assert(action_phase >= curr_phase, errors::ACTIONS_OUT_OF_ORDER);
@@ -361,4 +388,8 @@ pub enum ServerAction {
     /// Invoke an external contract via the
     /// [`INVOKE_SELECTOR`](privacy::utils::constants::INVOKE_SELECTOR) selector.
     Invoke: InvokeInput,
+    /// Invoke an external contract via the
+    /// [`INVOKE_WITH_COMPUTATION_SELECTOR`](privacy::utils::constants::INVOKE_WITH_COMPUTATION_SELECTOR)
+    /// selector.
+    InvokeWithComputation: InvokeInput,
 }

@@ -20,7 +20,8 @@ use privacy::objects::{
 };
 use privacy::snip12::compute_call_set_hash;
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
+    ENTRYPOINT_FAILED, ERR_WRAPPER, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT,
+    TWO_POW_120,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -59,6 +60,10 @@ pub mod constants {
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
+    /// Brackets panic data propagated from an external contract call made during client
+    /// compilation. Distinct from `OK_WRAPPER` so that a panicking external contract cannot forge
+    /// server actions by emitting `OK_WRAPPER`-bracketed panic data.
+    pub const ERR_WRAPPER: felt252 = 'PRIVACY_ERR_WRAPPER';
     pub const TX_V3: felt252 = 3;
     /// The offset of simulated transactions.
     pub const ESTIMATION_BASE_TX_VERSION: felt252 = TWO_POW_128.try_into().unwrap();
@@ -72,6 +77,14 @@ pub mod constants {
     pub const VIRTUAL_SNOS0: felt252 = 'VIRTUAL_SNOS0';
     /// Selector called with the [`Invoke`](privacy::actions::ServerAction::Invoke) action.
     pub const INVOKE_SELECTOR: felt252 = selector!("privacy_invoke");
+    /// Selector called during client compilation to derive the computation result forwarded by a
+    /// [`ComputeAndInvoke`](privacy::actions::ClientAction::ComputeAndInvoke) action.
+    pub const PRIVACY_COMPUTE_SELECTOR: felt252 = selector!("privacy_compute");
+    /// Selector called with the
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action.
+    pub const INVOKE_WITH_COMPUTATION_SELECTOR: felt252 = selector!(
+        "privacy_invoke_with_computation",
+    );
     /// STRK fee token address — same on all Starknet networks (mainnet, sepolia, devnet).
     pub const STRK_TOKEN_ADDRESS: ContractAddress =
         0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d
@@ -440,6 +453,17 @@ pub(crate) fn panic_with_server_actions(server_actions: Span<ServerAction>) -> n
     server_actions.serialize(ref panic_data);
     panic_data.append(OK_WRAPPER);
     panic(panic_data);
+}
+
+/// Re-panics with an external call's `panic_data` (captured during client compilation), prefixed
+/// with `ERR_WRAPPER`. The prefix guarantees the head differs from `OK_WRAPPER`, so
+/// `extract_server_actions_from_compile_and_panic` treats it as a propagated error rather than
+/// decoding the callee-controlled `panic_data` as forged server actions.
+pub(crate) fn propagate_external_panic(panic_data: Span<felt252>) -> never {
+    let mut wrapped = array![ERR_WRAPPER];
+    wrapped.append_span(panic_data);
+    wrapped.append(ERR_WRAPPER);
+    panic(wrapped);
 }
 
 /// IMPORTANT: This function only works for types whose serialization format

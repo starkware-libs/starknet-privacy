@@ -1,21 +1,31 @@
 use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
+use openzeppelin::security::ReentrancyGuardComponent::Errors as ReentrancyGuardErrors;
 use privacy::actions::{
-    AppendInput, ClientAction, CreateEncNoteInput, CreateOpenNoteInput, DepositInput,
-    InvokeExternalInput, OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput,
-    TransferFromInput, TransferToInput, UseNoteInput, WithdrawInput,
+    AppendInput, ClientAction, ComputeAndInvokeInput, CreateEncNoteInput, CreateOpenNoteInput,
+    DepositInput, InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput,
+    ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput,
+    WithdrawInput,
 };
-use privacy::hashes::{compute_note_id, compute_nullifier, compute_subchannel_id};
+use privacy::hashes::{
+    compute_identity_key, compute_note_id, compute_nullifier, compute_subchannel_id,
+};
 use privacy::objects::{EncSubchannelInfo, EncUserAddr, OpenNoteDeposit};
 use privacy::snip12::compute_call_set_hash;
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
+use privacy::tests::mock_invoke_returns::MockCompute::COMPUTE_PANIC;
+use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::COMPUTED_MARKER;
+use privacy::tests::mock_invoke_returns::{IMockComputeDispatcher, IMockComputeDispatcherTrait};
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
-    deploy_mock_stark_account,
+    deploy_mock_compute, deploy_mock_compute_empty, deploy_mock_compute_multi_felt,
+    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_stark_account,
 };
-use privacy::utils::constants::{ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3};
+use privacy::utils::constants::{
+    ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+};
 use privacy::utils::{
     compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
     is_canonical_key, to_write_once_action, unpack,
@@ -4270,6 +4280,27 @@ fn test_internal_actions() {
     // Expected: Invoke.
     let expected_actions = invoke_external_input.into_server_actions();
     assert_eq!(actions, expected_actions);
+
+    // Compute and invoke action.
+    let mock_compute = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock_compute,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: ['Y'].span(),
+    };
+    let actions = user_1.internal_compute_and_invoke(input: compute_and_invoke_input);
+    let user_identity_key = user_1.compute_identity_key(contract_address: mock_compute);
+    let expected_computed_data = IMockComputeDispatcher { contract_address: mock_compute }
+        .privacy_compute(identity_key: user_identity_key, payload: 'X');
+    let expected_actions = [
+        ServerAction::InvokeWithComputation(
+            InvokeInput {
+                contract_address: mock_compute, calldata: [expected_computed_data, 'Y'].span(),
+            },
+        ),
+    ]
+        .span();
+    assert_eq!(actions, expected_actions);
 }
 
 #[test]
@@ -4977,6 +5008,25 @@ fn test_actions_out_of_order() {
     let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
 
+    // Catch ACTIONS_OUT_OF_ORDER (compute and invoke -> set viewing key).
+    let mock_compute = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock_compute,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: ['Y'].span(),
+    };
+    let client_actions = [
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+    ]
+        .span();
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_compile_actions(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    let result = user.safe_compile_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+
     // Catch ACTIONS_OUT_OF_ORDER (invoke -> open channel).
     let client_actions = [
         ClientAction::Deposit(DepositInput { token: token_addr, amount }),
@@ -5086,17 +5136,7 @@ fn test_actions_out_of_order() {
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
     let result = user.safe_compile_and_panic(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-
-    // Catch ACTIONS_OUT_OF_ORDER (invoke -> second invoke).
-    let client_actions = [
-        ClientAction::InvokeExternal(invoke_external_input),
-        ClientAction::InvokeExternal(invoke_external_input),
-    ]
-        .span();
-    let result = user.safe_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_compile_actions(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    // Two invoke-phase actions in one tx are covered by `test_multiple_invoke_reverts`.
 }
 
 #[test]
@@ -5538,6 +5578,52 @@ fn test_no_replay_protection() {
     let result = user
         .safe_compile_actions(
             client_actions: [deposit_action, withdraw_action, invoke_action].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+
+    // InvokeAndCompute only.
+    let mock_compute = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock_compute,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: ['Y'].span(),
+    };
+    let compute_and_invoke_action = ClientAction::ComputeAndInvoke(compute_and_invoke_input);
+    let result = user
+        .safe_execute(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_and_panic(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_actions(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+
+    // Deposit, InvokeAndCompute.
+    let result = user
+        .safe_execute(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_and_panic(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_actions(client_actions: [deposit_action, compute_and_invoke_action].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+
+    // Deposit, Withdraw, ComputeAndInvoke.
+    let result = user
+        .safe_execute(
+            client_actions: [deposit_action, withdraw_action, compute_and_invoke_action].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_and_panic(
+            client_actions: [deposit_action, withdraw_action, compute_and_invoke_action].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user
+        .safe_compile_actions(
+            client_actions: [deposit_action, withdraw_action, compute_and_invoke_action].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
 }
@@ -6147,24 +6233,42 @@ fn test_swap_without_withdraw_fails() {
 }
 
 #[test]
-fn test_multiple_invoke_external_reverts() {
+fn test_multiple_invoke_reverts() {
+    // At most one invoke-phase action (InvokeExternal / ComputeAndInvoke) is allowed per tx, so
+    // any pair of invoke-phase actions reverts with ACTIONS_OUT_OF_ORDER — regardless of order or
+    // which variant each is.
     let mut test: Test = Default::default();
     let mut user = test.new_user();
 
-    let dummy_invoke = InvokeExternalInput {
-        contract_address: test.privacy.swap_executor.address, calldata: [].span(),
-    };
-    let client_actions = [
-        ClientAction::InvokeExternal(dummy_invoke), ClientAction::InvokeExternal(dummy_invoke),
+    let mock = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let invoke = ClientAction::InvokeExternal(
+        InvokeExternalInput {
+            contract_address: test.privacy.swap_executor.address, calldata: [].span(),
+        },
+    );
+    let compute_invoke = ClientAction::ComputeAndInvoke(
+        ComputeAndInvokeInput {
+            contract_address: mock,
+            compute_additional_data: ['X'].span(),
+            invoke_additional_data: [].span(),
+        },
+    );
+
+    // invoke-invoke, compute_invoke-invoke, invoke-compute_invoke, compute_invoke-compute_invoke.
+    let cases = [
+        [invoke, invoke].span(), [compute_invoke, invoke].span(), [invoke, compute_invoke].span(),
+        [compute_invoke, compute_invoke].span(),
     ]
         .span();
-
-    let result = user.safe_execute(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_compile_and_panic(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
-    let result = user.safe_compile_actions(:client_actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    for client_actions in cases {
+        let client_actions = *client_actions;
+        let result = user.safe_execute(:client_actions);
+        assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+        let result = user.safe_compile_and_panic(:client_actions);
+        assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+        let result = user.safe_compile_actions(:client_actions);
+        assert_panic_with_felt_error(:result, expected_error: errors::ACTIONS_OUT_OF_ORDER);
+    }
 }
 
 #[test]
@@ -6198,6 +6302,337 @@ fn test_invoke_external_client_action_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
     let result = user.safe_compile_actions(:client_actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+}
+
+#[test]
+fn test_compute_and_invoke_client_action_assertions() {
+    // ComputeAndInvoke validation: zero target address is rejected before any external call.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+
+    let input = ComputeAndInvokeInput {
+        contract_address: Zero::zero(),
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [ClientAction::ComputeAndInvoke(input)].span();
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
+    let result = user.safe_compile_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
+    let result = user.safe_compile_actions(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
+
+    // ComputeAndInvoke alone (no privacy actions) - has should_execute=false, so without a
+    // privacy action like UseNote, the transaction fails.
+    let mock_compute = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let valid_input = ComputeAndInvokeInput {
+        contract_address: mock_compute,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [ClientAction::ComputeAndInvoke(valid_input)].span();
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user.safe_compile_and_panic(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+    let result = user.safe_compile_actions(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::NO_REPLAY_PROTECTION);
+}
+
+#[test]
+fn test_compute_and_invoke_builds_invoke_with_computation() {
+    // The core of compute_and_invoke: it calls `privacy_compute` with `[identity_key] ++
+    // compute_additional_data`, then forwards `compute_result ++ invoke_additional_data` (target
+    // preserved) as the `InvokeWithComputation` server action. The mock echoes `identity_key` as
+    // the compute_result.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+    let invoke_additional_data = ['INVOKE_A', 'INVOKE_B'].span();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock, compute_additional_data: ['PAYLOAD'].span(), invoke_additional_data,
+    };
+    // Pair with a replay-protecting action so execute() succeeds.
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+
+    let identity_key = user.compute_identity_key(contract_address: mock);
+    let compute_result = IMockComputeDispatcher { contract_address: mock }
+        .privacy_compute(:identity_key, payload: 'PAYLOAD');
+    let mut expected_calldata = array![compute_result];
+    expected_calldata.append_span(invoke_additional_data);
+    let expected = ServerAction::InvokeWithComputation(
+        InvokeInput { contract_address: mock, calldata: expected_calldata.span() },
+    );
+    // compute_and_invoke emits the single InvokeWithComputation action last.
+    assert_eq!(*actions[actions.len() - 1], expected);
+}
+
+#[test]
+fn test_compute_and_invoke_propagates_compute_panic() {
+    // `privacy_compute` runs during execute(); its panic is re-raised, bracketed by ERR_WRAPPER.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute(panic_on_compute: true, panic_on_invoke: false);
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    match user.safe_execute(:client_actions) {
+        Result::Ok(_) => panic!("expected privacy_compute panic to propagate"),
+        Result::Err(panic_data) => {
+            // propagate_external_panic brackets the forwarded callee panic with ERR_WRAPPER.
+            assert_eq!(
+                panic_data,
+                array![
+                    ERR_WRAPPER, COMPUTE_PANIC, 'ENTRYPOINT_FAILED', ERR_WRAPPER,
+                    'ENTRYPOINT_FAILED', 'ENTRYPOINT_FAILED',
+                ],
+            );
+        },
+    }
+}
+
+#[test]
+fn test_compute_and_invoke_missing_selector() {
+    // The target lacks `privacy_compute`, so the client-side compute call during execute() fails
+    // with ENTRYPOINT_NOT_FOUND, re-raised (bracketed by ERR_WRAPPER) via propagate_external_panic.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let target = deploy_mock_return_garbage();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: target,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    match user.safe_execute(:client_actions) {
+        Result::Ok(_) => panic!("expected missing privacy_compute selector to panic"),
+        Result::Err(panic_data) => {
+            assert_eq!(*panic_data[0], ERR_WRAPPER);
+            assert_eq!(*panic_data[1], 'ENTRYPOINT_NOT_FOUND');
+        },
+    }
+}
+
+#[test]
+fn test_compute_and_invoke_rejects_empty_compute_result() {
+    // A target whose `privacy_compute` returns no data yields an empty `compute_result`, which
+    // `compute_and_invoke` rejects.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_empty();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: [].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let result = user.safe_execute(:client_actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::EMPTY_COMPUTE_RESULT);
+}
+
+#[test]
+fn test_compute_and_invoke_reentrancy_locked() {
+    // privacy_compute runs during __execute__, which holds the reentrancy lock. A target whose
+    // privacy_compute reenters the privacy contract is rejected with REENTRANT_CALL, re-raised
+    // through compute_and_invoke's propagate_external_panic (hence bracketed by ERR_WRAPPER).
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let reentrancy_mock = deploy_mock_reentrancy();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: reentrancy_mock,
+        compute_additional_data: [].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    match user.safe_execute(:client_actions) {
+        Result::Ok(_) => panic!("expected reentrant privacy_compute to be rejected"),
+        Result::Err(panic_data) => {
+            assert_eq!(*panic_data[0], ERR_WRAPPER);
+            assert_eq!(*panic_data[1], ReentrancyGuardErrors::REENTRANT_CALL);
+        },
+    }
+}
+
+#[test]
+fn test_compute_and_invoke_defers_invoke() {
+    // Unlike the compute call, the invoke is deferred to apply_actions: a target whose
+    // `privacy_invoke_with_computation` would panic still lets execute() succeed.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: true);
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    // Succeeds: the panicking invoke was never called during execute().
+    user.execute(:client_actions);
+}
+
+#[test]
+fn test_compute_and_invoke_assembles_empty_compute_and_multi_felt_result() {
+    // Edge cases for the calldata assembly: empty `compute_additional_data` (privacy_compute gets
+    // just `[identity_key]`) and a multi-felt `compute_result` (prepended ahead of
+    // `invoke_additional_data`).
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_multi_felt();
+    let invoke_additional_data = ['INVOKE'].span();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock, compute_additional_data: [].span(), invoke_additional_data,
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+
+    // The mock returns `[identity_key, COMPUTED_MARKER]` as compute_result.
+    let identity_key = compute_identity_key(
+        user_addr: user.address, user_private_key: user.private_key, contract_address: mock,
+    );
+    let expected = ServerAction::InvokeWithComputation(
+        InvokeInput {
+            contract_address: mock, calldata: [identity_key, COMPUTED_MARKER, 'INVOKE'].span(),
+        },
+    );
+    assert_eq!(*actions[actions.len() - 1], expected);
+}
+
+#[test]
+fn test_compute_and_invoke_e2e_with_mock_deposits_to_open_note() {
+    // Full client -> server flow against a mock: execute() runs privacy_compute and builds the
+    // InvokeWithComputation action; apply_actions() calls privacy_invoke_with_computation, whose
+    // echoed deposit lands in the open note created in the same tx.
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = constants::DEFAULT_AMOUNT;
+    let mut user = test.new_user();
+
+    let mock = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: false);
+
+    user.set_viewing_key_e2e();
+    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
+
+    let create_note_input = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+    let (note_id, _) = user.compute_open_note(:create_note_input);
+
+    // The invoke target is the depositor: fund it so the deposit can be pulled into the open note.
+    token.supply(address: mock, :amount);
+    token.approve(owner: mock, spender: test.privacy.address, amount: amount.into());
+
+    // invoke_additional_data carries the deposits the mock echoes back (after the leading
+    // compute_result felt it consumes).
+    let deposits: Span<OpenNoteDeposit> = [OpenNoteDeposit { note_id, token: token_addr, amount }]
+        .span();
+    let mut invoke_additional_data: Array<felt252> = array![];
+    deposits.serialize(ref invoke_additional_data);
+
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: ['X'].span(),
+        invoke_additional_data: invoke_additional_data.span(),
+    };
+    let client_actions = [
+        ClientAction::CreateOpenNote(create_note_input),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let server_actions = user.execute(:client_actions);
+    let mut spy = spy_events();
+    test.privacy.apply_actions(actions: server_actions);
+
+    let stored_note = test.privacy.get_note(:note_id);
+    let (salt, stored_amount) = unpack(packed_value: stored_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(stored_note.token, token_addr);
+    assert_eq!(token.balance_of(address: mock), Zero::zero());
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+
+    // apply_actions emits OpenNoteCreated (from CreateOpenNote) then OpenNoteDeposited (from the
+    // InvokeWithComputation deposit, with the invoke target as depositor).
+    let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(emitted_events.len(), 2);
+    let expected_create_event = events::OpenNoteCreated {
+        enc_recipient_addr: encrypt_user_addr(
+            ephemeral_secret: create_note_input.random,
+            auditor_public_key: test.privacy.get_auditor_public_key(),
+            user_addr: user.address,
+        ),
+        token: token_addr,
+        note_id,
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[0],
+        expected_event: expected_create_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
+    let expected_deposit_event = events::OpenNoteDeposited {
+        depositor: mock, token: token_addr, note_id, amount,
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[1],
+        expected_event: expected_deposit_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
 }
 
 #[test]
