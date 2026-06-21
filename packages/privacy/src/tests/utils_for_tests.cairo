@@ -66,15 +66,15 @@ use snforge_std::signature::stark_curve::{
 };
 use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
-    CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
-    Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
-    map_entry_address, spy_messages_to_l1, store,
+    CheatSpan, ContractClassTrait, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy,
+    MessageToL1SpyTrait, Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare,
+    interact_with_state, map_entry_address, spy_messages_to_l1, store,
 };
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
 use starknet::{
-    ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED, get_block_timestamp,
+    ClassHash, ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED, get_block_timestamp,
 };
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
@@ -85,6 +85,7 @@ use starkware_utils::components::roles::interface::{
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
 };
+use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::deploy_for_test as deploy_sub_account_anonymizer_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
@@ -2260,6 +2261,37 @@ fn deploy_privacy(
         echo_executor,
         mock_amm,
     }
+}
+
+/// Deploys a `SubAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
+/// `SubAccount` class it deploys per commitment.
+pub(crate) fn deploy_sub_account_anonymizer(privacy_address: ContractAddress) -> ContractAddress {
+    let sub_account_class_hash: ClassHash = *declare(contract: "SubAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let class_hash = declare(contract: "SubAccountAnonymizer")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (address, _) = deploy_sub_account_anonymizer_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        privacy_contract: privacy_address,
+        :sub_account_class_hash,
+        owner: 'SUB_ACCOUNT_OWNER'.try_into().unwrap(),
+    )
+        .expect('SUB_ACCT_ANON_DEPLOY_FAIL');
+    address
+}
+
+/// Deploys the `MockDapp` used by sub-account interactions (its `pay_out` transfers a funded token
+/// balance to the calling sub-account).
+pub(crate) fn deploy_sub_account_mock_dapp() -> ContractAddress {
+    let contract = declare(contract: "MockDapp").unwrap_syscall().contract_class();
+    let (address, _) = contract.deploy(constructor_calldata: @array![]).unwrap_syscall();
+    address
 }
 
 fn deploy_vesu_lending_anonymizer() -> ContractAddress {
