@@ -5,7 +5,7 @@ import { repoRoot } from "./utils.js";
 import {
   Devnet,
   type DevnetEnvironment,
-  CallMockProofProvider,
+  ScreeningCallMockProofProvider,
   IndexerDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
@@ -125,30 +125,36 @@ export async function createE2eTestEnv(
   });
   await indexer.waitUntilReady(devnet.url);
 
-  // Source-built pool: its class hash is never pinned, so force compatibility
-  // calldata until the in-repo contract accepts the screening suffix.
+  // Source-built pool: unpinned class hash, so set the mode explicitly. The pool
+  // screens deposits, so use the provider that signs each deposit's attestation.
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(
+        env.provider,
+        chainId,
+      ),
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
-      poolMode: "compatibility",
+      poolMode: "screening",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(
+        env.provider,
+        chainId,
+      ),
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
-      poolMode: "compatibility",
+      poolMode: "screening",
     }),
   };
 

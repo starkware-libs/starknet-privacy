@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Added
+
+- Testing: exported `ScreeningCallMockProofProvider` from the `/testing` entry
+  point. It extends `CallMockProofProvider` to sign each deposit's screening
+  attestation with the canonical test screener key, so integration suites can
+  drive a screening-capable pool's deposit path end to end.
+
 ### Breaking
 
 - Privacy pool role-management ABI changed (`PrivacyPoolABI` regenerated). The

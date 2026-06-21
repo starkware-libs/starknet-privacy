@@ -266,8 +266,8 @@ async function runDeposit() {
   }
   console.log("Approve tx:", approveTx.transaction_hash);
 
-  // Source-built pool: its class hash is never pinned, so force compatibility
-  // calldata until the in-repo contract accepts the screening suffix.
+  // Source-built pool: unpinned class hash, so set the mode explicitly. The pool
+  // screens deposits, so use the provider that signs each deposit's attestation.
   const transfers = createPrivateTransfers({
     account: aliceAccount,
     viewingKeyProvider: { getViewingKey: async () => BigInt(alice.viewingKey) },
@@ -277,7 +277,7 @@ async function runDeposit() {
     ),
     discoveryProvider: discovery,
     poolContractAddress: POOL_ADDRESS,
-    poolMode: "compatibility",
+    poolMode: "screening",
   });
 
   const depositInputs = Array.from({ length: chunkSize }, () => ({
@@ -406,7 +406,7 @@ async function runTransfer() {
     discoveryProvider: discovery,
     poolContractAddress: POOL_ADDRESS,
     // Unpinned source-built pool — see the deposit-flow comment above.
-    poolMode: "compatibility",
+    poolMode: "screening",
   });
 
   const transferOutputs = Array.from({ length: chunkSize }, () => ({
