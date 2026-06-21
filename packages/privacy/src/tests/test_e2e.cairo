@@ -5,19 +5,24 @@ use core::num::traits::Zero;
 use ekubo::interfaces::router::TokenAmount;
 use ekubo::types::i129::i129;
 use privacy::actions::{
-    ClientAction, CreateEncNoteInput, DepositInput, InvokeExternalInput, OpenChannelInput,
-    OpenSubchannelInput, SetViewingKeyInput, UseNoteInput, WithdrawInput,
+    ClientAction, ComputeAndInvokeInput, CreateEncNoteInput, DepositInput, InvokeExternalInput,
+    OpenChannelInput, OpenSubchannelInput, SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
 use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait,
-    build_ekubo_swap_anonymizer_calldata, pool_key_for_tokens,
+    build_ekubo_swap_anonymizer_calldata, deploy_sub_account_anonymizer,
+    deploy_sub_account_mock_dapp, pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
 use snforge_std::TokenTrait;
 use starknet::ContractAddress;
+use starknet::account::Call;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
+use sub_account_anonymizer::sub_account_anonymizer::{
+    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait,
+};
 
 // Helper: Constants for e2e testing.
 const RANDOM: felt252 = 0x24a7f3e2b1c9d8e6f5a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e;
@@ -1900,4 +1905,81 @@ fn test_e2e_ekubo_invoke() {
     assert_eq!(filled_salt, OPEN_NOTE_SALT);
     assert_eq!(filled_amount, amount);
     assert_eq!(filled_note.token, output_token_addr);
+}
+
+/// E2E: drive the sub-account anonymizer through the compute-and-invoke flow. execute() runs the
+/// anonymizer's `privacy_compute` to derive the per-commitment sub-account; apply_actions then runs
+/// `privacy_invoke_with_computation`, which deploys the sub-account, has it call the dapp (funds
+/// land in the sub-account), collects them into the anonymizer, and settles them into the open note
+/// created in the same tx.
+#[test]
+fn test_e2e_sub_account_anonymizer_compute_invoke() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = 100_u128;
+    let mut user = test.new_user();
+
+    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_sub_account_mock_dapp();
+    // Fund the dapp so its `pay_out` can transfer `amount` to the sub-account.
+    token.supply(address: mock_dapp, :amount);
+
+    // Open note that the collected funds settle into (created in the same tx as the invoke).
+    let create_open_note = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+    let (note_id, _) = user.compute_open_note(create_note_input: create_open_note);
+
+    // compute_data feeds `privacy_compute(identity_key, dapp_name, seq_nonce)`.
+    let dapp_name = 'DAPP';
+    let seq_nonce = 0;
+    let compute_data = [dapp_name, seq_nonce].span();
+    // invoke_data carries `(invokes, open_notes)` forwarded to `privacy_invoke_with_computation`.
+    let pay_out = Call {
+        to: mock_dapp,
+        selector: selector!("pay_out"),
+        calldata: array![token_addr.into(), amount.into(), 0].span(),
+    };
+    let invokes: Array<Call> = array![pay_out];
+    let open_notes: Span<(felt252, ContractAddress)> = [(note_id, token_addr)].span();
+    let mut invoke_data: Array<felt252> = array![];
+    invokes.serialize(ref invoke_data);
+    open_notes.serialize(ref invoke_data);
+    let compute_and_invoke = ClientAction::ComputeAndInvoke(
+        ComputeAndInvokeInput {
+            contract_address: anonymizer, compute_data, invoke_data: invoke_data.span(),
+        },
+    );
+
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_note), compute_and_invoke,
+            ]
+                .span(),
+        );
+
+    // The dapp payout, collected via the sub-account and anonymizer, settled into the open note.
+    let filled_note = test.privacy.get_note(:note_id);
+    let (salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(filled_amount, amount);
+    assert_eq!(filled_note.token, token_addr);
+
+    // Funds ended in the privacy contract; the dapp and anonymizer hold nothing.
+    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
+    assert_eq!(token.balance_of(address: mock_dapp), 0);
+    assert_eq!(token.balance_of(address: anonymizer), 0);
+
+    // A sub-account was deployed for the derived commitment and holds nothing after collection.
+    let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
+    let identity_key = user.compute_identity_key(contract_address: anonymizer);
+    let commitment = anonymizer_disp.privacy_compute(:identity_key, :dapp_name, :seq_nonce);
+    let sub_account = anonymizer_disp.get_sub_account(:commitment);
+    assert!(sub_account.is_non_zero());
+    assert_eq!(token.balance_of(address: sub_account), 0);
 }
