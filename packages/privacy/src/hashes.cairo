@@ -43,6 +43,17 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
     poseidon_hash_span(data)
 }
 
+/// Computes the identity key bound to a user and contract_address, forwarded to the contract's
+/// `privacy_compute` by a `ComputeAndInvoke` action.
+///
+/// Returns `h(user_addr, user_private_key, contract_address)`.
+// TODO: Consider adding a domain-separation tag.
+pub(crate) fn compute_identity_key(
+    user_addr: ContractAddress, user_private_key: felt252, contract_address: ContractAddress,
+) -> felt252 {
+    hash([user_addr.into(), user_private_key, contract_address.into()].span())
+}
+
 /// Computes the hash used to encrypt the private key in `EncPrivateKey`.
 ///
 /// Returns `h(ENC_PRIVATE_KEY_TAG, shared_x)`
