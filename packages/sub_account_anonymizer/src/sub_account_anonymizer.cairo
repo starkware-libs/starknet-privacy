@@ -4,7 +4,8 @@
 //! [`SubAccount`](starkware_utils::contracts::sub_account::SubAccount) contracts. Each commitment
 //! maps to a dedicated sub-account that performs the dapp calls and holds the resulting funds; the
 //! anonymizer then collects those funds into itself and approves the privacy contract to pull
-//! them into open notes. Driving interactions is restricted to the configured privacy contract.
+//! them into open notes. Driving interactions is restricted to the configured privacy contract,
+//! while upgrading the contract class is restricted to the owner.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::account::Call;
@@ -94,7 +95,10 @@ pub mod SubAccountAnonymizer {
     use core::hash::HashStateTrait;
     use core::num::traits::Zero;
     use core::poseidon::PoseidonTrait;
+    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin::interfaces::upgrades::IUpgradeable;
+    use openzeppelin::upgrades::UpgradeableComponent;
     use privacy::objects::OpenNoteDeposit;
     use starknet::account::Call;
     use starknet::storage::{
@@ -110,8 +114,20 @@ pub mod SubAccountAnonymizer {
     };
     use super::{ISubAccountAnonymizer, errors};
 
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
+
+    #[abi(embed_v0)]
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        upgradeable: UpgradeableComponent::Storage,
         /// Address of the authorized privacy contract.
         privacy_contract: ContractAddress,
         /// Class hash of the `SubAccount` contract deployed per commitment.
@@ -121,14 +137,25 @@ pub mod SubAccountAnonymizer {
         sub_accounts: Map<felt252, ContractAddress>,
     }
 
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        UpgradeableEvent: UpgradeableComponent::Event,
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
         privacy_contract: ContractAddress,
         sub_account_class_hash: ClassHash,
+        owner: ContractAddress,
     ) {
         self.privacy_contract.write(privacy_contract);
         self.sub_account_class_hash.write(sub_account_class_hash);
+        self.ownable.initializer(owner);
     }
 
     #[abi(embed_v0)]
@@ -164,6 +191,15 @@ pub mod SubAccountAnonymizer {
 
         fn get_sub_account_class_hash(self: @ContractState) -> ClassHash {
             self.sub_account_class_hash.read()
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl UpgradeableImpl of IUpgradeable<ContractState> {
+        /// Replaces the contract class hash with `new_class_hash`. Owner-only.
+        fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
+            self.ownable.assert_only_owner();
+            self.upgradeable.upgrade(new_class_hash);
         }
     }
 
