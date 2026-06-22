@@ -1,5 +1,7 @@
-/// Mock Vesu vault for testing deposit/withdraw. Implements 1:1 asset/share exchange.
-/// Must be pre-funded with underlying_token (for withdraw).
+/// Mock Vesu vault for testing deposit/redeem. `deposit` mints one share per underlying asset
+/// (1:1); `redeem` burns the exact share count and pays out `redeem_rate` underlying per share. A
+/// `redeem_rate` above 1 models a vault that has accrued interest (and must be pre-funded with the
+/// extra underlying); deploy with `redeem_rate: 1` for a plain 1:1 vault.
 #[starknet::contract]
 pub mod MockVesuVault {
     use openzeppelin::access::ownable::OwnableComponent;
@@ -22,6 +24,8 @@ pub mod MockVesuVault {
         #[substorage(v0)]
         erc20: ERC20Component::Storage,
         underlying_token: ContractAddress,
+        /// Underlying assets paid out per share on redeem (1 = plain 1:1 vault).
+        redeem_rate: u256,
     }
 
     #[event]
@@ -39,9 +43,11 @@ pub mod MockVesuVault {
         name: ByteArray,
         symbol: ByteArray,
         underlying_token: ContractAddress,
+        redeem_rate: u256,
     ) {
         self.erc20.initializer(name, symbol);
         self.underlying_token.write(underlying_token);
+        self.redeem_rate.write(redeem_rate);
     }
 
     #[abi(embed_v0)]
@@ -55,13 +61,14 @@ pub mod MockVesuVault {
             assets
         }
 
-        fn withdraw(
+        fn redeem(
             ref self: ContractState,
-            assets: u256,
+            shares: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
         ) -> u256 {
-            self.erc20.burn(account: owner, amount: assets);
+            self.erc20.burn(account: owner, amount: shares);
+            let assets = shares * self.redeem_rate.read();
             IERC20Dispatcher { contract_address: self.underlying_token.read() }
                 .transfer(recipient: receiver, amount: assets);
             assets
@@ -120,9 +127,9 @@ pub mod MockVesuVaultNoop {
             Zero::zero()
         }
 
-        fn withdraw(
+        fn redeem(
             ref self: ContractState,
-            assets: u256,
+            shares: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
         ) -> u256 {
@@ -187,9 +194,9 @@ pub mod MockVesuVaultOverflow {
             overflow_amount
         }
 
-        fn withdraw(
+        fn redeem(
             ref self: ContractState,
-            assets: u256,
+            shares: u256,
             receiver: ContractAddress,
             owner: ContractAddress,
         ) -> u256 {
