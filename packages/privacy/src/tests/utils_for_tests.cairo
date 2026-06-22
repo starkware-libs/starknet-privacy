@@ -2235,6 +2235,7 @@ fn deploy_mock_vesu_vault(underlying_token: ContractAddress) -> ContractAddress 
         name: "MockVesuVault",
         symbol: "MV",
         :underlying_token,
+        redeem_rate: 1,
     )
         .expect('MockVesuVault deploy failed');
     address
