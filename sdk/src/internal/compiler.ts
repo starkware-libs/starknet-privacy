@@ -21,6 +21,7 @@ import type {
   Amount,
   DiscoveryProviderInterface,
   ExecuteOptions,
+  InvokeCalldataBuilderArgs,
   Note,
   PrivateRegistry,
   StarknetAddressBigint,
@@ -59,6 +60,7 @@ type ClientActions = {
   )[];
   withdraws: Extract<ClientAction, { type: "Withdraw" }>[];
   invoke?: Extract<ClientAction, { type: "InvokeExternal" }>;
+  computeAndInvoke?: Extract<ClientAction, { type: "ComputeAndInvoke" }>;
 };
 
 // Enforces that input has no extra properties beyond what's expected for its type
@@ -234,6 +236,7 @@ export class ActionCompiler {
       createNotes: [],
       withdraws: [],
       invoke: undefined,
+      computeAndInvoke: undefined,
     };
 
     debugLog("compiler", "transformToClientActions", actions);
@@ -444,30 +447,17 @@ export class ActionCompiler {
 
     // surpluses were handled in resolveNotes
 
+    // `invoke` and `computeAndInvoke` share the single invoke phase the pool allows per
+    // transaction. The builder enforces this, but guard here too for hand-built `Actions`.
+    assert(
+      !(actions.invoke && actions.computeAndInvoke),
+      () =>
+        "At most one invoke-phase action (.invoke() / .computeAndInvoke()) per transaction; already set."
+    );
+
     // 8. InvokeExternal
     if (actions.invoke) {
-      const openNotes = clientActions.createNotes.flatMap((note) => {
-        if (note.type !== "CreateOpenNote") return [];
-        const channelKey = pool.getChannel(note.input.recipient_addr)?.key;
-        assert(channelKey, () => `Missing channel key for open note recipient`);
-        return [
-          {
-            noteId: compute_note_id(channelKey, note.input.token, note.input.index),
-            token: note.input.token,
-          },
-        ];
-      });
-      const withdrawals = clientActions.withdraws.map((withdraw) => ({
-        recipient: withdraw.input.to_addr,
-        token: withdraw.input.token,
-        amount: withdraw.input.amount,
-      }));
-
-      const call = actions.invoke.callBuilder({
-        openNotes,
-        withdrawals,
-        poolAddress: this.poolAddress,
-      });
+      const call = actions.invoke.callBuilder(this.invokeBuilderArgs(clientActions, pool));
       const calldata = CallData.compile(call.calldata ?? []).map(toBigInt);
 
       const input = {
@@ -480,9 +470,57 @@ export class ActionCompiler {
       clientActions.invoke = execute(input);
     }
 
+    // 9. ComputeAndInvoke
+    if (actions.computeAndInvoke) {
+      const details = actions.computeAndInvoke.callBuilder(
+        this.invokeBuilderArgs(clientActions, pool)
+      );
+      const compute_additional_data = CallData.compile(details.computeAdditionalData ?? []).map(
+        toBigInt
+      );
+      const invoke_additional_data = CallData.compile(details.invokeAdditionalData ?? []).map(
+        toBigInt
+      );
+
+      const input = {
+        type: "ComputeAndInvoke",
+        input: {
+          contract_address: toBigInt(details.contractAddress),
+          compute_additional_data,
+          invoke_additional_data,
+        },
+      } as const;
+      clientActions.computeAndInvoke = execute(input);
+    }
+
     return Object.values(clientActions)
       .filter((action) => action !== undefined)
       .flat();
+  }
+
+  // Shared arguments for `invoke` / `computeAndInvoke` call builders: the open notes created
+  // in this batch (so the callee can deposit into them) and the withdrawals it can consume.
+  private invokeBuilderArgs(
+    clientActions: ClientActions,
+    pool: PoolSimulator
+  ): InvokeCalldataBuilderArgs {
+    const openNotes = clientActions.createNotes.flatMap((note) => {
+      if (note.type !== "CreateOpenNote") return [];
+      const channelKey = pool.getChannel(note.input.recipient_addr)?.key;
+      assert(channelKey, () => `Missing channel key for open note recipient`);
+      return [
+        {
+          noteId: compute_note_id(channelKey, note.input.token, note.input.index),
+          token: note.input.token,
+        },
+      ];
+    });
+    const withdrawals = clientActions.withdraws.map((withdraw) => ({
+      recipient: withdraw.input.to_addr,
+      token: withdraw.input.token,
+      amount: withdraw.input.amount,
+    }));
+    return { openNotes, withdrawals, poolAddress: this.poolAddress };
   }
 
   /**
