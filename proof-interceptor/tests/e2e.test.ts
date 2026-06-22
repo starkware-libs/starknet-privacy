@@ -68,15 +68,22 @@ async function startEllipticProxy(): Promise<void> {
   const config: Config = {
     elliptic: {
       url: `http://127.0.0.1:${mockEllipticApiPort}`,
-      key: "elliptic-api-key",
-      secret: Buffer.from("elliptic-api-secret").toString("base64"),
       timeoutMs: 10000,
     },
     rateLimitPerMinute: 100,
     maxBodyBytes: 10240,
     configCacheTtlSeconds: 300,
     blockedCacheTtlSeconds: 300,
-    partners: { [PARTNER_NAME]: PARTNER_SECRET },
+    // Each partner carries its own Elliptic credentials; the proxy re-signs the
+    // upstream call with them. The mock API ignores the signature, so any
+    // non-empty key/secret works here.
+    partners: {
+      [PARTNER_NAME]: {
+        hmacSecret: PARTNER_SECRET,
+        ellipticKey: "elliptic-api-key",
+        ellipticSecret: Buffer.from("elliptic-api-secret").toString("base64"),
+      },
+    },
     // Deposits are screened (live Elliptic, against the mock API) and signed in
     // one /screen call.
     signingPrivateKey: SIGNING_KEY,

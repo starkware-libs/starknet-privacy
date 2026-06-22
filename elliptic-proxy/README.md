@@ -1,6 +1,6 @@
 # Elliptic Proxy
 
-A GCP Cloud Function that proxies requests to the [Elliptic API](https://www.elliptic.co/), swapping partner credentials for real Elliptic credentials. Partners authenticate with their own HMAC keys; the proxy verifies, rate-limits, re-signs, forwards to Elliptic, and scores the response to return a blocked/allowed verdict.
+A GCP Cloud Function that proxies requests to the [Elliptic API](https://www.elliptic.co/), swapping each partner's HMAC auth for that partner's own Elliptic credentials. Partners authenticate with their own HMAC keys; the proxy verifies, rate-limits, re-signs with the partner's Elliptic key + secret, forwards to Elliptic, and scores the response to return a blocked/allowed verdict.
 
 ## Request flow
 
@@ -10,7 +10,7 @@ Partner → Cloud Function → Elliptic API
             ├─ Verify partner HMAC signature
             ├─ Check body size
             ├─ Rate limit (per-partner, per-minute)
-            ├─ Re-sign with real Elliptic credentials
+            ├─ Re-sign with the partner's own Elliptic credentials
             ├─ Forward to Elliptic
             └─ Score response → { blocked: true/false }
 ```
@@ -27,8 +27,6 @@ The secret value must be a JSON string with this structure:
 {
   "elliptic": {
     "url": "https://aml-api.elliptic.co",
-    "key": "your-elliptic-api-key",
-    "secret": "<base64-encoded-elliptic-secret>",
     "timeoutMs": 10000
   },
   "rateLimitPerMinute": 100,
@@ -36,7 +34,11 @@ The secret value must be a JSON string with this structure:
   "configCacheTtlSeconds": 300,
   "blockedCacheTtlSeconds": 3600,
   "partners": {
-    "partner-name": "<base64-encoded-partner-secret>"
+    "partner-name": {
+      "hmacSecret": "<base64-encoded-partner-secret>",
+      "ellipticKey": "<partner-elliptic-api-key>",
+      "ellipticSecret": "<base64-encoded-elliptic-secret>"
+    }
   },
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
@@ -48,14 +50,12 @@ The secret value must be a JSON string with this structure:
 | Field                                     | Description                                                                                                                                                                                                                                                                                                                                      |
 | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `elliptic.url`                            | Elliptic AML API base URL. Use `https://aml-api.elliptic.co` (note `aml-api`, **not** `api`). `mock:` selects the in-process mock upstream (test deployments only).                                                                                                                                                                              |
-| `elliptic.key`                            | Real Elliptic API key                                                                                                                                                                                                                                                                                                                            |
-| `elliptic.secret`                         | Real Elliptic HMAC secret. Paste the value Elliptic provides exactly as-is. **Caution**: a base64 secret can look identical to hex — any 32-character string drawn entirely from `[0-9a-f]` is valid in both alphabets. Don't run a value through `xxd -r -p \| base64` just because it "looks like hex" — trust Elliptic's label, not the string's appearance. |
 | `elliptic.timeoutMs`                      | Timeout for upstream Elliptic requests (ms)                                                                                                                                                                                                                                                                                                      |
 | `rateLimitPerMinute`                      | Per-partner rate limit (requests per minute)                                                                                                                                                                                                                                                                                                     |
 | `maxBodyBytes`                            | Max request body size                                                                                                                                                                                                                                                                                                                            |
 | `configCacheTtlSeconds`                   | How long to cache the config before re-reading from Secret Manager (seconds)                                                                                                                                                                                                                                                                     |
 | `blockedCacheTtlSeconds`                  | How long to cache blocked address verdicts (seconds)                                                                                                                                                                                                                                                                                             |
-| `partners.<name>`                         | Partner HMAC secret (base64-encoded). The key is the partner name, sent in `x-access-key`                                                                                                                                                                                                                                                        |
+| `partners.<name>`                         | Per-partner credentials, keyed by the partner name (sent in `x-access-key`). Object with `hmacSecret` (base64) verifying the inbound HMAC, plus `ellipticKey` and `ellipticSecret` (base64) — the partner's own Elliptic credentials used to re-sign that partner's upstream calls. **Caution** on `ellipticSecret`: a base64 secret can look identical to hex — any 32-char `[0-9a-f]` string is valid in both. Paste Elliptic's value as-is; don't run it through `xxd -r -p \| base64` just because it "looks like hex".                                                                                                                                                                                                                                                        |
 | `additionalBlockedAddresses` _(optional)_ | Operator deny list (hex felts): listed addresses always screen as blocked, in every mode, regardless of the upstream verdict — covers sanctioned addresses the upstream misses (false negatives). Entries match on the canonical felt value, so zero-padded entries match stripped addresses.                                                    |
 | `blockOverrideAddresses` _(optional)_     | Operator allow list (hex felts): listed addresses always screen as allowed, winning over the deny list, the blocked cache, and the upstream verdict — rescues addresses the upstream wrongly flags (false positives).                                                                                                                            |
 | `signingPrivateKey` _(required)_          | STARK-curve private key (felt hex, `1 <= key < curve order`) signing screening attestations; the production key is FPI-managed.                                                                                                                                                                                                                  |
@@ -68,7 +68,7 @@ The secret value must be a JSON string with this structure:
 openssl rand -base64 32
 ```
 
-Share the raw secret with the partner. Store the base64-encoded value in the config.
+Share the raw secret with the partner. Store the base64-encoded value as that partner's `hmacSecret` in the config. The partner's `ellipticKey`/`ellipticSecret` are issued by Elliptic, not generated here.
 
 ## Partner authentication
 

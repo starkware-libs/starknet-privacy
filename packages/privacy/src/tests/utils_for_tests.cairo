@@ -75,10 +75,11 @@ use starknet::{
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
 };
+use starkware_utils::components::roles::interface::{
+    ICommonRolesDispatcher, ICommonRolesDispatcherTrait, Role,
+};
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
-    set_account_as_app_governor, set_account_as_app_role_admin, set_account_as_security_agent,
-    set_account_as_security_governor,
 };
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
@@ -2276,18 +2277,15 @@ pub(crate) fn deploy_mock_vesu_vault_overflow(
 }
 
 fn _set_privacy_roles(contract: ContractAddress, roles: Roles) -> Roles {
-    set_account_as_security_agent(
-        :contract, account: roles.security_agent, security_admin: roles.governance_admin,
-    );
-    set_account_as_app_role_admin(
-        :contract, account: roles.app_role_admin, governance_admin: roles.governance_admin,
-    );
-    set_account_as_security_governor(
-        :contract, account: roles.security_governor, security_admin: roles.governance_admin,
-    );
-    set_account_as_app_governor(
-        :contract, account: roles.app_governor, app_role_admin: roles.app_role_admin,
-    );
+    let roles_dispatcher = ICommonRolesDispatcher { contract_address: contract };
+    cheat_caller_address_once(contract_address: contract, caller_address: roles.governance_admin);
+    roles_dispatcher.grant_role(role: Role::SecurityAgent, account: roles.security_agent);
+    cheat_caller_address_once(contract_address: contract, caller_address: roles.governance_admin);
+    roles_dispatcher.grant_role(role: Role::AppRoleAdmin, account: roles.app_role_admin);
+    cheat_caller_address_once(contract_address: contract, caller_address: roles.governance_admin);
+    roles_dispatcher.grant_role(role: Role::SecurityGovernor, account: roles.security_governor);
+    cheat_caller_address_once(contract_address: contract, caller_address: roles.app_role_admin);
+    roles_dispatcher.grant_role(role: Role::AppGovernor, account: roles.app_governor);
     roles
 }
 

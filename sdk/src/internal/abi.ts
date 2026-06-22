@@ -466,15 +466,25 @@ export const PrivacyPoolABI = [
         "type": "privacy::objects::EncUserAddr"
       },
       {
-        "name": "depositor",
-        "type": "core::starknet::contract_address::ContractAddress"
-      },
-      {
         "name": "token",
         "type": "core::starknet::contract_address::ContractAddress"
       },
       {
         "name": "note_id",
+        "type": "core::felt252"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "privacy::events::EncNoteCreated",
+    "members": [
+      {
+        "name": "note_id",
+        "type": "core::felt252"
+      },
+      {
+        "name": "packed_value",
         "type": "core::felt252"
       }
     ]
@@ -538,6 +548,10 @@ export const PrivacyPoolABI = [
       {
         "name": "EmitOpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated"
+      },
+      {
+        "name": "EmitEncNoteCreated",
+        "type": "privacy::events::EncNoteCreated"
       },
       {
         "name": "EmitNoteUsed",
@@ -643,6 +657,34 @@ export const PrivacyPoolABI = [
     "interface_name": "privacy::interface::IServer"
   },
   {
+    "type": "struct",
+    "name": "privacy::snip12::ScreeningAttestation",
+    "members": [
+      {
+        "name": "issued_at",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "signature",
+        "type": "(core::felt252, core::felt252)"
+      }
+    ]
+  },
+  {
+    "type": "enum",
+    "name": "core::option::Option::<privacy::snip12::ScreeningAttestation>",
+    "variants": [
+      {
+        "name": "Some",
+        "type": "privacy::snip12::ScreeningAttestation"
+      },
+      {
+        "name": "None",
+        "type": "()"
+      }
+    ]
+  },
+  {
     "type": "interface",
     "name": "privacy::interface::IServer",
     "items": [
@@ -653,26 +695,10 @@ export const PrivacyPoolABI = [
           {
             "name": "actions",
             "type": "core::array::Span::<privacy::actions::ServerAction>"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "deposit_to_open_note",
-        "inputs": [
-          {
-            "name": "note_id",
-            "type": "core::felt252"
           },
           {
-            "name": "token",
-            "type": "core::starknet::contract_address::ContractAddress"
-          },
-          {
-            "name": "amount",
-            "type": "core::integer::u128"
+            "name": "screening",
+            "type": "core::option::Option::<privacy::snip12::ScreeningAttestation>"
           }
         ],
         "outputs": [],
@@ -922,6 +948,28 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
+        "name": "get_screener_public_key",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::felt252"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "get_version",
+        "inputs": [],
+        "outputs": [
+          {
+            "type": "core::felt252"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
         "name": "get_fee_amount",
         "inputs": [],
         "outputs": [
@@ -952,6 +1000,22 @@ export const PrivacyPoolABI = [
           }
         ],
         "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "is_open_note_depositor_blocked",
+        "inputs": [
+          {
+            "name": "depositor",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::bool"
+          }
+        ],
+        "state_mutability": "view"
       }
     ]
   },
@@ -970,6 +1034,18 @@ export const PrivacyPoolABI = [
         "inputs": [
           {
             "name": "auditor_public_key",
+            "type": "core::felt252"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_screener_public_key",
+        "inputs": [
+          {
+            "name": "screener_public_key",
             "type": "core::felt252"
           }
         ],
@@ -1007,6 +1083,22 @@ export const PrivacyPoolABI = [
           {
             "name": "proof_validity_blocks",
             "type": "core::integer::u64"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "set_open_note_depositor_blocked",
+        "inputs": [
+          {
+            "name": "depositor",
+            "type": "core::starknet::contract_address::ContractAddress"
+          },
+          {
+            "name": "blocked",
+            "type": "core::bool"
           }
         ],
         "outputs": [],
@@ -1146,6 +1238,18 @@ export const PrivacyPoolABI = [
       },
       {
         "type": "function",
+        "name": "add_new_implementation_unsafe",
+        "inputs": [
+          {
+            "name": "implementation_data",
+            "type": "starkware_utils::components::replaceability::interface::ImplementationData"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
         "name": "remove_implementation",
         "inputs": [
           {
@@ -1167,13 +1271,71 @@ export const PrivacyPoolABI = [
         ],
         "outputs": [],
         "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "validate_upgradeability",
+        "inputs": [
+          {
+            "name": "implementation_data",
+            "type": "starkware_utils::components::replaceability::interface::ImplementationData"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
       }
     ]
   },
   {
     "type": "impl",
-    "name": "RolesImpl",
-    "interface_name": "starkware_utils::components::roles::interface::IRoles"
+    "name": "CommonRolesImpl",
+    "interface_name": "starkware_utils::components::roles::interface::ICommonRoles"
+  },
+  {
+    "type": "enum",
+    "name": "starkware_utils::components::roles::interface::Role",
+    "variants": [
+      {
+        "name": "AppGovernor",
+        "type": "()"
+      },
+      {
+        "name": "AppRoleAdmin",
+        "type": "()"
+      },
+      {
+        "name": "GovernanceAdmin",
+        "type": "()"
+      },
+      {
+        "name": "Operator",
+        "type": "()"
+      },
+      {
+        "name": "TokenAdmin",
+        "type": "()"
+      },
+      {
+        "name": "UpgradeAgent",
+        "type": "()"
+      },
+      {
+        "name": "UpgradeGovernor",
+        "type": "()"
+      },
+      {
+        "name": "SecurityAdmin",
+        "type": "()"
+      },
+      {
+        "name": "SecurityAgent",
+        "type": "()"
+      },
+      {
+        "name": "SecurityGovernor",
+        "type": "()"
+      }
+    ]
   },
   {
     "type": "struct",
@@ -1187,12 +1349,48 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "interface",
-    "name": "starkware_utils::components::roles::interface::IRoles",
+    "name": "starkware_utils::components::roles::interface::ICommonRoles",
     "items": [
       {
         "type": "function",
-        "name": "is_app_governor",
+        "name": "grant_role",
         "inputs": [
+          {
+            "name": "role",
+            "type": "starkware_utils::components::roles::interface::Role"
+          },
+          {
+            "name": "account",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "revoke_role",
+        "inputs": [
+          {
+            "name": "role",
+            "type": "starkware_utils::components::roles::interface::Role"
+          },
+          {
+            "name": "account",
+            "type": "core::starknet::contract_address::ContractAddress"
+          }
+        ],
+        "outputs": [],
+        "state_mutability": "external"
+      },
+      {
+        "type": "function",
+        "name": "has_role",
+        "inputs": [
+          {
+            "name": "role",
+            "type": "starkware_utils::components::roles::interface::Role"
+          },
           {
             "name": "account",
             "type": "core::starknet::contract_address::ContractAddress"
@@ -1204,318 +1402,6 @@ export const PrivacyPoolABI = [
           }
         ],
         "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_app_role_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_governance_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_operator",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_token_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_upgrade_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_upgrade_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_security_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_security_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "is_security_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [
-          {
-            "type": "core::bool"
-          }
-        ],
-        "state_mutability": "view"
-      },
-      {
-        "type": "function",
-        "name": "register_app_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_app_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_app_role_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_app_role_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_governance_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_governance_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_operator",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_operator",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_token_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_token_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_upgrade_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_upgrade_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_upgrade_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_upgrade_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
       },
       {
         "type": "function",
@@ -1523,79 +1409,7 @@ export const PrivacyPoolABI = [
         "inputs": [
           {
             "name": "role",
-            "type": "core::felt252"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_security_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_security_admin",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_security_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_security_agent",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "register_security_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
-          }
-        ],
-        "outputs": [],
-        "state_mutability": "external"
-      },
-      {
-        "type": "function",
-        "name": "remove_security_governor",
-        "inputs": [
-          {
-            "name": "account",
-            "type": "core::starknet::contract_address::ContractAddress"
+            "type": "starkware_utils::components::roles::interface::Role"
           }
         ],
         "outputs": [],
@@ -1639,6 +1453,10 @@ export const PrivacyPoolABI = [
       },
       {
         "name": "auditor_public_key",
+        "type": "core::felt252"
+      },
+      {
+        "name": "screener_public_key",
         "type": "core::felt252"
       },
       {
@@ -1765,450 +1583,9 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
-    "name": "starkware_utils::components::roles::interface::AppGovernorAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::AppGovernorRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::AppRoleAdminAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::AppRoleAdminRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::GovernanceAdminAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::GovernanceAdminRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::OperatorAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::OperatorRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityAdminAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityAdminRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityAgentAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityAgentRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityGovernorAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::SecurityGovernorRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::TokenAdminAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::TokenAdminRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::UpgradeGovernorAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::UpgradeGovernorRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::UpgradeAgentAdded",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "added_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "added_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::interface::UpgradeAgentRemoved",
-    "kind": "struct",
-    "members": [
-      {
-        "name": "removed_account",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      },
-      {
-        "name": "removed_by",
-        "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "data"
-      }
-    ]
-  },
-  {
-    "type": "event",
-    "name": "starkware_utils::components::roles::roles::RolesComponent::Event",
+    "name": "starkware_utils::components::common_roles::common_roles::CommonRolesComponent::Event",
     "kind": "enum",
-    "variants": [
-      {
-        "name": "AppGovernorAdded",
-        "type": "starkware_utils::components::roles::interface::AppGovernorAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "AppGovernorRemoved",
-        "type": "starkware_utils::components::roles::interface::AppGovernorRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "AppRoleAdminAdded",
-        "type": "starkware_utils::components::roles::interface::AppRoleAdminAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "AppRoleAdminRemoved",
-        "type": "starkware_utils::components::roles::interface::AppRoleAdminRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "GovernanceAdminAdded",
-        "type": "starkware_utils::components::roles::interface::GovernanceAdminAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "GovernanceAdminRemoved",
-        "type": "starkware_utils::components::roles::interface::GovernanceAdminRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "OperatorAdded",
-        "type": "starkware_utils::components::roles::interface::OperatorAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "OperatorRemoved",
-        "type": "starkware_utils::components::roles::interface::OperatorRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityAdminAdded",
-        "type": "starkware_utils::components::roles::interface::SecurityAdminAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityAdminRemoved",
-        "type": "starkware_utils::components::roles::interface::SecurityAdminRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityAgentAdded",
-        "type": "starkware_utils::components::roles::interface::SecurityAgentAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityAgentRemoved",
-        "type": "starkware_utils::components::roles::interface::SecurityAgentRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityGovernorAdded",
-        "type": "starkware_utils::components::roles::interface::SecurityGovernorAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "SecurityGovernorRemoved",
-        "type": "starkware_utils::components::roles::interface::SecurityGovernorRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "TokenAdminAdded",
-        "type": "starkware_utils::components::roles::interface::TokenAdminAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "TokenAdminRemoved",
-        "type": "starkware_utils::components::roles::interface::TokenAdminRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "UpgradeGovernorAdded",
-        "type": "starkware_utils::components::roles::interface::UpgradeGovernorAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "UpgradeGovernorRemoved",
-        "type": "starkware_utils::components::roles::interface::UpgradeGovernorRemoved",
-        "kind": "nested"
-      },
-      {
-        "name": "UpgradeAgentAdded",
-        "type": "starkware_utils::components::roles::interface::UpgradeAgentAdded",
-        "kind": "nested"
-      },
-      {
-        "name": "UpgradeAgentRemoved",
-        "type": "starkware_utils::components::roles::interface::UpgradeAgentRemoved",
-        "kind": "nested"
-      }
-    ]
+    "variants": []
   },
   {
     "type": "event",
@@ -2421,7 +1798,19 @@ export const PrivacyPoolABI = [
       {
         "name": "auditor_public_key",
         "type": "core::felt252",
-        "kind": "key"
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::ScreenerPublicKeySet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "screener_public_key",
+        "type": "core::felt252",
+        "kind": "data"
       }
     ]
   },
@@ -2444,6 +1833,23 @@ export const PrivacyPoolABI = [
         "name": "note_id",
         "type": "core::felt252",
         "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::EncNoteCreated",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "note_id",
+        "type": "core::felt252",
+        "kind": "key"
+      },
+      {
+        "name": "packed_value",
+        "type": "core::felt252",
+        "kind": "data"
       }
     ]
   },
@@ -2494,7 +1900,7 @@ export const PrivacyPoolABI = [
       {
         "name": "fee_amount",
         "type": "core::integer::u128",
-        "kind": "key"
+        "kind": "data"
       }
     ]
   },
@@ -2506,7 +1912,7 @@ export const PrivacyPoolABI = [
       {
         "name": "fee_collector",
         "type": "core::starknet::contract_address::ContractAddress",
-        "kind": "key"
+        "kind": "data"
       }
     ]
   },
@@ -2518,7 +1924,24 @@ export const PrivacyPoolABI = [
       {
         "name": "proof_validity_blocks",
         "type": "core::integer::u64",
+        "kind": "data"
+      }
+    ]
+  },
+  {
+    "type": "event",
+    "name": "privacy::events::OpenNoteDepositorBlockSet",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "depositor",
+        "type": "core::starknet::contract_address::ContractAddress",
         "kind": "key"
+      },
+      {
+        "name": "blocked",
+        "type": "core::bool",
+        "kind": "data"
       }
     ]
   },
@@ -2538,8 +1961,8 @@ export const PrivacyPoolABI = [
         "kind": "flat"
       },
       {
-        "name": "RolesEvent",
-        "type": "starkware_utils::components::roles::roles::RolesComponent::Event",
+        "name": "CommonRolesEvent",
+        "type": "starkware_utils::components::common_roles::common_roles::CommonRolesComponent::Event",
         "kind": "flat"
       },
       {
@@ -2578,8 +2001,18 @@ export const PrivacyPoolABI = [
         "kind": "nested"
       },
       {
+        "name": "ScreenerPublicKeySet",
+        "type": "privacy::events::ScreenerPublicKeySet",
+        "kind": "nested"
+      },
+      {
         "name": "OpenNoteCreated",
         "type": "privacy::events::OpenNoteCreated",
+        "kind": "nested"
+      },
+      {
+        "name": "EncNoteCreated",
+        "type": "privacy::events::EncNoteCreated",
         "kind": "nested"
       },
       {
@@ -2605,6 +2038,11 @@ export const PrivacyPoolABI = [
       {
         "name": "ProofValidityBlocksSet",
         "type": "privacy::events::ProofValidityBlocksSet",
+        "kind": "nested"
+      },
+      {
+        "name": "OpenNoteDepositorBlockSet",
+        "type": "privacy::events::OpenNoteDepositorBlockSet",
         "kind": "nested"
       }
     ]

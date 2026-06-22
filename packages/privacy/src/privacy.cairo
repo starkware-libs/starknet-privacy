@@ -53,16 +53,16 @@ pub mod Privacy {
         ContractAddress, SyscallResultTrait, VALIDATED, get_block_timestamp, get_caller_address,
         get_contract_address, get_execution_info,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
+    use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
-    use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternalTrait;
     use starkware_utils::erc20::erc20_utils::{checked_transfer, checked_transfer_from};
 
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
-    component!(path: RolesComponent, storage: roles, event: RolesEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: AccessControlComponent, storage: access_control, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(
@@ -76,7 +76,7 @@ pub mod Privacy {
         #[substorage(v0)]
         replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
-        roles: RolesComponent::Storage,
+        common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         access_control: AccessControlComponent::Storage,
         #[substorage(v0)]
@@ -123,7 +123,7 @@ pub mod Privacy {
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
         #[flat]
-        RolesEvent: RolesComponent::Event,
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
@@ -153,7 +153,7 @@ pub mod Privacy {
         screener_public_key: felt252,
         proof_validity_blocks: u64,
     ) {
-        self.roles.initialize(:governance_admin);
+        self.common_roles.initialize(:governance_admin);
         self.replaceability.initialize(upgrade_delay: Zero::zero());
         self._set_auditor_public_key(:auditor_public_key);
         self._set_screener_public_key(:screener_public_key);
@@ -168,7 +168,7 @@ pub mod Privacy {
     impl ReplaceabilityImpl =
         ReplaceabilityComponent::ReplaceabilityImpl<ContractState>;
     #[abi(embed_v0)]
-    impl RolesImpl = RolesComponent::RolesImpl<ContractState>;
+    impl CommonRolesImpl = CommonRolesComponent::CommonRolesImpl<ContractState>;
 
     #[abi(embed_v0)]
     pub impl ClientImpl of IClient<ContractState> {
@@ -1056,17 +1056,17 @@ pub mod Privacy {
     #[abi(embed_v0)]
     pub impl AdminImpl of IAdmin<ContractState> {
         fn set_auditor_public_key(ref self: ContractState, auditor_public_key: felt252) {
-            self.roles.only_security_governor();
+            self.common_roles.only_security_governor();
             self._set_auditor_public_key(:auditor_public_key);
         }
 
         fn set_screener_public_key(ref self: ContractState, screener_public_key: felt252) {
-            self.roles.only_security_governor();
+            self.common_roles.only_security_governor();
             self._set_screener_public_key(:screener_public_key);
         }
 
         fn set_fee_amount(ref self: ContractState, fee_amount: u128) {
-            self.roles.only_app_governor();
+            self.common_roles.only_app_governor();
             if fee_amount.is_non_zero() {
                 assert(self.fee_collector.read().is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
@@ -1075,7 +1075,7 @@ pub mod Privacy {
         }
 
         fn set_fee_collector(ref self: ContractState, fee_collector: ContractAddress) {
-            self.roles.only_app_governor();
+            self.common_roles.only_app_governor();
             if self.fee_amount.read().is_non_zero() {
                 assert(fee_collector.is_non_zero(), errors::ZERO_FEE_COLLECTOR);
             }
@@ -1084,14 +1084,14 @@ pub mod Privacy {
         }
 
         fn set_proof_validity_blocks(ref self: ContractState, proof_validity_blocks: u64) {
-            self.roles.only_app_governor();
+            self.common_roles.only_app_governor();
             self._set_proof_validity_blocks(:proof_validity_blocks);
         }
 
         fn set_open_note_depositor_blocked(
             ref self: ContractState, depositor: ContractAddress, blocked: bool,
         ) {
-            self.roles.only_security_governor();
+            self.common_roles.only_security_governor();
             assert(depositor.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
             self.blocked_open_note_depositors.entry(depositor).write(blocked);
             self.emit(events::OpenNoteDepositorBlockSet { depositor, blocked });

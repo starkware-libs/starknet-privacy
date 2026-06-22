@@ -34,7 +34,7 @@ export function authenticateRequest(
     return { error: "unauthorized", reason: "unknown_partner", partnerName };
   }
 
-  const partnerSecret = config.partners[partnerName];
+  const partnerSecret = config.partners[partnerName]?.hmacSecret;
   if (!partnerSecret) {
     return { error: "unauthorized", reason: "unknown_partner", partnerName };
   }

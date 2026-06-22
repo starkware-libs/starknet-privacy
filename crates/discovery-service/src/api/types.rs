@@ -15,7 +15,7 @@ use discovery_core::sync::incoming_state::IncomingSubchannel;
 use discovery_core::sync::outgoing_state::OutgoingSubchannel;
 use serde::{Deserialize, Serialize};
 use starknet_core::types::{BlockId, Felt};
-use tracing::{debug, warn};
+use tracing::warn;
 
 use super::block_id_serde;
 use crate::chain_state::ChainHead;
@@ -85,7 +85,7 @@ pub fn storage_error_to_response(
             ),
         ),
         other => {
-            debug!("Storage error: {}", other);
+            warn!("Storage error: {}", other);
             (
                 StatusCode::SERVICE_UNAVAILABLE,
                 ApiErrorResponse::new(error_codes::STORAGE_ERROR, "Storage backend error"),

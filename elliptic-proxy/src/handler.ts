@@ -219,8 +219,8 @@ export function createHandler(
     try {
       result = await forward({
         ellipticUrl: config.elliptic.url,
-        ellipticKey: config.elliptic.key,
-        ellipticSecret: config.elliptic.secret,
+        ellipticKey: config.partners[partnerName].ellipticKey,
+        ellipticSecret: config.partners[partnerName].ellipticSecret,
         ellipticTimeoutMs: config.elliptic.timeoutMs,
         address,
       });
