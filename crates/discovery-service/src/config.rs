@@ -60,7 +60,7 @@ impl Default for RpcConfig {
             connect_timeout: Duration::from_secs(60),
             request_timeout: Duration::from_secs(30),
             max_idle_per_host: 10,
-            max_batch_size: 256,
+            max_batch_size: 100,
             event_page_size: 1024,
         }
     }
