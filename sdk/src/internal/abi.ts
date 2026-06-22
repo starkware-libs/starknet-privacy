@@ -230,6 +230,24 @@ export const PrivacyPoolABI = [
     ]
   },
   {
+    "type": "struct",
+    "name": "privacy::actions::ComputeAndInvokeInput",
+    "members": [
+      {
+        "name": "contract_address",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "compute_additional_data",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "invoke_additional_data",
+        "type": "core::array::Span::<core::felt252>"
+      }
+    ]
+  },
+  {
     "type": "enum",
     "name": "privacy::actions::ClientAction",
     "variants": [
@@ -268,6 +286,10 @@ export const PrivacyPoolABI = [
       {
         "name": "InvokeExternal",
         "type": "privacy::actions::InvokeExternalInput"
+      },
+      {
+        "name": "ComputeAndInvoke",
+        "type": "privacy::actions::ComputeAndInvokeInput"
       }
     ]
   },
@@ -559,6 +581,10 @@ export const PrivacyPoolABI = [
       },
       {
         "name": "Invoke",
+        "type": "privacy::actions::InvokeInput"
+      },
+      {
+        "name": "InvokeWithComputation",
         "type": "privacy::actions::InvokeInput"
       }
     ]
