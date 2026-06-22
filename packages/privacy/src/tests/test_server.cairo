@@ -1611,7 +1611,7 @@ fn test_apply_invoke_vesu_deposit() {
     let mut spy = spy_events();
 
     // Execute the invoke action.
-    let invoke_input = vesu.invoke_vesu_deposit_input(assets: deposit_amount, :note_id);
+    let invoke_input = vesu.invoke_vesu_deposit_input(amount: deposit_amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_note_input
         .into_server_actions(:user)
         .into();
@@ -1686,7 +1686,7 @@ fn test_apply_invoke_vesu_withdraw() {
     vesu.underlying_token.supply(address: anonymizer_addr, amount: deposit_amount);
 
     // Deposit before withdraw.
-    let invoke_input = vesu.invoke_vesu_deposit_input(assets: deposit_amount, :note_id);
+    let invoke_input = vesu.invoke_vesu_deposit_input(amount: deposit_amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_note_input
         .into_server_actions(:user)
         .into();
@@ -1720,7 +1720,7 @@ fn test_apply_invoke_vesu_withdraw() {
         );
 
     // Create Invoke input for withdraw.
-    let invoke_input = vesu.invoke_vesu_withdraw_input(assets: deposit_amount, :note_id);
+    let invoke_input = vesu.invoke_vesu_withdraw_input(amount: deposit_amount, :note_id);
 
     // Spy on events before executing.
     let mut spy = spy_events();
@@ -1798,14 +1798,14 @@ fn test_apply_invoke_vesu_assertions() {
     let (note_id, _) = user.compute_open_note(:create_note_input);
 
     // Base valid invoke input (will be modified for each error case).
-    let valid_invoke_input_deposit = vesu.invoke_vesu_deposit_input(assets: amount, :note_id);
-    let valid_invoke_input_withdraw = vesu.invoke_vesu_withdraw_input(assets: amount, :note_id);
+    let valid_invoke_input_deposit = vesu.invoke_vesu_deposit_input(amount: amount, :note_id);
+    let valid_invoke_input_withdraw = vesu.invoke_vesu_withdraw_input(amount: amount, :note_id);
 
     // Catch ZERO_IN_TOKEN
     let mut vesu_zero_vault = vesu;
     vesu_zero_vault.vault = Zero::zero();
     let zero_in_token_invoke_input = vesu_zero_vault
-        .invoke_vesu_withdraw_input(assets: amount, :note_id);
+        .invoke_vesu_withdraw_input(amount: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(zero_in_token_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
@@ -1813,24 +1813,24 @@ fn test_apply_invoke_vesu_assertions() {
 
     // Catch ZERO_OUT_TOKEN
     let zero_out_token_invoke_input = vesu_zero_vault
-        .invoke_vesu_deposit_input(assets: amount, :note_id);
+        .invoke_vesu_deposit_input(amount: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(zero_out_token_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
     assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_OUT_TOKEN);
 
-    // Catch ZERO_ASSETS
-    let zero_assets_invoke_input = vesu.invoke_vesu_deposit_input(assets: 0, :note_id);
+    // Catch ZERO_AMOUNT
+    let zero_amount_invoke_input = vesu.invoke_vesu_deposit_input(amount: 0, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
-    server_actions.append(ServerAction::Invoke(zero_assets_invoke_input));
+    server_actions.append(ServerAction::Invoke(zero_amount_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
-    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_ASSETS);
+    assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_AMOUNT);
 
     // Catch TOKENS_EQUAL
     let mut vesu_tokens_equal = vesu;
     vesu_tokens_equal.vault = vesu.underlying_token.contract_address();
     let tokens_equal_invoke_input = vesu_tokens_equal
-        .invoke_vesu_deposit_input(assets: amount, :note_id);
+        .invoke_vesu_deposit_input(amount: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(tokens_equal_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
@@ -1853,12 +1853,12 @@ fn test_apply_invoke_vesu_assertions() {
     let mut vesu_noop = vesu;
     vesu_noop.vault = noop_vault;
     vesu_noop.underlying_token.supply(address: anonymizer_addr, :amount);
-    let noop_invoke_input = vesu_noop.invoke_vesu_deposit_input(assets: amount, :note_id);
+    let noop_invoke_input = vesu_noop.invoke_vesu_deposit_input(amount: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(noop_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
     assert_panic_with_felt_error(:result, expected_error: vesu_errors::ZERO_OUT_AMOUNT);
-    let noop_invoke_input = vesu_noop.invoke_vesu_withdraw_input(assets: amount, :note_id);
+    let noop_invoke_input = vesu_noop.invoke_vesu_withdraw_input(amount: amount, :note_id);
     let mut server_actions: Array<ServerAction> = create_actions.into();
     server_actions.append(ServerAction::Invoke(noop_invoke_input));
     let result = test.privacy.safe_apply_actions(server_actions.span());
@@ -1886,7 +1886,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
 
     // Catch NOTE_NOT_FOUND
     let nonexistent_note_id = 'NONEXISTENT_NOTE';
-    let invoke_input = vesu.invoke_vesu_deposit_input(assets: amount, note_id: nonexistent_note_id);
+    let invoke_input = vesu.invoke_vesu_deposit_input(amount: amount, note_id: nonexistent_note_id);
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
@@ -1898,7 +1898,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     user.cheat_create_enc_note_e2e(:create_note_input);
     let (note_id_enc, _) = user.compute_enc_note(:create_note_input);
 
-    let invoke_input = vesu.invoke_vesu_deposit_input(assets: amount, note_id: note_id_enc);
+    let invoke_input = vesu.invoke_vesu_deposit_input(amount: amount, note_id: note_id_enc);
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
@@ -1907,7 +1907,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
         .new_open_note_with_generated_random(:recipient, token_addr: vault_addr, index: 1);
     let (note_id_filled, _) = user.compute_open_note(:create_note_input);
     // First deposit succeeds.
-    let invoke_input = vesu.invoke_vesu_deposit_input(assets: amount, note_id: note_id_filled);
+    let invoke_input = vesu.invoke_vesu_deposit_input(amount: amount, note_id: note_id_filled);
     let mut server_actions: Array<ServerAction> = create_note_input
         .into_server_actions(:user)
         .into();
@@ -1931,7 +1931,7 @@ fn test_apply_invoke_vesu_open_note_deposit_assertions() {
     let (note_id_token_mismatch, _) = user.compute_open_note(:create_note_input);
 
     let invoke_input = vesu
-        .invoke_vesu_deposit_input(assets: amount, note_id: note_id_token_mismatch);
+        .invoke_vesu_deposit_input(amount: amount, note_id: note_id_token_mismatch);
     let mut server_actions: Array<ServerAction> = create_note_input
         .into_server_actions(:user)
         .into();

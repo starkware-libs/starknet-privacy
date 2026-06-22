@@ -1277,7 +1277,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1290,7 +1290,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1304,7 +1304,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1318,7 +1318,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1329,32 +1329,32 @@ pub(crate) impl VesuImpl of VesuTrait {
         operation: LendingOperation,
         in_token: ContractAddress,
         out_token: ContractAddress,
-        assets: u128,
+        amount: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
         IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
-            .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
+            .privacy_invoke(:operation, :in_token, :out_token, amount: amount.into(), :note_id)
     }
 
     /// Creates an `InvokeInput` for the Vesu lending anonymizer from the given parameters.
-    fn invoke_vesu_deposit_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
-        let assets: u256 = assets.into();
+    fn invoke_vesu_deposit_input(self: @Vesu, amount: u128, note_id: felt252) -> InvokeInput {
+        let amount: u256 = amount.into();
         let mut calldata: Array<felt252> = array![];
         LendingOperation::Deposit.serialize(ref calldata);
         self.underlying_token.contract_address().serialize(ref calldata);
         self.vault.serialize(ref calldata);
-        assets.serialize(ref calldata);
+        amount.serialize(ref calldata);
         note_id.serialize(ref calldata);
         InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
 
-    fn invoke_vesu_withdraw_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
-        let assets: u256 = assets.into();
+    fn invoke_vesu_withdraw_input(self: @Vesu, amount: u128, note_id: felt252) -> InvokeInput {
+        let amount: u256 = amount.into();
         let mut calldata: Array<felt252> = array![];
         LendingOperation::Withdraw.serialize(ref calldata);
         self.vault.serialize(ref calldata);
         self.underlying_token.contract_address().serialize(ref calldata);
-        assets.serialize(ref calldata);
+        amount.serialize(ref calldata);
         note_id.serialize(ref calldata);
         InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
@@ -1362,18 +1362,18 @@ pub(crate) impl VesuImpl of VesuTrait {
     /// Creates an `InvokeExternalInput` for Vesu deposit (for use with
     /// ClientAction::InvokeExternal).
     fn invoke_vesu_deposit_external_input(
-        self: @Vesu, assets: u128, note_id: felt252,
+        self: @Vesu, amount: u128, note_id: felt252,
     ) -> InvokeExternalInput {
-        let invoke = self.invoke_vesu_deposit_input(:assets, :note_id);
+        let invoke = self.invoke_vesu_deposit_input(:amount, :note_id);
         InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
     }
 
     /// Creates an `InvokeExternalInput` for Vesu withdraw (for use with
     /// ClientAction::InvokeExternal).
     fn invoke_vesu_withdraw_external_input(
-        self: @Vesu, assets: u128, note_id: felt252,
+        self: @Vesu, amount: u128, note_id: felt252,
     ) -> InvokeExternalInput {
-        let invoke = self.invoke_vesu_withdraw_input(:assets, :note_id);
+        let invoke = self.invoke_vesu_withdraw_input(:amount, :note_id);
         InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
     }
 
@@ -2227,6 +2227,7 @@ fn deploy_mock_vesu_vault(underlying_token: ContractAddress) -> ContractAddress 
         name: "MockVesuVault",
         symbol: "MV",
         :underlying_token,
+        redeem_rate: 1,
     )
         .expect('MockVesuVault deploy failed');
     address
