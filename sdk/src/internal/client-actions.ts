@@ -66,6 +66,12 @@ export type InvokeExternalInput = {
   calldata: unknown;
 };
 
+export type ComputeAndInvokeInput = {
+  contract_address: StarknetAddressBigint;
+  compute_additional_data: unknown;
+  invoke_additional_data: unknown;
+};
+
 /**
  * Union of all client actions.
  */
@@ -78,7 +84,8 @@ export type ClientAction =
   | { type: "Deposit"; input: DepositInput }
   | { type: "UseNote"; input: UseNoteInput }
   | { type: "Withdraw"; input: WithdrawInput }
-  | { type: "InvokeExternal"; input: InvokeExternalInput };
+  | { type: "InvokeExternal"; input: InvokeExternalInput }
+  | { type: "ComputeAndInvoke"; input: ComputeAndInvokeInput };
 
 /** All valid client action type names */
 export const CLIENT_ACTION_TYPES = [
@@ -91,6 +98,7 @@ export const CLIENT_ACTION_TYPES = [
   "UseNote",
   "Withdraw",
   "InvokeExternal",
+  "ComputeAndInvoke",
 ] as const;
 
 export type ClientActionType = (typeof CLIENT_ACTION_TYPES)[number];

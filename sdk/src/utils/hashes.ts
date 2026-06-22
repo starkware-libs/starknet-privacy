@@ -23,6 +23,11 @@ const ENC_RECIPIENT_ADDR_TAG = "ENC_RECIPIENT_ADDR_TAG:V1";
 const OUTGOING_CHANNEL_ID_TAG = "OUTGOING_CHANNEL_ID_TAG:V1";
 
 /** See packages/privacy/src/hashes.cairo for documentation. */
+export function compute_identity_key(user_addr: bigint, user_private_key: bigint, contract_address: bigint): bigint {
+  return hash(user_addr, user_private_key, contract_address);
+}
+
+/** See packages/privacy/src/hashes.cairo for documentation. */
 export function compute_enc_private_key_hash(shared_x: bigint): bigint {
   return hash(ENC_PRIVATE_KEY_TAG, shared_x);
 }
