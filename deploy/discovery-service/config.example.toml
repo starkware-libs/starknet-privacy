@@ -12,7 +12,7 @@ max_concurrent_requests = 10
 connect_timeout = 60
 request_timeout = 30
 max_idle_per_host = 10
-max_batch_size = 256
+max_batch_size = 100        # max storage slots per JSON-RPC batch; keep <= the RPC node's batch-array limit (Sepolia nodes cap at 100)
 event_page_size = 1024
 
 [indexer]

@@ -31,7 +31,7 @@ max_concurrent_requests = 10
 connect_timeout = 60        # seconds
 request_timeout = 30        # seconds
 max_idle_per_host = 10
-max_batch_size = 256        # max storage slots per JSON-RPC batch request
+max_batch_size = 100        # max storage slots per JSON-RPC batch request; must be <= the RPC node's batch-array limit (Sepolia nodes cap at 100)
 event_page_size = 1024      # max events per starknet_getEvents page (spec max: 1024)
 
 [indexer]

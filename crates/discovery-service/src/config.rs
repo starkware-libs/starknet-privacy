@@ -45,7 +45,10 @@ pub struct RpcConfig {
     pub request_timeout: Duration,
     pub max_idle_per_host: usize,
     /// Maximum number of storage slots per JSON-RPC batch request.
-    /// Larger `read_slots` calls are automatically chunked.
+    /// Larger `read_slots` calls are automatically chunked. Must stay within
+    /// the RPC node's JSON-RPC batch-array limit (Sepolia nodes cap this at
+    /// 100); a larger value makes the node reject the whole batch with a
+    /// `-32700` parse error, surfaced to clients as `STORAGE_ERROR`.
     pub max_batch_size: usize,
     /// Maximum number of events per `starknet_getEvents` page.
     /// The RPC spec allows up to 1024.
@@ -60,7 +63,7 @@ impl Default for RpcConfig {
             connect_timeout: Duration::from_secs(60),
             request_timeout: Duration::from_secs(30),
             max_idle_per_host: 10,
-            max_batch_size: 256,
+            max_batch_size: 100,
             event_page_size: 1024,
         }
     }
@@ -412,6 +415,15 @@ mod tests {
         assert_eq!(config.rpc.url, rpc_defaults.url);
         let idx_defaults = IndexerConfig::default();
         assert_eq!(config.indexer.ws_url, idx_defaults.ws_url);
+    }
+
+    #[test]
+    fn test_default_batch_size_within_node_limit() {
+        // Sepolia RPC nodes cap a JSON-RPC batch array at 100 requests. A larger
+        // default makes the node reject the whole `get_storage_at` batch with a
+        // `-32700` parse error, which the service maps to a 503 STORAGE_ERROR
+        // for any account whose sync reads more than 100 slots.
+        assert!(RpcConfig::default().max_batch_size <= 100);
     }
 
     #[test]
