@@ -108,55 +108,52 @@ fn test_privacy_invoke_assertions() {
     // Catch ZERO_IN_TOKEN.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, in_token: Zero::zero(), :out_token, assets: amount, :note_id,
+            operation: deposit, in_token: Zero::zero(), :out_token, :amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, in_token: Zero::zero(), :out_token, assets: amount, :note_id,
+            operation: withdraw, in_token: Zero::zero(), :out_token, :amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_IN_TOKEN);
 
     // Catch ZERO_OUT_TOKEN.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, :in_token, out_token: Zero::zero(), assets: amount, :note_id,
+            operation: deposit, :in_token, out_token: Zero::zero(), :amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, out_token: Zero::zero(), assets: amount, :note_id,
+            operation: withdraw, :in_token, out_token: Zero::zero(), :amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_OUT_TOKEN);
 
-    // Catch ZERO_ ASSETS.
+    // Catch ZERO_AMOUNT.
     let result = vesu
         .safe_privacy_invoke(
-            operation: deposit, :in_token, :out_token, assets: Zero::zero(), :note_id,
+            operation: deposit, :in_token, :out_token, amount: Zero::zero(), :note_id,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ASSETS);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, :out_token, assets: Zero::zero(), :note_id,
+            operation: withdraw, :in_token, :out_token, amount: Zero::zero(), :note_id,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_ASSETS);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch TOKENS_EQUAL.
     let result = vesu
-        .safe_privacy_invoke(
-            operation: deposit, :in_token, out_token: in_token, assets: amount, :note_id,
-        );
+        .safe_privacy_invoke(operation: deposit, :in_token, out_token: in_token, :amount, :note_id);
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
     let result = vesu
         .safe_privacy_invoke(
-            operation: withdraw, :in_token, out_token: in_token, assets: amount, :note_id,
+            operation: withdraw, :in_token, out_token: in_token, :amount, :note_id,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
 }
 
-/// At an exchange rate above 1:1, withdraw must redeem the exact share count the pool transferred
-/// in (burning all of it) rather than treating the amount as underlying assets, which would strand
-/// the unburned shares in the stateless anonymizer.
+/// Withdraw must redeem the exact share count the pool holds, not an underlying amount; otherwise
+/// shares are stranded in the stateless anonymizer.
 #[test]
 fn test_privacy_invoke_withdraw_redeems_exact_shares() {
     let mut vesu = deploy_vesu_components();

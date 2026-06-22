@@ -145,10 +145,10 @@ describe("Vesu lending on devnet", () => {
         return {
           contractAddress: anonymizerAddress,
           calldata: [
-            1n, // LendingOperation::Withdraw
+            1n, // LendingOperation::Withdraw (Vault::redeem internally).
             vesu.usdVToken,
             tokens.usdToken,
-            vTokenAmount, // redeem the exact vToken (share) count transferred to the anonymizer
+            vTokenAmount, // The amount of vToken shares to be redeemed.
             0n,
             openNote.noteId,
           ],

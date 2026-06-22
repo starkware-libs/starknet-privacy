@@ -40,7 +40,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -54,7 +54,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -69,7 +69,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -84,7 +84,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -95,12 +95,12 @@ pub impl VesuImpl of VesuTrait {
         operation: LendingOperation,
         in_token: ContractAddress,
         out_token: ContractAddress,
-        assets: u128,
+        amount: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
         self.cheat_privacy_caller();
         IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
-            .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
+            .privacy_invoke(:operation, :in_token, :out_token, amount: amount.into(), :note_id)
     }
 
     /// Calls `privacy_invoke` from `caller` (no cheat to the trusted privacy address), used to
@@ -117,7 +117,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
