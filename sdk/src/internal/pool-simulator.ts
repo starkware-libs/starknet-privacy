@@ -82,6 +82,10 @@ export class PoolSimulator {
       case "InvokeExternal":
         // InvokeExternal doesn't affect tracking state
         break;
+
+      case "ComputeAndInvoke":
+        // ComputeAndInvoke doesn't affect tracking state
+        break;
     }
   }
 
