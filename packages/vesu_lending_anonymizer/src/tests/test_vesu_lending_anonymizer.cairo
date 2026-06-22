@@ -152,8 +152,7 @@ fn test_privacy_invoke_assertions() {
     assert_panic_with_felt_error(:result, expected_error: errors::TOKENS_EQUAL);
 }
 
-/// Withdraw must redeem the exact share count the pool holds, not an underlying amount; otherwise
-/// shares are stranded in the stateless anonymizer.
+/// Withdraw must redeem the exact share count, not an underlying amount, else shares are stranded.
 #[test]
 fn test_privacy_invoke_withdraw_redeems_exact_shares() {
     let mut vesu = deploy_vesu_components();

@@ -44,10 +44,10 @@ pub trait IVesuLendingAnonymizer<T> {
     /// #### Parameters
     /// - `operation` ([`LendingOperation`](LendingOperation)) - `Deposit` (supply underlying,
     /// receive vToken shares) or `Withdraw` (redeem vToken shares, receive underlying).
-    /// - `in_token` (`ContractAddress`) - The token the contract spends: the underlying on Deposit,
-    /// the vToken on Withdraw.
-    /// - `out_token` (`ContractAddress`) - The token the contract receives: the vToken on Deposit,
-    /// the underlying on Withdraw.
+    /// - `in_token` (`ContractAddress`) - The token that flows from the anonymizer into the Vesu
+    /// vault: the underlying on Deposit, the vToken on Withdraw.
+    /// - `out_token` (`ContractAddress`) - The token that flows out of the Vesu vault back to the
+    /// anonymizer: the vToken on Deposit, the underlying on Withdraw.
     /// - `amount` (`u256`) - On Deposit, the amount of underlying to supply; on Withdraw, the
     /// number of vToken shares to redeem.
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
@@ -76,7 +76,7 @@ pub trait IVesuLendingAnonymizer<T> {
     /// received amount.
     /// 3. Approves the caller (privacy contract) to transfer the received output funds.
     /// 4. Returns (note_id, out_token, out_amount).
-    // TODO: rename `in_token`/`out_token` to clearer names; their meaning flips per operation.
+    // TODO: consider renaming `in_token`/`out_token` to e.g. `spend_token`/`receive_token`.
     fn privacy_invoke(
         ref self: T,
         operation: LendingOperation,
