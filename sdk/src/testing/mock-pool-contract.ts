@@ -39,6 +39,7 @@ import {
   compute_note_id,
   compute_nullifier,
   compute_outgoing_channel_id,
+  compute_identity_key,
 } from "../utils/hashes.js";
 
 import { toHex } from "../utils/convert.js";
@@ -573,6 +574,17 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       case "InvokeExternal":
         return [this.invoke(action.input.contract_address, action.input.calldata as bigint[])];
 
+      case "ComputeAndInvoke":
+        return [
+          this.computeAndInvoke(
+            sender,
+            privateKey,
+            action.input.contract_address,
+            action.input.compute_additional_data as bigint[],
+            action.input.invoke_additional_data as bigint[]
+          ),
+        ];
+
       default:
         throw new Error(`Unsupported action type in mock: ${(action as ClientAction).type}`);
     }
@@ -853,6 +865,42 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       apply: () => {
         const entrypoint = "privacy_invoke";
         this.contracts.call(contractAddress, entrypoint, calldata);
+      },
+      deferred: true,
+    };
+  }
+
+  // Mirrors Cairo's `compute_and_invoke`: query the target's `privacy_compute` with the derived
+  // identity key and `computeAdditionalData`, then forward its result followed by `invokeAdditionalData` to
+  // `privacy_invoke_with_computation`.
+  private computeAndInvoke(
+    sender: StarknetAddressBigint,
+    privateKey: bigint,
+    contractAddress: StarknetAddressBigint,
+    computeAdditionalData: bigint[],
+    invokeAdditionalData: bigint[]
+  ): MockServerAction {
+    return {
+      type: "ComputeAndInvoke",
+      apply: () => {
+        const identityKey = compute_identity_key(
+          toBigInt(sender),
+          privateKey,
+          toBigInt(contractAddress)
+        );
+        const computed = this.contracts.call(contractAddress, "privacy_compute", [
+          identityKey,
+          ...computeAdditionalData,
+        ]);
+        assert(
+          computed !== undefined,
+          () => `Mock privacy_compute at ${toHex(contractAddress)} returned undefined`
+        );
+        const computedFelts = (Array.isArray(computed) ? computed : [computed]).map(toBigInt);
+        this.contracts.call(contractAddress, "privacy_invoke_with_computation", [
+          ...computedFelts,
+          ...invokeAdditionalData,
+        ]);
       },
       deferred: true,
     };
