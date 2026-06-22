@@ -1,5 +1,5 @@
-/// Mock Vesu vault for testing deposit/withdraw. Implements 1:1 asset/share exchange.
-/// Must be pre-funded with underlying_token (for withdraw).
+/// Mock Vesu vault for testing deposit/redeem. Implements 1:1 asset/share exchange.
+/// Must be pre-funded with underlying_token (for redeem).
 #[starknet::contract]
 pub mod MockVesuVault {
     use openzeppelin::access::ownable::OwnableComponent;
@@ -52,18 +52,6 @@ pub mod MockVesuVault {
                     sender: get_caller_address(), recipient: get_contract_address(), amount: assets,
                 );
             self.erc20.mint(recipient: receiver, amount: assets);
-            assets
-        }
-
-        fn withdraw(
-            ref self: ContractState,
-            assets: u256,
-            receiver: ContractAddress,
-            owner: ContractAddress,
-        ) -> u256 {
-            self.erc20.burn(account: owner, amount: assets);
-            IERC20Dispatcher { contract_address: self.underlying_token.read() }
-                .transfer(recipient: receiver, amount: assets);
             assets
         }
 
@@ -129,15 +117,6 @@ pub mod MockVesuVaultNoop {
     #[abi(embed_v0)]
     impl MockVesuVaultImpl of IVToken<ContractState> {
         fn deposit(ref self: ContractState, assets: u256, receiver: ContractAddress) -> u256 {
-            Zero::zero()
-        }
-
-        fn withdraw(
-            ref self: ContractState,
-            assets: u256,
-            receiver: ContractAddress,
-            owner: ContractAddress,
-        ) -> u256 {
             Zero::zero()
         }
 
@@ -208,18 +187,6 @@ pub mod MockVesuVaultOverflow {
             overflow_amount
         }
 
-        fn withdraw(
-            ref self: ContractState,
-            assets: u256,
-            receiver: ContractAddress,
-            owner: ContractAddress,
-        ) -> u256 {
-            let overflow_amount: u256 = MAX_U128.into() + 1;
-            IERC20Dispatcher { contract_address: self.underlying_token.read() }
-                .transfer(recipient: receiver, amount: overflow_amount);
-            Zero::zero()
-        }
-
         fn redeem(
             ref self: ContractState,
             shares: u256,
@@ -247,7 +214,7 @@ pub mod MockVesuVaultInterest {
     use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use vesu_lending_anonymizer::vesu_lending_anonymizer::IVToken;
 
-    /// Underlying assets per share on redeem (and shares burned per asset on withdraw).
+    /// Underlying assets paid out per share on redeem.
     const REDEEM_RATE: u256 = 2;
 
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
@@ -294,21 +261,6 @@ pub mod MockVesuVaultInterest {
                 );
             self.erc20.mint(recipient: receiver, amount: assets);
             assets
-        }
-
-        fn withdraw(
-            ref self: ContractState,
-            assets: u256,
-            receiver: ContractAddress,
-            owner: ContractAddress,
-        ) -> u256 {
-            // ERC-4626 withdraw semantics: burn `assets / rate` shares to return `assets`
-            // underlying.
-            let shares = assets / REDEEM_RATE;
-            self.erc20.burn(account: owner, amount: shares);
-            IERC20Dispatcher { contract_address: self.underlying_token.read() }
-                .transfer(recipient: receiver, amount: assets);
-            shares
         }
 
         fn redeem(
