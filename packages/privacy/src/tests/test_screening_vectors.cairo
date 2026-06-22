@@ -1,6 +1,7 @@
 use snforge_std::{start_cheat_chain_id, test_address};
 use crate::snip12::{
-    DepositorValidation, ScreeningAttestation, compute_message_hash, is_screening_attestation_valid,
+    DepositorValidation, ScreeningAttestation, compute_screening_message_hash,
+    is_screening_attestation_valid,
 };
 use super::screening_vectors::screening_vectors;
 
@@ -21,7 +22,8 @@ fn test_committed_screening_vectors_validate() {
             depositor: vector.depositor.try_into().unwrap(), issued_at: vector.issued_at,
         };
         assert_eq!(
-            compute_message_hash(@validation, vector.signer_public_key), vector.message_hash,
+            compute_screening_message_hash(@validation, vector.signer_public_key),
+            vector.message_hash,
         );
         let attestation = ScreeningAttestation {
             issued_at: vector.issued_at, signature: (vector.sig_r, vector.sig_s),
