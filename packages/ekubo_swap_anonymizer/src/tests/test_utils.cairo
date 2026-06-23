@@ -8,10 +8,10 @@ use ekubo_swap_anonymizer::ekubo_swap_anonymizer::{
 };
 use ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM::deploy_for_test as deploy_mock_ekubo_amm_for_test;
 use privacy::objects::OpenNoteDeposit;
-use snforge_std::{CustomToken, DeclareResultTrait, Token, declare};
+use snforge_std::{DeclareResultTrait, Token, declare};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
+use starkware_utils_testing::test_utils::deploy_mock_erc20_token;
 
 pub fn deploy_mock_ekubo_amm() -> ContractAddress {
     let class_hash = declare(contract: "MockEkuboAMM").unwrap_syscall().contract_class().class_hash;
@@ -48,19 +48,12 @@ pub fn pool_key_for_tokens(token_a: ContractAddress, token_b: ContractAddress) -
 }
 
 pub fn new_token() -> Token {
-    let config = TokenConfig {
+    deploy_mock_erc20_token(
         name: "TestToken",
         symbol: "TT",
         decimals: 18,
         initial_supply: 1_000_000_000_000_000_000_000_000_000_000_u256,
         owner: 'TOKEN_OWNER'.try_into().unwrap(),
-    };
-    let token = config.deploy();
-    Token::Custom(
-        CustomToken {
-            contract_address: token.address,
-            balances_variable_selector: selector!("ERC20_balances"),
-        },
     )
 }
 
