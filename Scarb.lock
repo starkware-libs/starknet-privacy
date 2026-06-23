@@ -203,6 +203,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sub_account_anonymizer"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
+]
+
+[[package]]
 name = "vesu_lending_anonymizer"
 version = "0.1.0"
 dependencies = [

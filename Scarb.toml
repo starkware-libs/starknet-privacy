@@ -2,6 +2,7 @@
 members = [
     "packages/ekubo_swap_anonymizer",
     "packages/privacy",
+    "packages/sub_account_anonymizer",
     "packages/vesu_lending_anonymizer",
 ]
 
