@@ -10,36 +10,21 @@
 //! the vault (`out_token`). The vault pulls `in_token` (underlying) from the caller after prior
 //! approval.
 //!
-//! **Withdraw** (shares → underlying): Calls `withdraw(assets: u256, receiver: ContractAddress,
-//! owner: ContractAddress)` on the vault (`in_token`). Burns shares from `owner` and sends
-//! underlying to `receiver`.
+//! **Withdraw** (shares → underlying): Calls `redeem(shares: u256, receiver: ContractAddress,
+//! owner: ContractAddress)` on the vault (`in_token`), burning the given share count from `owner`
+//! and sending the corresponding underlying to `receiver`.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
 
-/// Interface for Vesu Token contract that supports deposit and withdraw operations.
+/// Interface for the Vesu vToken contract, copied here only to build a dispatcher; the canonical
+/// interface and its semantics are documented upstream.
 ///
-/// Reference: [vToken deposit &
-/// withdraw](https://docs.vesu.xyz/developers/core/vtoken#deposit--withdraw)
+/// Reference: [vToken docs](https://docs.vesu.xyz/developers/core/vtoken#deposit--withdraw)
 #[starknet::interface]
 pub trait IVToken<T> {
-    /// Deposits assets into the pool and mints vTokens (shares) to the receiver
-    /// # Arguments
-    /// * `assets` - amount of assets to deposit [asset scale]
-    /// * `receiver` - address to receive the vToken shares
-    /// # Returns
-    /// * amount of vToken shares minted [SCALE]
     fn deposit(ref self: T, assets: u256, receiver: ContractAddress) -> u256;
-    /// Withdraws assets from the pool and burns vTokens (shares) from the owner of the vTokens
-    /// # Arguments
-    /// * `assets` - amount of assets to withdraw [asset scale]
-    /// * `receiver` - address to receive the withdrawn assets
-    /// * `owner` - address of the owner of the vToken shares
-    /// # Returns
-    /// * amount of vTokens (shares) burned [SCALE]
-    fn withdraw(
-        ref self: T, assets: u256, receiver: ContractAddress, owner: ContractAddress,
-    ) -> u256;
+    fn redeem(ref self: T, shares: u256, receiver: ContractAddress, owner: ContractAddress) -> u256;
 }
 
 /// Lending operation to perform on a Vesu vault.
@@ -57,12 +42,14 @@ pub trait IVesuLendingAnonymizer<T> {
     /// [`INVOKE_SELECTOR`](privacy::utils::constants::INVOKE_SELECTOR) selector.
     ///
     /// #### Parameters
-    /// - `operation` ([`LendingOperation`](LendingOperation)) - The lending operation to perform.
-    /// - `in_token` (`ContractAddress`) - The token address of the input funds (in withdraw -
-    /// vToken).
-    /// - `out_token` (`ContractAddress`) - The token address of the output funds (in deposit -
-    /// vToken).
-    /// - `assets` (`u256`) - amount of assets to deposit/withdraw.
+    /// - `operation` ([`LendingOperation`](LendingOperation)) - `Deposit` (supply underlying,
+    /// receive vToken shares) or `Withdraw` (redeem vToken shares, receive underlying).
+    /// - `in_token` (`ContractAddress`) - The token that flows from the anonymizer into the Vesu
+    /// vault: the underlying on Deposit, the vToken on Withdraw.
+    /// - `out_token` (`ContractAddress`) - The token that flows out of the Vesu vault back to the
+    /// anonymizer: the vToken on Deposit, the underlying on Withdraw.
+    /// - `amount` (`u256`) - On Deposit, the amount of underlying to supply; on Withdraw, the
+    /// number of vToken shares to redeem.
     /// - `note_id` (`felt252`) - The identifier of the open note to deposit the output to.
     ///
     /// #### Returns
@@ -72,24 +59,26 @@ pub trait IVesuLendingAnonymizer<T> {
     /// #### Preconditions
     /// - `in_token` must not be zero.
     /// - `out_token` must not be zero.
-    /// - `assets` must not be zero.
+    /// - `amount` must not be zero.
     /// - `in_token` must not be equal to `out_token`.
     /// - The contract must have sufficient input token balance.
     /// - On deposit, `out_token` must be a Vesu Token contract.
     /// - On withdraw, `in_token` must be a Vesu Token contract.
     ///
     /// #### Flow
-    /// 1. If operation is Deposit, approves Vesu Token contract to spend `in_amount` of in tokens.
+    /// 1. If operation is Deposit, approves the Vesu Token contract to spend `amount` of
+    /// `in_token`.
     /// 2. Records output token balance, calls the corresponding lending function, calculates
     /// received amount.
     /// 3. Approves the caller (privacy contract) to transfer the received output funds.
     /// 4. Returns (note_id, out_token, out_amount).
+    // TODO: consider renaming `in_token`/`out_token` to e.g. `spend_token`/`receive_token`.
     fn privacy_invoke(
         ref self: T,
         operation: LendingOperation,
         in_token: ContractAddress,
         out_token: ContractAddress,
-        assets: u256,
+        amount: u256,
         note_id: felt252,
     ) -> Span<OpenNoteDeposit>;
 }
@@ -98,7 +87,7 @@ pub trait IVesuLendingAnonymizer<T> {
 pub mod errors {
     pub const ZERO_IN_TOKEN: felt252 = 'ZERO_IN_TOKEN';
     pub const ZERO_OUT_TOKEN: felt252 = 'ZERO_OUT_TOKEN';
-    pub const ZERO_ASSETS: felt252 = 'ZERO_ASSETS';
+    pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
     pub const TOKENS_EQUAL: felt252 = 'TOKENS_EQUAL';
     pub const RECEIVED_AMOUNT_OVERFLOW: felt252 = 'RECEIVED_AMOUNT_OVERFLOW';
     pub const ZERO_OUT_AMOUNT: felt252 = 'ZERO_OUT_AMOUNT';
@@ -129,12 +118,12 @@ pub mod VesuLendingAnonymizer {
             operation: LendingOperation,
             in_token: ContractAddress,
             out_token: ContractAddress,
-            assets: u256,
+            amount: u256,
             note_id: felt252,
         ) -> Span<OpenNoteDeposit> {
             assert(in_token.is_non_zero(), errors::ZERO_IN_TOKEN);
             assert(out_token.is_non_zero(), errors::ZERO_OUT_TOKEN);
-            assert(assets.is_non_zero(), errors::ZERO_ASSETS);
+            assert(amount.is_non_zero(), errors::ZERO_AMOUNT);
             assert(in_token != out_token, errors::TOKENS_EQUAL);
 
             let self_addr = get_contract_address();
@@ -149,14 +138,15 @@ pub mod VesuLendingAnonymizer {
             // Return value (minted/burned shares) is ignored.
             match operation {
                 LendingOperation::Deposit => {
-                    // Approve Vesu Token contract to spend `assets` of `in_token`.
-                    in_erc20.approve(spender: out_token, amount: assets);
+                    // Approve Vesu Token contract to spend `amount` of `in_token`.
+                    in_erc20.approve(spender: out_token, :amount);
                     IVTokenDispatcher { contract_address: out_token }
-                        .deposit(:assets, receiver: self_addr)
+                        .deposit(assets: amount, receiver: self_addr)
                 },
                 LendingOperation::Withdraw => {
+                    // `amount` is the vToken share count to redeem.
                     IVTokenDispatcher { contract_address: in_token }
-                        .withdraw(:assets, receiver: self_addr, owner: self_addr)
+                        .redeem(shares: amount, receiver: self_addr, owner: self_addr)
                 },
             }
 

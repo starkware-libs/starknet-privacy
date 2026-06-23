@@ -35,10 +35,7 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
-use privacy::snip12::{
-    DepositorValidation, ScreeningAttestation,
-    compute_message_hash as compute_screening_message_hash,
-};
+use privacy::snip12::{DepositorValidation, ScreeningAttestation, compute_screening_message_hash};
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::test_contracts::mock_swap_executor::{
@@ -46,10 +43,12 @@ use privacy::test_contracts::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
+use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnGarbage::deploy_for_test as deploy_mock_return_garbage_for_test;
 use privacy::tests::mock_invoke_returns::MockReturnTrailingGarbage::deploy_for_test as deploy_mock_return_trailing_garbage_for_test;
 use privacy::tests::mock_reentrancy::MockReentrancy::deploy_for_test as deploy_mock_reentrancy_for_test;
+use privacy::tests::mock_stark_account::MockStarkAccount::deploy_for_test as deploy_mock_stark_account_for_test;
 use privacy::tests::utils_for_tests::constants::DEFAULT_PROOF_VALIDITY_BLOCKS;
 use privacy::utils::constants::{ENTRYPOINT_FAILED, OK_WRAPPER, OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
@@ -62,8 +61,8 @@ use snforge_std::signature::stark_curve::{
 };
 use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
-    CheatSpan, CustomToken, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait,
-    Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
+    CheatSpan, DeclareResultTrait, MessageToL1, MessageToL1Spy, MessageToL1SpyTrait, Token,
+    TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare, interact_with_state,
     map_entry_address, spy_messages_to_l1, store,
 };
 use starknet::account::Call;
@@ -79,7 +78,7 @@ use starkware_utils::components::roles::interface::{
     ICommonRolesDispatcher, ICommonRolesDispatcherTrait, Role,
 };
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenConfig, TokenHelperTrait, cheat_caller_address_once, generic_load,
+    TokenHelperTrait, cheat_caller_address_once, deploy_mock_erc20_token, generic_load,
 };
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
@@ -1277,7 +1276,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1290,7 +1289,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1304,7 +1303,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1318,7 +1317,7 @@ pub(crate) impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -1329,32 +1328,32 @@ pub(crate) impl VesuImpl of VesuTrait {
         operation: LendingOperation,
         in_token: ContractAddress,
         out_token: ContractAddress,
-        assets: u128,
+        amount: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
         IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
-            .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
+            .privacy_invoke(:operation, :in_token, :out_token, amount: amount.into(), :note_id)
     }
 
     /// Creates an `InvokeInput` for the Vesu lending anonymizer from the given parameters.
-    fn invoke_vesu_deposit_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
-        let assets: u256 = assets.into();
+    fn invoke_vesu_deposit_input(self: @Vesu, amount: u128, note_id: felt252) -> InvokeInput {
+        let amount: u256 = amount.into();
         let mut calldata: Array<felt252> = array![];
         LendingOperation::Deposit.serialize(ref calldata);
         self.underlying_token.contract_address().serialize(ref calldata);
         self.vault.serialize(ref calldata);
-        assets.serialize(ref calldata);
+        amount.serialize(ref calldata);
         note_id.serialize(ref calldata);
         InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
 
-    fn invoke_vesu_withdraw_input(self: @Vesu, assets: u128, note_id: felt252) -> InvokeInput {
-        let assets: u256 = assets.into();
+    fn invoke_vesu_withdraw_input(self: @Vesu, amount: u128, note_id: felt252) -> InvokeInput {
+        let amount: u256 = amount.into();
         let mut calldata: Array<felt252> = array![];
         LendingOperation::Withdraw.serialize(ref calldata);
         self.vault.serialize(ref calldata);
         self.underlying_token.contract_address().serialize(ref calldata);
-        assets.serialize(ref calldata);
+        amount.serialize(ref calldata);
         note_id.serialize(ref calldata);
         InvokeInput { contract_address: *self.lending_anonymizer, calldata: calldata.span() }
     }
@@ -1362,18 +1361,18 @@ pub(crate) impl VesuImpl of VesuTrait {
     /// Creates an `InvokeExternalInput` for Vesu deposit (for use with
     /// ClientAction::InvokeExternal).
     fn invoke_vesu_deposit_external_input(
-        self: @Vesu, assets: u128, note_id: felt252,
+        self: @Vesu, amount: u128, note_id: felt252,
     ) -> InvokeExternalInput {
-        let invoke = self.invoke_vesu_deposit_input(:assets, :note_id);
+        let invoke = self.invoke_vesu_deposit_input(:amount, :note_id);
         InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
     }
 
     /// Creates an `InvokeExternalInput` for Vesu withdraw (for use with
     /// ClientAction::InvokeExternal).
     fn invoke_vesu_withdraw_external_input(
-        self: @Vesu, assets: u128, note_id: felt252,
+        self: @Vesu, amount: u128, note_id: felt252,
     ) -> InvokeExternalInput {
-        let invoke = self.invoke_vesu_withdraw_input(:assets, :note_id);
+        let invoke = self.invoke_vesu_withdraw_input(:amount, :note_id);
         InvokeExternalInput { contract_address: invoke.contract_address, calldata: invoke.calldata }
     }
 
@@ -1405,6 +1404,19 @@ pub(crate) impl TestImpl of TestTrait {
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
         let address = deploy_mock_account(salt: self.nonce.into(), :is_valid);
+        User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
+    }
+
+    /// Like `new_user_with_is_valid`, but with account that supports custom-signature-validation.
+    fn new_user_with_custom(ref self: Test, is_valid: bool) -> User {
+        self.nonce += 1;
+        let mut private_key = 'PRIVATE_KEY' + self.nonce.into();
+        if !is_canonical_key(key: private_key) {
+            private_key = Neg::neg(private_key);
+        }
+        let public_key = derive_public_key(:private_key);
+        self.nonce += 1;
+        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid);
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
@@ -1477,20 +1489,12 @@ pub(crate) impl TestImpl of TestTrait {
 
     fn new_token(ref self: Test) -> Token {
         self.nonce += 1;
-        let config = TokenConfig {
+        deploy_mock_erc20_token(
             name: format!("Token {}", self.nonce),
             symbol: format!("Token {}", self.nonce),
             decimals: constants::DECIMALS,
             initial_supply: constants::TOKEN_SUPPLY,
             owner: constants::TOKEN_OWNER,
-        };
-        let token = config.deploy();
-
-        Token::Custom(
-            CustomToken {
-                contract_address: token.address,
-                balances_variable_selector: selector!("ERC20_balances"),
-            },
         )
     }
 
@@ -2235,6 +2239,7 @@ fn deploy_mock_vesu_vault(underlying_token: ContractAddress) -> ContractAddress 
         name: "MockVesuVault",
         symbol: "MV",
         :underlying_token,
+        redeem_rate: 1,
     )
         .expect('MockVesuVault deploy failed');
     address
@@ -2299,6 +2304,35 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
         class_hash: *contract_class_hash, :deployment_params, :is_valid,
     )
         .expect('MockAccount deployment failed');
+    contract_address
+}
+
+/// Deploy a depositor account with custom-signature-validation.
+/// `is_valid` controls the signature validation result.
+pub(crate) fn deploy_mock_custom_account(salt: felt252, is_valid: bool) -> ContractAddress {
+    let contract_class_hash = declare(contract: "MockCustomAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_custom_account_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :is_valid,
+    )
+        .expect('MockCustomAccount deploy failed');
+    contract_address
+}
+
+/// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
+pub(crate) fn deploy_mock_stark_account(salt: felt252, public_key: felt252) -> ContractAddress {
+    let contract_class_hash = declare(contract: "MockStarkAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_stark_account_for_test(
+        class_hash: *contract_class_hash, :deployment_params, :public_key,
+    )
+        .expect('MockStarkAccount deploy failed');
     contract_address
 }
 

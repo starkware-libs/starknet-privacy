@@ -1,9 +1,9 @@
 use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
 use privacy::objects::OpenNoteDeposit;
-use snforge_std::{CustomToken, DeclareResultTrait, Token, TokenTrait, declare};
+use snforge_std::{DeclareResultTrait, Token, TokenTrait, declare};
 use starknet::deployment::DeploymentParams;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_utils_testing::test_utils::{Deployable, TokenConfig};
+use starkware_utils_testing::test_utils::deploy_mock_erc20_token;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
@@ -30,7 +30,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -43,7 +43,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -57,7 +57,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Deposit,
                 in_token: self.underlying_token.contract_address(),
                 out_token: *self.vault,
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -71,7 +71,7 @@ pub impl VesuImpl of VesuTrait {
                 operation: LendingOperation::Withdraw,
                 in_token: *self.vault,
                 out_token: self.underlying_token.contract_address(),
-                assets: amount.into(),
+                amount: amount.into(),
                 :note_id,
             )
     }
@@ -82,11 +82,11 @@ pub impl VesuImpl of VesuTrait {
         operation: LendingOperation,
         in_token: ContractAddress,
         out_token: ContractAddress,
-        assets: u128,
+        amount: u128,
         note_id: felt252,
     ) -> Result<Span<OpenNoteDeposit>, Array<felt252>> {
         IVesuLendingAnonymizerSafeDispatcher { contract_address: *self.lending_anonymizer }
-            .privacy_invoke(:operation, :in_token, :out_token, assets: assets.into(), :note_id)
+            .privacy_invoke(:operation, :in_token, :out_token, amount: amount.into(), :note_id)
     }
 
     fn vault_balance_of(self: @Vesu, address: ContractAddress) -> u256 {
@@ -126,6 +126,7 @@ fn deploy_mock_vesu_vault(underlying_token: ContractAddress) -> ContractAddress 
         name: "MockVesuVault",
         symbol: "MV",
         :underlying_token,
+        redeem_rate: 1,
     )
         .expect('MockVesuVault deploy failed');
     address
@@ -165,19 +166,32 @@ pub fn deploy_mock_vesu_vault_overflow(underlying_token: ContractAddress) -> Con
     address
 }
 
+/// Deploys a vault whose shares redeem for twice as much underlying (2:1), modeling accrued
+/// interest so withdraw exercises an exchange rate above 1:1.
+pub fn deploy_mock_vesu_vault_interest(underlying_token: ContractAddress) -> ContractAddress {
+    let class_hash = declare(contract: "MockVesuVault")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 1, deploy_from_zero: true };
+    let (address, _) = deploy_mock_vesu_vault_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        name: "MockVesuVaultInterest",
+        symbol: "MVI",
+        :underlying_token,
+        redeem_rate: 2,
+    )
+        .expect('MockVesuVaultInterest failed');
+    address
+}
+
 fn deploy_test_erc20_token() -> Token {
-    let config = TokenConfig {
+    deploy_mock_erc20_token(
         name: "VesuTestToken",
         symbol: "VTT",
         decimals: 18,
         initial_supply: 1_000_000_000_000_000_000_000_000_000_000_u256,
         owner: 'TOKEN_OWNER'.try_into().unwrap(),
-    };
-    let token = config.deploy();
-    Token::Custom(
-        CustomToken {
-            contract_address: token.address,
-            balances_variable_selector: selector!("ERC20_balances"),
-        },
     )
 }

@@ -5,7 +5,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   Devnet,
-  CallMockProofProvider,
+  ScreeningCallMockProofProvider,
   IndexerDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
@@ -55,11 +55,14 @@ describe("Payment Service Discovery", () => {
       createPrivateTransfers({
         account,
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new CallMockProofProvider(de.provider, chainId),
+        provingProvider: new ScreeningCallMockProofProvider(
+          de.provider,
+          chainId,
+        ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-        poolMode: "compatibility",
+        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+        poolMode: "screening",
       }),
     );
 
@@ -229,11 +232,11 @@ describe("Payment Service Discovery", () => {
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
-      provingProvider: new CallMockProofProvider(de.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     const { notes } = await aliceDiscover.discoverNotes();
@@ -260,11 +263,11 @@ describe("Payment Service Discovery", () => {
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
-      provingProvider: new CallMockProofProvider(de.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     const allAddresses = [de.alice.address, ...users.map((u) => u.address)];
@@ -290,11 +293,14 @@ describe("Payment Service Discovery", () => {
       const userDiscover = createPrivateTransfers({
         account: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new CallMockProofProvider(de.provider, chainId),
+        provingProvider: new ScreeningCallMockProofProvider(
+          de.provider,
+          chainId,
+        ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-        poolMode: "compatibility",
+        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+        poolMode: "screening",
       });
 
       const { notes } = await userDiscover.discoverNotes();
@@ -319,11 +325,14 @@ describe("Payment Service Discovery", () => {
       const userDiscover = createPrivateTransfers({
         account: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new CallMockProofProvider(de.provider, chainId),
+        provingProvider: new ScreeningCallMockProofProvider(
+          de.provider,
+          chainId,
+        ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-        poolMode: "compatibility",
+        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+        poolMode: "screening",
       });
 
       const { channels } = await userDiscover.discoverChannels([

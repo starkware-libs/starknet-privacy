@@ -1305,7 +1305,7 @@ fn test_e2e_vesu_invoke() {
         .new_open_note_with_generated_random(recipient: user, token_addr: vault_addr, index: 0);
     let (open_note_vault_id, _) = user.compute_open_note(create_note_input: create_open_vault);
     let invoke_deposit = vesu
-        .invoke_vesu_deposit_external_input(assets: amount, note_id: open_note_vault_id);
+        .invoke_vesu_deposit_external_input(amount: amount, note_id: open_note_vault_id);
     test
         .privacy
         .execute_actions_e2e(
@@ -1345,7 +1345,7 @@ fn test_e2e_vesu_invoke() {
     let (open_note_underlying_id, _) = user
         .compute_open_note(create_note_input: create_open_underlying);
     let invoke_withdraw = vesu
-        .invoke_vesu_withdraw_external_input(assets: amount, note_id: open_note_underlying_id);
+        .invoke_vesu_withdraw_external_input(amount: amount, note_id: open_note_underlying_id);
     test
         .privacy
         .execute_actions_e2e(

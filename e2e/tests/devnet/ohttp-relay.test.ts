@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { constants } from "starknet";
 import {
   Devnet,
-  CallMockProofProvider,
+  ScreeningCallMockProofProvider,
   IndexerDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
@@ -83,14 +83,14 @@ describe("E2E OHTTP via relay", () => {
     const aliceOhttp = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(
+      provingProvider: new ScreeningCallMockProofProvider(
         de.provider,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     // Discover notes via relay — validates full client → relay → gateway pipeline
@@ -122,14 +122,14 @@ describe("E2E OHTTP via relay", () => {
     const bobOhttp = createPrivateTransfers({
       account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(
+      provingProvider: new ScreeningCallMockProofProvider(
         de.provider,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     const { notes: bobNotes } = await bobOhttp.discoverNotes();
