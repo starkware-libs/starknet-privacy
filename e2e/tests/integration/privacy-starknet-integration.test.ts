@@ -165,8 +165,8 @@ describe("Privacy StarkNet integration", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: poolAddress,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     // Mint tokens to Alice (admin is the minter)

@@ -19,7 +19,7 @@ import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
 import {
   Devnet,
   type DevnetEnvironment,
-  CallMockProofProvider,
+  ScreeningCallMockProofProvider,
   ContractDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 
@@ -42,24 +42,24 @@ const devnet = new Devnet();
 const env = await devnet.initialize();
 const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
-// Source-built pool: its class hash is never pinned, so force compatibility
-// calldata until the in-repo contract accepts the screening suffix.
+// Source-built pool: unpinned class hash, so set the mode explicitly. The pool
+// screens deposits, so use the provider that signs each deposit's attestation.
 const transfers = {
   alice: createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => ALICE_VIEWING_KEY },
-    provingProvider: new CallMockProofProvider(env.provider, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
-    poolMode: "compatibility",
+    poolMode: "screening",
   }),
   bob: createPrivateTransfers({
     account: env.bob,
     viewingKeyProvider: { getViewingKey: async () => BOB_VIEWING_KEY },
-    provingProvider: new CallMockProofProvider(env.provider, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
-    poolMode: "compatibility",
+    poolMode: "screening",
   }),
 };
 

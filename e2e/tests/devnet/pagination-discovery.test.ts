@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { constants } from "starknet";
 import {
   Devnet,
-  CallMockProofProvider,
+  ScreeningCallMockProofProvider,
   IndexerDiscoveryProvider,
 } from "@starkware-libs/starknet-privacy-sdk/testing";
 import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
@@ -70,14 +70,14 @@ describe("Discovery pagination with small budget", () => {
     const aliceTransfers = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(
+      provingProvider: new ScreeningCallMockProofProvider(
         de.provider,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     // total-only: exercises total_n_channels
@@ -106,14 +106,14 @@ describe("Discovery pagination with small budget", () => {
     const aliceTransfers = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(
+      provingProvider: new ScreeningCallMockProofProvider(
         de.provider,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     const { notes } = await aliceTransfers.discoverNotes();
@@ -125,14 +125,14 @@ describe("Discovery pagination with small budget", () => {
     const bobTransfers = createPrivateTransfers({
       account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new CallMockProofProvider(
+      provingProvider: new ScreeningCallMockProofProvider(
         de.provider,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool — unpinned class hash; force compatibility calldata.
-      poolMode: "compatibility",
+      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
+      poolMode: "screening",
     });
 
     const { notes: bobNotes } = await bobTransfers.discoverNotes();
