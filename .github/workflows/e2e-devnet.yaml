@@ -59,7 +59,10 @@ jobs:
       - name: Build contracts
         run: |
           scarb --profile release build -p privacy
-          scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer
+          scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer -p sub_account_anonymizer
+          # SubAccount + MockDapp come from the test build (sierra only); the e2e setup
+          # compiles casm with universal-sierra-compiler (set up above) at declare time.
+          scarb build -t -p sub_account_anonymizer
       - name: Build ekubo contracts
         run: cd e2e/contracts/ekubo && scarb build
       - name: Build test token
