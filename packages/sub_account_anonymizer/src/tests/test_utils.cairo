@@ -30,11 +30,14 @@ pub struct Components {
 pub impl ComponentsImpl of ComponentsTrait {
     /// Calls `privacy_invoke_with_computation` cheating the caller to be the privacy contract.
     fn invoke(
-        self: @Components, commitment: felt252, calls: Array<Call>, open_notes: Span<OpenNote>,
+        self: @Components,
+        identity_commitment: felt252,
+        calls: Array<Call>,
+        open_notes: Span<OpenNote>,
     ) -> Span<OpenNoteDeposit> {
         cheat_caller_address_once(contract_address: *self.anonymizer, caller_address: PRIVACY);
         anonymizer_disp(*self.anonymizer)
-            .privacy_invoke_with_computation(:commitment, :calls, :open_notes)
+            .privacy_invoke_with_computation(:identity_commitment, :calls, :open_notes)
     }
 }
 
