@@ -1,17 +1,18 @@
 //! Sub-account anonymizer for privacy-preserving dapp interactions.
 //!
-//! Runs arbitrary dapp calls on behalf of the privacy contract through per-commitment
-//! [`SubAccount`](starkware_utils::contracts::sub_account::SubAccount) contracts. Each commitment
-//! maps to a dedicated sub-account that performs the dapp calls and holds the resulting funds; the
-//! anonymizer then collects those funds into itself and approves the privacy contract to pull
-//! them into open notes. Driving interactions is restricted to the configured privacy contract.
+//! Runs arbitrary dapp calls on behalf of the privacy contract through per-identity-commitment
+//! [`SubAccount`](starkware_utils::contracts::sub_account::SubAccount) contracts. Each identity
+//! commitment maps to a dedicated sub-account that performs the dapp calls and holds the resulting
+//! funds; the anonymizer then collects those funds into itself and approves the privacy contract to
+//! pull them into open notes. Driving interactions is restricted to the configured privacy
+//! contract.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::account::Call;
 use starknet::{ClassHash, ContractAddress};
 
-/// The result of [`privacy_compute`]: a commitment that identifies a single sub-account.
-pub type PrivacyComputeCommitment = felt252;
+/// The result of [`privacy_compute`]: an identity commitment that identifies a single sub-account.
+pub type IdentityCommitment = felt252;
 
 /// An open note to settle after an interaction.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
@@ -24,31 +25,31 @@ pub struct OpenNote {
 
 #[starknet::interface]
 pub trait ISubAccountAnonymizer<T> {
-    /// Derives the commitment that identifies a sub-account.
+    /// Derives the identity commitment that identifies a sub-account.
     ///
     /// #### Parameters
     /// - `identity_key` (`felt252`) - A unique handle derived by the privacy pool from a user
     /// identity. It is linked to the user but cannot be traced back to them. Only the holder of the
     /// underlying identity can reproduce it, making it a pseudonymous proof of ownership without
     /// revealing who they are.
-    /// - `dapp_name` (`felt252`) - The dapp the sub-account interacts with, scoping commitments per
-    /// dapp.
+    /// - `dapp_name` (`felt252`) - The dapp the sub-account interacts with, scoping identity
+    /// commitments per dapp.
     /// - `nonce` (`felt252`) - A nonce that lets one identity derive multiple distinct sub-accounts
     /// for the same dapp.
     ///
     /// #### Returns
-    /// - ([`PrivacyComputeCommitment`](PrivacyComputeCommitment)) - A commitment binding to a
+    /// - ([`IdentityCommitment`](IdentityCommitment)) - An identity commitment binding to a
     /// single sub-account.
     fn privacy_compute(
         self: @T, identity_key: felt252, dapp_name: felt252, nonce: felt252,
-    ) -> PrivacyComputeCommitment;
+    ) -> IdentityCommitment;
 
-    /// Executes `calls` through the sub-account bound to `commitment` (deploying it on first
-    /// use), then collects each requested open-note token from the sub-account and into this
+    /// Executes `calls` through the sub-account bound to `identity_commitment` (deploying it on
+    /// first use), then collects each requested open-note token from the sub-account and into this
     /// anonymizer, approving the privacy contract to pull the collected amount.
     ///
     /// #### Parameters
-    /// - `commitment` ([`PrivacyComputeCommitment`](PrivacyComputeCommitment)) - identifies the
+    /// - `identity_commitment` ([`IdentityCommitment`](IdentityCommitment)) - identifies the
     /// sub-account; see [`privacy_compute`]. Preimage is off-chain only and unrecoverable from
     /// on-chain data.
     /// - `calls` (`Array<Call>`) - the dapp calls to run as the sub-account.
@@ -72,21 +73,21 @@ pub trait ISubAccountAnonymizer<T> {
     ///   collected for an open note exceeds `u128`.
     fn privacy_invoke_with_computation(
         ref self: T,
-        commitment: PrivacyComputeCommitment,
+        identity_commitment: IdentityCommitment,
         calls: Array<Call>,
         open_notes: Span<OpenNote>,
     ) -> Span<OpenNoteDeposit>;
 
-    /// Returns the sub-account address bound to `commitment`.
+    /// Returns the sub-account address bound to `identity_commitment`.
     ///
     /// #### Parameters
-    /// - `commitment` ([`PrivacyComputeCommitment`](PrivacyComputeCommitment)) - The commitment
-    /// derived by `privacy_compute`.
+    /// - `identity_commitment` ([`IdentityCommitment`](IdentityCommitment)) - The identity
+    /// commitment derived by `privacy_compute`.
     ///
     /// #### Returns
     /// - (`ContractAddress`) - The deployed sub-account address, or zero if none has been deployed
-    /// for `commitment` yet.
-    fn get_sub_account(self: @T, commitment: PrivacyComputeCommitment) -> ContractAddress;
+    /// for `identity_commitment` yet.
+    fn get_sub_account(self: @T, identity_commitment: IdentityCommitment) -> ContractAddress;
 
     /// Returns the privacy contract authorized to drive interactions.
     ///
@@ -94,7 +95,7 @@ pub trait ISubAccountAnonymizer<T> {
     /// - (`ContractAddress`) - The address of the authorized privacy contract.
     fn get_privacy_contract(self: @T) -> ContractAddress;
 
-    /// Returns the class hash of the `SubAccount` contract deployed per commitment.
+    /// Returns the class hash of the `SubAccount` contract deployed per identity commitment.
     ///
     /// #### Returns
     /// - (`ClassHash`) - The class hash used when deploying a sub-account.
@@ -133,7 +134,7 @@ pub mod SubAccountAnonymizer {
     use starkware_utils::contracts::sub_account::{
         ISubAccountDispatcher, ISubAccountDispatcherTrait,
     };
-    use super::{ISubAccountAnonymizer, OpenNote, PrivacyComputeCommitment, errors};
+    use super::{ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
@@ -158,11 +159,11 @@ pub mod SubAccountAnonymizer {
         src5: SRC5Component::Storage,
         /// Address of the authorized privacy contract.
         privacy_contract: ContractAddress,
-        /// Class hash of the `SubAccount` contract deployed per commitment.
+        /// Class hash of the `SubAccount` contract deployed per identity commitment.
         // TODO: Consider making this a constant.
         sub_account_class_hash: ClassHash,
-        /// Maps a commitment to the sub-account deployed for it.
-        sub_accounts: Map<PrivacyComputeCommitment, ContractAddress>,
+        /// Maps an identity commitment to the sub-account deployed for it.
+        sub_accounts: Map<IdentityCommitment, ContractAddress>,
     }
 
     #[event]
@@ -195,28 +196,28 @@ pub mod SubAccountAnonymizer {
     pub impl SubAccountAnonymizerImpl of ISubAccountAnonymizer<ContractState> {
         fn privacy_compute(
             self: @ContractState, identity_key: felt252, dapp_name: felt252, nonce: felt252,
-        ) -> PrivacyComputeCommitment {
+        ) -> IdentityCommitment {
             PoseidonTrait::new().update(identity_key).update(dapp_name).update(nonce).finalize()
         }
 
         fn privacy_invoke_with_computation(
             ref self: ContractState,
-            commitment: PrivacyComputeCommitment,
+            identity_commitment: IdentityCommitment,
             calls: Array<Call>,
             open_notes: Span<OpenNote>,
         ) -> Span<OpenNoteDeposit> {
             assert(
                 get_caller_address() == self.privacy_contract.read(), errors::UNAUTHORIZED_CALLER,
             );
-            let sub_account = self.get_or_deploy_sub_account(:commitment);
+            let sub_account = self.get_or_deploy_sub_account(:identity_commitment);
             sub_account.execute(calls);
             self.collect_open_notes(:sub_account, :open_notes)
         }
 
         fn get_sub_account(
-            self: @ContractState, commitment: PrivacyComputeCommitment,
+            self: @ContractState, identity_commitment: IdentityCommitment,
         ) -> ContractAddress {
-            self.sub_accounts.read(commitment)
+            self.sub_accounts.read(identity_commitment)
         }
 
         fn get_privacy_contract(self: @ContractState) -> ContractAddress {
@@ -230,24 +231,24 @@ pub mod SubAccountAnonymizer {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        /// Returns the sub-account bound to `commitment`, deploying a fresh one on first use. The
-        /// commitment is the deployment salt, so each commitment maps to a deterministic address,
+        /// Returns the sub-account bound to `identity_commitment`, deploying a fresh one on first
+        /// use. The commitment is the deployment salt, so each one maps to a deterministic address,
         /// and the deployed `SubAccount` records this anonymizer (its deployer) as owner.
         fn get_or_deploy_sub_account(
-            ref self: ContractState, commitment: PrivacyComputeCommitment,
+            ref self: ContractState, identity_commitment: IdentityCommitment,
         ) -> ISubAccountDispatcher {
-            let existing = self.sub_accounts.read(commitment);
+            let existing = self.sub_accounts.read(identity_commitment);
             if existing.is_non_zero() {
                 return ISubAccountDispatcher { contract_address: existing };
             }
             let (sub_account_addr, _) = deploy_syscall(
                 class_hash: self.sub_account_class_hash.read(),
-                contract_address_salt: commitment,
+                contract_address_salt: identity_commitment,
                 calldata: array![].span(),
                 deploy_from_zero: false,
             )
                 .unwrap_syscall();
-            self.sub_accounts.write(commitment, sub_account_addr);
+            self.sub_accounts.write(identity_commitment, sub_account_addr);
             ISubAccountDispatcher { contract_address: sub_account_addr }
         }
 

@@ -35,7 +35,7 @@ fn test_get_sub_account_class_hash() {
 }
 
 #[test]
-fn test_get_sub_account_unknown_commitment_is_zero() {
+fn test_get_sub_account_unknown_identity_commitment_is_zero() {
     let anonymizer = deploy_sub_account_anonymizer();
     assert!(anonymizer_disp(anonymizer).get_sub_account('UNKNOWN').is_zero());
 }
@@ -43,9 +43,9 @@ fn test_get_sub_account_unknown_commitment_is_zero() {
 #[test]
 fn test_privacy_compute_matches_poseidon() {
     let anonymizer = deploy_sub_account_anonymizer();
-    let commitment = anonymizer_disp(anonymizer).privacy_compute('USER', 'DAPP', 7);
+    let identity_commitment = anonymizer_disp(anonymizer).privacy_compute('USER', 'DAPP', 7);
     let expected = PoseidonTrait::new().update('USER').update('DAPP').update(7).finalize();
-    assert_eq!(commitment, expected);
+    assert_eq!(identity_commitment, expected);
 }
 
 #[test]
@@ -54,7 +54,7 @@ fn test_privacy_compute_is_deterministic_and_distinct() {
     let base = anonymizer.privacy_compute('USER', 'DAPP', 1);
     // Deterministic for the same inputs.
     assert_eq!(base, anonymizer.privacy_compute('USER', 'DAPP', 1));
-    // Each input affects the commitment.
+    // Each input affects the identity commitment.
     assert_ne!(base, anonymizer.privacy_compute('OTHER', 'DAPP', 1));
     assert_ne!(base, anonymizer.privacy_compute('USER', 'OTHER', 1));
     assert_ne!(base, anonymizer.privacy_compute('USER', 'DAPP', 2));
@@ -64,14 +64,15 @@ fn test_privacy_compute_is_deterministic_and_distinct() {
 fn test_invoke_executes_and_collects_open_note() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     // Fund the dapp so the sub-account-driven call pays the sub-account `AMOUNT`.
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
 
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
@@ -83,7 +84,7 @@ fn test_invoke_executes_and_collects_open_note() {
     assert_eq!(deposit_token, token);
     assert_eq!(amount, AMOUNT);
 
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(commitment);
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
     assert!(sub_account.is_non_zero());
     // Funds flowed dapp -> sub-account -> anonymizer, and the privacy contract is approved to pull.
     assert_eq!(components.token.balance_of(components.mock_dapp), 0);
@@ -100,7 +101,7 @@ fn test_invoke_only_privacy_contract() {
     let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     let result = safe
         .privacy_invoke_with_computation(
-            commitment: 0, calls: array![], open_notes: array![].span(),
+            identity_commitment: 0, calls: array![], open_notes: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::UNAUTHORIZED_CALLER);
 }
@@ -113,7 +114,8 @@ fn test_collects_multiple_open_notes() {
     let addr_a = token_a.contract_address();
     let addr_b = token_b.contract_address();
     assert!(addr_a != addr_b);
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     let amount_a: u128 = 1_000_000;
     let amount_b: u128 = 2_500_000;
@@ -122,7 +124,7 @@ fn test_collects_multiple_open_notes() {
 
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![
                 pay_out_call(components.mock_dapp, addr_a, amount_a),
                 pay_out_call(components.mock_dapp, addr_b, amount_b),
@@ -157,7 +159,8 @@ fn test_collects_multiple_open_notes() {
 fn test_multiple_invokes_run_in_one_call() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     let first: u128 = 700_000;
     let second: u128 = 300_000;
@@ -166,7 +169,7 @@ fn test_multiple_invokes_run_in_one_call() {
     // Two calls in one interaction; both run as the sub-account and their output is combined.
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![
                 pay_out_call(components.mock_dapp, token, first),
                 pay_out_call(components.mock_dapp, token, second),
@@ -185,29 +188,31 @@ fn test_multiple_invokes_run_in_one_call() {
 fn test_invoke_but_not_collect() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
 
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![].span(),
         );
     assert_eq!(deposits.len(), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), 0);
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(commitment);
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
     assert_eq!(components.token.balance_of(sub_account), AMOUNT.into());
 }
 
 #[test]
 fn test_deployed_sub_account_owned_by_anonymizer() {
     let components = deploy_components();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
-    components.invoke(:commitment, calls: array![], open_notes: array![].span());
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
 
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(commitment);
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
     // The anonymizer is the sub-account's deployer, so it is the only authorized controller.
     assert_eq!(
         ISubAccountDispatcher { contract_address: sub_account }.owner(), components.anonymizer,
@@ -215,24 +220,27 @@ fn test_deployed_sub_account_owned_by_anonymizer() {
 }
 
 #[test]
-fn test_sub_account_is_reused_per_commitment() {
+fn test_sub_account_is_reused_per_identity_commitment() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
-    let commitment_a = anonymizer.privacy_compute('USER', 'DAPP', 1);
-    let commitment_b = anonymizer.privacy_compute('USER', 'DAPP', 2);
+    let identity_commitment_a = anonymizer.privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment_b = anonymizer.privacy_compute('USER', 'DAPP', 2);
     let no_notes = array![].span();
 
-    components.invoke(commitment: commitment_a, calls: array![], open_notes: no_notes);
-    let sub_account_a = anonymizer.get_sub_account(commitment_a);
+    components
+        .invoke(identity_commitment: identity_commitment_a, calls: array![], open_notes: no_notes);
+    let sub_account_a = anonymizer.get_sub_account(identity_commitment_a);
     assert!(sub_account_a.is_non_zero());
 
-    // Same commitment reuses the same sub-account (no redeploy).
-    components.invoke(commitment: commitment_a, calls: array![], open_notes: no_notes);
-    assert_eq!(anonymizer.get_sub_account(commitment_a), sub_account_a);
+    // Same identity commitment reuses the same sub-account (no redeploy).
+    components
+        .invoke(identity_commitment: identity_commitment_a, calls: array![], open_notes: no_notes);
+    assert_eq!(anonymizer.get_sub_account(identity_commitment_a), sub_account_a);
 
-    // A different commitment gets a distinct sub-account.
-    components.invoke(commitment: commitment_b, calls: array![], open_notes: no_notes);
-    let sub_account_b = anonymizer.get_sub_account(commitment_b);
+    // A different identity commitment gets a distinct sub-account.
+    components
+        .invoke(identity_commitment: identity_commitment_b, calls: array![], open_notes: no_notes);
+    let sub_account_b = anonymizer.get_sub_account(identity_commitment_b);
     assert!(sub_account_b.is_non_zero());
     assert!(sub_account_b != sub_account_a);
 }
@@ -241,11 +249,12 @@ fn test_sub_account_is_reused_per_commitment() {
 fn test_sweeps_full_balance_including_preexisting() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     // Deploy the sub-account (empty invoke) so we can give it a pre-existing balance.
-    components.invoke(:commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(commitment);
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
     let preexisting: u128 = 500_000;
     components.token.supply(address: sub_account, amount: preexisting);
 
@@ -253,7 +262,7 @@ fn test_sweeps_full_balance_including_preexisting() {
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
@@ -276,7 +285,8 @@ fn test_sweeps_full_balance_including_preexisting() {
 fn test_empty_balance_open_note_reverts() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     // No calls and no funds, so the sub-account's balance is zero. A zero-amount deposit would be
     // rejected downstream, so collecting it reverts with `ZERO_BALANCE`.
@@ -284,7 +294,7 @@ fn test_empty_balance_open_note_reverts() {
     let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     let result = safe
         .privacy_invoke_with_computation(
-            :commitment,
+            :identity_commitment,
             calls: array![],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
@@ -295,11 +305,12 @@ fn test_empty_balance_open_note_reverts() {
 fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     // Deploy and pre-fund the sub-account.
-    components.invoke(:commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(commitment);
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
     let preexisting: u128 = 1_000_000;
     components.token.supply(address: sub_account, amount: preexisting);
 
@@ -313,7 +324,7 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
     };
     let deposits = components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![transfer],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
@@ -334,7 +345,8 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
 fn test_collected_amount_overflow() {
     let components = deploy_components();
     let token = components.token.contract_address();
-    let commitment = anonymizer_disp(components.anonymizer).privacy_compute('USER', 'DAPP', 1);
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
 
     // Fund the dapp with `u128::MAX + 1` (two supplies, since `supply` takes a u128).
     let max = Bounded::<u128>::MAX;
@@ -344,7 +356,7 @@ fn test_collected_amount_overflow() {
     // Two pay-outs add `u128::MAX + 1` to the sub-account, so the collected delta overflows u128.
     components
         .invoke(
-            :commitment,
+            :identity_commitment,
             calls: array![
                 pay_out_call(components.mock_dapp, token, max),
                 pay_out_call(components.mock_dapp, token, 1),
