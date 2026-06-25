@@ -487,6 +487,9 @@ pub trait IServer<T> {
     /// [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed) action is executed.
     /// - [`OpenNoteDeposited`](privacy::events::OpenNoteDeposited): Emitted for each
     /// `OpenNoteDeposit` returned by an [`Invoke`](privacy::actions::ServerAction::Invoke) action.
+    /// - [`ExternalContractInvoked`](privacy::events::ExternalContractInvoked): Emitted for each
+    /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action.
     ///
     /// #### Reverts
     /// **Context validation (before applying actions):**
