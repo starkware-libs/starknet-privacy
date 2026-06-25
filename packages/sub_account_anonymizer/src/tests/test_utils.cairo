@@ -48,11 +48,14 @@ pub fn deploy_components() -> Components {
     Components { token, mock_dapp, anonymizer }
 }
 
-/// Builds a `pay_out(token, amount)` call on the mock dapp, which transfers `amount` to its caller.
-pub fn pay_out_call(mock_dapp: ContractAddress, token: ContractAddress, amount: u128) -> Call {
+/// Builds a `transfer_to_caller(token, amount)` call on the mock dapp, which transfers `amount` to
+/// its caller.
+pub fn transfer_to_caller_call(
+    mock_dapp: ContractAddress, token: ContractAddress, amount: u128,
+) -> Call {
     Call {
         to: mock_dapp,
-        selector: selector!("pay_out"),
+        selector: selector!("transfer_to_caller"),
         calldata: array![token.into(), amount.into(), 0].span(),
     }
 }

@@ -1922,7 +1922,7 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
 
     let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
     let mock_dapp = deploy_sub_account_mock_dapp();
-    // Fund the dapp so its `pay_out` can transfer `amount` to the sub-account.
+    // Fund the dapp so its `transfer_to_caller` can transfer `amount` to the sub-account.
     token.supply(address: mock_dapp, :amount);
 
     // Open note that the collected funds settle into (created in the same tx as the invoke).
@@ -1934,16 +1934,16 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     let dapp_name = 'DAPP';
     let nonce = 0;
     let compute_data = [dapp_name, nonce].span();
-    // invoke_data carries `(invokes, open_notes)` forwarded to `privacy_invoke_with_computation`.
-    let pay_out = Call {
+    // invoke_data carries `(calls, open_notes)` forwarded to `privacy_invoke_with_computation`.
+    let transfer_to_caller = Call {
         to: mock_dapp,
-        selector: selector!("pay_out"),
+        selector: selector!("transfer_to_caller"),
         calldata: array![token_addr.into(), amount.into(), 0].span(),
     };
-    let invokes: Array<Call> = array![pay_out];
+    let calls: Array<Call> = array![transfer_to_caller];
     let open_notes: Span<(felt252, ContractAddress)> = [(note_id, token_addr)].span();
     let mut invoke_data: Array<felt252> = array![];
-    invokes.serialize(ref invoke_data);
+    calls.serialize(ref invoke_data);
     open_notes.serialize(ref invoke_data);
     let compute_and_invoke = ClientAction::ComputeAndInvoke(
         ComputeAndInvokeInput {
