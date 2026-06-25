@@ -3429,8 +3429,9 @@ fn test_create_open_note_decrypt_recipient_addr() {
     // Auditor should be able to decrypt the sender address from the OpenNoteCreated event.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     // events[0]: OpenNoteCreated from apply_actions.
-    // events[1]: OpenNoteDeposited from apply_actions.
-    assert_eq!(events.len(), 2);
+    // events[1]: ExternalInvoke from the invoke that fills the open note.
+    // events[2]: OpenNoteDeposited from apply_actions.
+    assert_eq!(events.len(), 3);
     let (_, event) = events[0];
     let enc_recipient_addr = EncUserAddr {
         auditor_public_key: *event.data[0],
@@ -4004,7 +4005,7 @@ fn test_execute_use_note_swap() {
     assert_eq!(token.balance_of(address: test.privacy.swap_executor.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.mock_amm), amount.into());
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
     assert_expected_event_emitted(
         spied_event: events[0],
         expected_event: events::NoteUsed { nullifier },
@@ -4034,11 +4035,20 @@ fn test_execute_use_note_swap() {
         expected_event_selector: @selector!("Withdrawal"),
         expected_event_name: "Withdrawal",
     );
+    let expected_event_external_invoke = events::ExternalInvoke {
+        contract_address: test.privacy.swap_executor.address, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events[3],
+        expected_event: expected_event_external_invoke,
+        expected_event_selector: @selector!("ExternalInvoke"),
+        expected_event_name: "ExternalInvoke",
+    );
     let expected_event_deposit_to_open_note = events::OpenNoteDeposited {
         depositor: test.privacy.swap_executor.address, token: out_token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: events[3],
+        spied_event: events[4],
         expected_event: expected_event_deposit_to_open_note,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -5703,7 +5713,7 @@ fn test_execute_create_open_note() {
     test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     let expected_event = events::OpenNoteCreated {
         enc_recipient_addr: user_2.compute_enc_user_addr(random: random.into()),
         token: token_addr,
@@ -5715,12 +5725,21 @@ fn test_execute_create_open_note() {
         expected_event_selector: @selector!("OpenNoteCreated"),
         expected_event_name: "OpenNoteCreated",
     );
+    let expected_external_invoke_event = events::ExternalInvoke {
+        contract_address: test.privacy.echo_executor, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalInvoke"),
+        expected_event_name: "ExternalInvoke",
+    );
     // Assert that the other event was OpenNoteFilled.
     let expected_deposited_event = events::OpenNoteDeposited {
         depositor: test.privacy.echo_executor, token: token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: events[1],
+        spied_event: events[2],
         expected_event: expected_deposited_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -6120,7 +6139,7 @@ fn test_swap_client_action() {
 
     // Verify events were properly emitted.
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 4);
+    assert_eq!(emitted_events.len(), 5);
 
     // Verify NoteUsed event (nullifier recorded).
     let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
@@ -6165,6 +6184,17 @@ fn test_swap_client_action() {
         expected_event_name: "Withdrawal",
     );
 
+    // Verify ExternalInvoke event (the pool invoked the swap executor via privacy_invoke).
+    let expected_external_invoke_event = events::ExternalInvoke {
+        contract_address: swap_executor_addr, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[3],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalInvoke"),
+        expected_event_name: "ExternalInvoke",
+    );
+
     // Verify OpenNoteDeposited event (output tokens deposited to open note).
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: swap_executor_addr,
@@ -6173,7 +6203,7 @@ fn test_swap_client_action() {
         amount: swap_amount,
     };
     assert_expected_event_emitted(
-        spied_event: emitted_events[3],
+        spied_event: emitted_events[4],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -6605,10 +6635,10 @@ fn test_compute_and_invoke_e2e_with_mock_deposits_to_open_note() {
     assert_eq!(token.balance_of(address: mock), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
-    // apply_actions emits OpenNoteCreated (from CreateOpenNote) then OpenNoteDeposited (from the
-    // InvokeWithComputation deposit, with the invoke target as depositor).
+    // apply_actions emits OpenNoteCreated (from CreateOpenNote), then ExternalInvoke and
+    // OpenNoteDeposited (from the InvokeWithComputation, with the invoke target as depositor).
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     let expected_create_event = events::OpenNoteCreated {
         enc_recipient_addr: encrypt_user_addr(
             ephemeral_secret: create_note_input.random,
@@ -6624,11 +6654,20 @@ fn test_compute_and_invoke_e2e_with_mock_deposits_to_open_note() {
         expected_event_selector: @selector!("OpenNoteCreated"),
         expected_event_name: "OpenNoteCreated",
     );
+    let expected_external_invoke_event = events::ExternalInvoke {
+        contract_address: mock, selector: selector!("privacy_invoke_with_computation"),
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalInvoke"),
+        expected_event_name: "ExternalInvoke",
+    );
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: mock, token: token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: emitted_events[1],
+        spied_event: emitted_events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -6997,7 +7036,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(events_after.len(), 4);
+    assert_eq!(events_after.len(), 5);
     assert_expected_event_emitted(
         spied_event: events_after[0],
         expected_event: events::NoteUsed { nullifier },
@@ -7024,6 +7063,15 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         expected_event_selector: @selector!("Withdrawal"),
         expected_event_name: "Withdrawal",
     );
+    let expected_external_invoke_event = events::ExternalInvoke {
+        contract_address: swap_executor_addr, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events_after[3],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalInvoke"),
+        expected_event_name: "ExternalInvoke",
+    );
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: swap_executor_addr,
         token: out_token_addr,
@@ -7031,7 +7079,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         amount: swap_amount,
     };
     assert_expected_event_emitted(
-        spied_event: events_after[3],
+        spied_event: events_after[4],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",

@@ -140,6 +140,7 @@ pub mod Privacy {
         OpenNoteCreated: events::OpenNoteCreated,
         EncNoteCreated: events::EncNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
+        ExternalInvoke: events::ExternalInvoke,
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
@@ -978,6 +979,9 @@ pub mod Privacy {
                 address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
+            // `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
+            // intentionally not emitted.
+            self.emit(events::ExternalInvoke { contract_address, selector });
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);

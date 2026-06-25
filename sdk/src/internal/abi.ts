@@ -1908,6 +1908,23 @@ export const PrivacyPoolABI = [
   },
   {
     "type": "event",
+    "name": "privacy::events::ExternalInvoke",
+    "kind": "struct",
+    "members": [
+      {
+        "name": "contract_address",
+        "type": "core::starknet::contract_address::ContractAddress",
+        "kind": "key"
+      },
+      {
+        "name": "selector",
+        "type": "core::felt252",
+        "kind": "key"
+      }
+    ]
+  },
+  {
+    "type": "event",
     "name": "privacy::events::NoteUsed",
     "kind": "struct",
     "members": [
@@ -2044,6 +2061,11 @@ export const PrivacyPoolABI = [
       {
         "name": "OpenNoteDeposited",
         "type": "privacy::events::OpenNoteDeposited",
+        "kind": "nested"
+      },
+      {
+        "name": "ExternalInvoke",
+        "type": "privacy::events::ExternalInvoke",
         "kind": "nested"
       },
       {
