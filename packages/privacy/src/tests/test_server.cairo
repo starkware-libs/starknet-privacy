@@ -7,12 +7,13 @@ use privacy::actions::{
 use privacy::errors::internal_errors;
 use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
+use privacy::tests::mock_invoke_returns::MockCompute::INVOKE_PANIC;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_reentrancy,
-    deploy_mock_return_garbage, deploy_mock_return_trailing_garbage, deploy_mock_swap_executor,
-    deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input, sign_screening_attestation,
-    sign_screening_attestation_with,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_compute,
+    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_return_trailing_garbage,
+    deploy_mock_swap_executor, deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
+    sign_screening_attestation, sign_screening_attestation_with,
 };
 use privacy::utils::constants::{
     DEPOSITOR_VALIDATION_MAX_AGE, DEPOSITOR_VALIDATION_MAX_FUTURE, OPEN_NOTE_SALT,
@@ -562,6 +563,114 @@ fn test_apply_emit_deposit() {
 }
 
 #[test]
+fn test_apply_invoke_with_computation_deposit() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let echo_executor_addr = test.privacy.echo_executor;
+    let enc_recipient_addr = test.mock_new_enc_address();
+    let amount = constants::DEFAULT_AMOUNT;
+    let (note_id, _) = test.mock_new_note(:amount);
+
+    // Plant an empty open note in storage so the deposit can find it.
+    let empty_note = open_note(token: token_addr);
+    test.privacy.cheat_create_note(:note_id, note: empty_note);
+
+    // Fund depositor (the InvokeWithComputation target).
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
+
+    let expected_create_event = events::OpenNoteCreated {
+        enc_recipient_addr, token: token_addr, note_id,
+    };
+    let expected_deposit_event = events::OpenNoteDeposited {
+        depositor: echo_executor_addr, token: token_addr, note_id, amount,
+    };
+    let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+    let actions: Array<ServerAction> = array![
+        ServerAction::EmitOpenNoteCreated(expected_create_event),
+        test.privacy.invoke_with_computation_echo_deposits([deposit].span()),
+    ];
+    let mut spy = spy_events();
+    test.privacy.apply_actions(actions.span());
+
+    // Verify the deposit landed in the open note.
+    let deposited_note = test.privacy.get_note(:note_id);
+    let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(deposited_note.token, token_addr);
+
+    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+    assert_eq!(events.len(), 2);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        expected_event: expected_create_event,
+        expected_event_selector: @selector!("OpenNoteCreated"),
+        expected_event_name: "OpenNoteCreated",
+    );
+    assert_expected_event_emitted(
+        spied_event: events[1],
+        expected_event: expected_deposit_event,
+        expected_event_selector: @selector!("OpenNoteDeposited"),
+        expected_event_name: "OpenNoteDeposited",
+    );
+}
+
+#[test]
+fn test_apply_invoke_with_computation_missing_selector() {
+    let mut test: Test = Default::default();
+
+    // The swap executor implements `privacy_invoke` but not `privacy_invoke_with_computation`. The
+    // arm must route to the with-computation selector, so the call fails with ENTRYPOINT_NOT_FOUND
+    // rather than reaching `privacy_invoke`.
+    let target = test.privacy.swap_executor.address;
+    let action = ServerAction::InvokeWithComputation(
+        InvokeInput { contract_address: target, calldata: [].span() },
+    );
+    let result = test.privacy.safe_apply_actions([action].span());
+    assert_panic_with_felt_error(:result, expected_error: 'ENTRYPOINT_NOT_FOUND');
+}
+
+#[test]
+fn test_apply_invoke_with_computation_blocked_depositor() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let echo_executor_addr = test.privacy.echo_executor;
+    let enc_recipient_addr = test.mock_new_enc_address();
+    let amount = constants::DEFAULT_AMOUNT;
+    let (note_id, _) = test.mock_new_note(:amount);
+
+    let empty_note = open_note(token: token_addr);
+    test.privacy.cheat_create_note(:note_id, note: empty_note);
+    token.supply(address: echo_executor_addr, :amount);
+    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
+
+    let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
+    let actions = [
+        ServerAction::EmitOpenNoteCreated(
+            events::OpenNoteCreated { enc_recipient_addr, token: token_addr, note_id },
+        ),
+        test.privacy.invoke_with_computation_echo_deposits([deposit].span()),
+    ]
+        .span();
+
+    // The depositor is the InvokeWithComputation target (echo executor); blocking it reverts.
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor_addr, blocked: true);
+    let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
+
+    // Unblocking lets the same deposit land.
+    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor_addr, blocked: false);
+    test.privacy.apply_actions(:actions);
+    let deposited_note = test.privacy.get_note(:note_id);
+    let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);
+    assert_eq!(salt, OPEN_NOTE_SALT);
+    assert_eq!(stored_amount, amount);
+}
+
+#[test]
 fn test_apply_emit_open_note_created() {
     let mut test: Test = Default::default();
     let token = test.new_token();
@@ -663,6 +772,12 @@ fn test_apply_actions_reentrancy_locked() {
     let reentrancy_mock = deploy_mock_reentrancy();
     let invoke_input = InvokeInput { contract_address: reentrancy_mock, calldata: [].span() };
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: ReentrancyGuardErrors::REENTRANT_CALL);
+
+    // The InvokeWithComputation path holds the same lock: a reentrant apply_actions is rejected.
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::InvokeWithComputation(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: ReentrancyGuardErrors::REENTRANT_CALL);
 }
 
@@ -945,6 +1060,11 @@ fn test_invoke_from_blocked_address_without_open_note_deposit_is_allowed() {
     // The block list is only consulted when an Invoke yields open-note deposits. With none, the tx
     // succeeds even though the Invoke target is blocked (no `OPEN_NOTE_DEPOSITOR_BLOCKED` revert).
     test.privacy.apply_actions(:actions);
+
+    // Same for the compute-invoke path: an InvokeWithComputation that yields no deposits succeeds
+    // even though the (blocked) target is the would-be depositor.
+    let compute_actions = [test.privacy.invoke_with_computation_echo_deposits(no_deposits)].span();
+    test.privacy.apply_actions(actions: compute_actions);
 }
 
 #[test]
@@ -973,17 +1093,33 @@ fn test_deposit_to_open_note_assertions() {
             create_actions, note_id, token_addr: Zero::zero(), :amount,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(
+            create_actions, note_id, token_addr: Zero::zero(), :amount,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_TOKEN);
 
     // Catch ZERO_AMOUNT - create valid note, deposit with zero amount.
     let result = test
         .privacy
         .safe_create_open_note_and_invoke(create_actions, :note_id, :token_addr, amount: 0);
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(create_actions, :note_id, :token_addr, amount: 0);
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_AMOUNT);
 
     // Catch NOTE_NOT_FOUND - create note A, deposit targeting non-existent note B.
     let result = test
         .privacy
         .safe_create_open_note_and_invoke(
+            create_actions, note_id: 'NONEXISTENT', :token_addr, :amount,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(
             create_actions, note_id: 'NONEXISTENT', :token_addr, :amount,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
@@ -999,11 +1135,23 @@ fn test_deposit_to_open_note_assertions() {
             create_actions, note_id: note_id_enc, :token_addr, :amount,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(
+            create_actions, note_id: note_id_enc, :token_addr, :amount,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
     // Catch TOKEN_MISMATCH - create open note for token A, deposit with token B.
     let result = test
         .privacy
         .safe_create_open_note_and_invoke(
+            create_actions, :note_id, token_addr: test.mock_new_token(), :amount,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(
             create_actions, :note_id, token_addr: test.mock_new_token(), :amount,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
@@ -1018,6 +1166,12 @@ fn test_deposit_to_open_note_assertions() {
     let result = test
         .privacy
         .safe_create_open_note_and_invoke(
+            create_actions_b, note_id: note_id_deposited, :token_addr, :amount,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(
             create_actions_b, note_id: note_id_deposited, :token_addr, :amount,
         );
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
@@ -1046,6 +1200,10 @@ fn test_deposit_to_open_note_transfer_assertions() {
         .privacy
         .safe_create_open_note_and_invoke(create_actions, :note_id, :token_addr, :amount);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(create_actions, :note_id, :token_addr, :amount);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_BALANCE.describe());
 
     // Test 2: INSUFFICIENT_ALLOWANCE - Echo executor has tokens but no approval.
     // Reuse the same note since Test 1 failed and didn't modify the note state.
@@ -1054,6 +1212,10 @@ fn test_deposit_to_open_note_transfer_assertions() {
     let result = test
         .privacy
         .safe_create_open_note_and_invoke(create_actions, :note_id, :token_addr, :amount);
+    assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
+    let result = test
+        .privacy
+        .safe_create_open_note_and_compute_invoke(create_actions, :note_id, :token_addr, :amount);
     assert_panic_with_error(:result, expected_error: Erc20Error::INSUFFICIENT_ALLOWANCE.describe());
 }
 
@@ -1186,6 +1348,13 @@ fn test_apply_invoke_return_deserialize_error() {
     };
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
+
+    // Same non-deserializable return via the InvokeWithComputation path (the mock returns the same
+    // garbage from its `privacy_invoke_with_computation` entry point).
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::InvokeWithComputation(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
 }
 
 #[test]
@@ -1196,6 +1365,13 @@ fn test_apply_invoke_return_extra_data() {
         contract_address: mock_return_trailing_garbage_addr, calldata: [].span(),
     };
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
+
+    // Same trailing-garbage return via the InvokeWithComputation path (the mock returns the same
+    // valid-deposits-plus-trailing-felt from its `privacy_invoke_with_computation` entry point).
+    let result = test
+        .privacy
+        .safe_apply_actions([ServerAction::InvokeWithComputation(invoke_input)].span());
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
 }
 
@@ -1219,6 +1395,21 @@ fn test_apply_invoke_propagates_panic() {
     assert_panic_with_felt_error(
         :result, expected_error: mock_swap_executor_errors::INSUFFICIENT_BALANCE,
     );
+}
+
+#[test]
+fn test_apply_invoke_with_computation_propagates_panic() {
+    let mut test: Test = Default::default();
+    let mock = deploy_mock_compute(panic_on_compute: false, panic_on_invoke: true);
+
+    let mut calldata = array![0];
+    let deposits: Span<OpenNoteDeposit> = [].span();
+    deposits.serialize(ref calldata);
+    let action = ServerAction::InvokeWithComputation(
+        InvokeInput { contract_address: mock, calldata: calldata.span() },
+    );
+    let result = test.privacy.safe_apply_actions([action].span());
+    assert_panic_with_felt_error(:result, expected_error: INVOKE_PANIC);
 }
 
 #[test]
@@ -1561,6 +1752,13 @@ fn test_undeposited_open_notes() {
     let result = test.privacy.safe_apply_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::UNDEPOSITED_OPEN_NOTES);
 
+    // Same UNDEPOSITED_OPEN_NOTES via the compute-invoke path.
+    let no_deposits: Span<OpenNoteDeposit> = array![].span();
+    let mut actions: Array<ServerAction> = create_input.into_server_actions(:user).into();
+    actions.append(test.privacy.invoke_with_computation_echo_deposits(no_deposits));
+    let result = test.privacy.safe_apply_actions(actions.span());
+    assert_panic_with_felt_error(:result, expected_error: errors::UNDEPOSITED_OPEN_NOTES);
+
     // Catch TOO_MANY_OPEN_NOTES_DEPOSITED: Invoke deposit without a matching EmitOpenNoteCreated.
     let create_input = user
         .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
@@ -1574,6 +1772,14 @@ fn test_undeposited_open_notes() {
         .invoke_external_echo_deposits([deposit].span())
         .into_server_actions();
     let result = test.privacy.safe_apply_actions(:actions);
+    assert_panic_with_felt_error(
+        :result, expected_error: internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED,
+    );
+
+    // Same TOO_MANY_OPEN_NOTES_DEPOSITED via the compute-invoke path.
+    let compute_actions = [test.privacy.invoke_with_computation_echo_deposits([deposit].span())]
+        .span();
+    let result = test.privacy.safe_apply_actions(actions: compute_actions);
     assert_panic_with_felt_error(
         :result, expected_error: internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED,
     );
