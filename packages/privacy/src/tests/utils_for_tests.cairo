@@ -14,8 +14,7 @@ use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherT
 use privacy::actions::{
     AppendInput, ClientAction, ComputeAndInvokeInput, CreateEncNoteInput, CreateOpenNoteInput,
     DepositInput, InvokeExternalInput, InvokeInput, OpenChannelInput, OpenSubchannelInput,
-    ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput, UseNoteInput,
-    WithdrawInput,
+    ServerAction, SetViewingKeyInput, TransferFromInput, UseNoteInput, WithdrawInput,
 };
 use privacy::events;
 use privacy::hashes::{
@@ -68,7 +67,7 @@ use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, MessageToL1, MessageToL1Spy,
     MessageToL1SpyTrait, Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare,
-    interact_with_state, map_entry_address, spy_messages_to_l1, store,
+    interact_with_state, map_entry_address, spy_messages_to_l1,
 };
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
@@ -83,7 +82,8 @@ use starkware_utils::components::roles::interface::{
     ICommonRolesDispatcher, ICommonRolesDispatcherTrait, Role,
 };
 use starkware_utils_testing::test_utils::{
-    TokenHelperTrait, cheat_caller_address_once, deploy_mock_erc20_token, generic_load,
+    TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
+    deploy_mock_erc20_token,
 };
 use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::deploy_for_test as deploy_sub_account_anonymizer_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
@@ -280,6 +280,21 @@ pub(crate) impl UserImpl of UserTrait {
             )
     }
 
+    /// Asserts that all three action entry points (`safe_execute`, `safe_compile_actions`,
+    /// `safe_compile_and_panic`) reject `client_actions` by panicking with `expected_error`.
+    #[feature("safe_dispatcher")]
+    fn assert_actions_panic(
+        self: @User, client_actions: Span<ClientAction>, expected_error: felt252,
+    ) {
+        assert_panic_with_felt_error(result: self.safe_execute(:client_actions), :expected_error);
+        assert_panic_with_felt_error(
+            result: self.safe_compile_actions(:client_actions), :expected_error,
+        );
+        assert_panic_with_felt_error(
+            result: self.safe_compile_and_panic(:client_actions), :expected_error,
+        );
+    }
+
     fn safe_validate(
         self: @User, client_actions: Span<ClientAction>,
     ) -> Result<felt252, Array<felt252>> {
@@ -457,29 +472,6 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn safe_open_channel(
-        self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
-    ) -> Result<(), Array<felt252>> {
-        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
-        self.safe_execute(client_actions: [ClientAction::OpenChannel(input)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_open_channel_compile_and_panic(
-        self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
-    ) -> Result<(), Array<felt252>> {
-        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
-        self.safe_compile_and_panic(client_actions: [ClientAction::OpenChannel(input)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_open_channel_compile_actions(
-        self: @User, recipient: User, index: usize, random: felt252, salt: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        let input = OpenChannelInput { recipient_addr: recipient.address, index, random, salt };
-        self.safe_compile_actions(client_actions: [ClientAction::OpenChannel(input)].span())
-    }
-
     /// Returns (random, salt, output) where output is the output of `open_channel`.
     fn internal_open_channel_with_generated_random_and_salt(
         ref self: User, recipient: User, index: usize,
@@ -536,59 +528,16 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
-    fn safe_open_subchannel(
-        self: @User, recipient: User, token_addr: ContractAddress, index: usize, salt: felt252,
-    ) -> Result<(), Array<felt252>> {
-        let channel_key = self.compute_channel_key(:recipient);
-        let input = OpenSubchannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            channel_key,
-            index,
-            token: token_addr,
-            salt,
-        };
-        self.safe_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
-    }
-
-    fn safe_open_subchannel_compile_and_panic(
-        self: @User, recipient: User, token_addr: ContractAddress, index: usize, salt: felt252,
-    ) -> Result<(), Array<felt252>> {
-        let channel_key = self.compute_channel_key(:recipient);
-        let input = OpenSubchannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            channel_key,
-            index,
-            token: token_addr,
-            salt,
-        };
-        self.safe_compile_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
-    }
-
-    fn safe_open_subchannel_compile_actions(
-        self: @User, recipient: User, token_addr: ContractAddress, index: usize, salt: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        let channel_key = self.compute_channel_key(:recipient);
-        let input = OpenSubchannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            channel_key,
-            index,
-            token: token_addr,
-            salt,
-        };
-        self.safe_compile_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
-    }
-
-    fn safe_open_subchannel_with_channel_key(
+    #[feature("safe_dispatcher")]
+    fn assert_open_subchannel_panics(
         self: @User,
         recipient: User,
         token_addr: ContractAddress,
         index: usize,
         salt: felt252,
-        channel_key: felt252,
-    ) -> Result<(), Array<felt252>> {
+        expected_error: felt252,
+    ) {
+        let channel_key = self.compute_channel_key(:recipient);
         let input = OpenSubchannelInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
@@ -597,18 +546,19 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_execute(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.assert_actions_panic([ClientAction::OpenSubchannel(input)].span(), :expected_error);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_open_subchannel_with_channel_key_compile_and_panic(
+    fn assert_open_subchannel_with_channel_key_panics(
         self: @User,
         recipient: User,
         token_addr: ContractAddress,
         index: usize,
         salt: felt252,
         channel_key: felt252,
-    ) -> Result<(), Array<felt252>> {
+        expected_error: felt252,
+    ) {
         let input = OpenSubchannelInput {
             recipient_addr: recipient.address,
             recipient_public_key: recipient.public_key,
@@ -617,27 +567,7 @@ pub(crate) impl UserImpl of UserTrait {
             token: token_addr,
             salt,
         };
-        self.safe_compile_and_panic(client_actions: [ClientAction::OpenSubchannel(input),].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_open_subchannel_with_channel_key_compile_actions(
-        self: @User,
-        recipient: User,
-        token_addr: ContractAddress,
-        index: usize,
-        salt: felt252,
-        channel_key: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        let input = OpenSubchannelInput {
-            recipient_addr: recipient.address,
-            recipient_public_key: recipient.public_key,
-            channel_key,
-            index,
-            token: token_addr,
-            salt,
-        };
-        self.safe_compile_actions(client_actions: [ClientAction::OpenSubchannel(input),].span())
+        self.assert_actions_panic([ClientAction::OpenSubchannel(input)].span(), :expected_error);
     }
 
     /// Returns (salt, output) where output is the output of `open_subchannel`.
@@ -699,20 +629,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_execute([ClientAction::CreateEncNote(create_note_input)].span())
     }
 
-    #[feature("safe_dispatcher")]
-    fn safe_create_enc_note_compile_and_panic(
-        self: @User, create_note_input: CreateEncNoteInput,
-    ) -> Result<(), Array<felt252>> {
-        self.safe_compile_and_panic([ClientAction::CreateEncNote(create_note_input)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_create_enc_note_compile_actions(
-        self: @User, create_note_input: CreateEncNoteInput,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_compile_actions([ClientAction::CreateEncNote(create_note_input)].span())
-    }
-
     fn internal_create_enc_note(
         self: @User, create_note_input: CreateEncNoteInput,
     ) -> Span<ServerAction> {
@@ -747,18 +663,6 @@ pub(crate) impl UserImpl of UserTrait {
         self: @User, create_note_input: CreateOpenNoteInput,
     ) -> Result<(), Array<felt252>> {
         self.safe_execute([ClientAction::CreateOpenNote(create_note_input)].span())
-    }
-
-    fn safe_create_open_note_compile_and_panic(
-        self: @User, create_note_input: CreateOpenNoteInput,
-    ) -> Result<(), Array<felt252>> {
-        self.safe_compile_and_panic([ClientAction::CreateOpenNote(create_note_input)].span())
-    }
-
-    fn safe_create_open_note_compile_actions(
-        self: @User, create_note_input: CreateOpenNoteInput,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_compile_actions([ClientAction::CreateOpenNote(create_note_input)].span())
     }
 
     fn internal_create_open_note(
@@ -942,20 +846,6 @@ pub(crate) impl UserImpl of UserTrait {
     #[feature("safe_dispatcher")]
     fn safe_use_note(self: @User, note: UseNoteInput) -> Result<(), Array<felt252>> {
         self.safe_execute(client_actions: [ClientAction::UseNote(note)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_use_note_compile_and_panic(
-        self: @User, note: UseNoteInput,
-    ) -> Result<(), Array<felt252>> {
-        self.safe_compile_and_panic(client_actions: [ClientAction::UseNote(note)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_use_note_compile_actions(
-        self: @User, note: UseNoteInput,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self.safe_compile_actions(client_actions: [ClientAction::UseNote(note)].span())
     }
 
     fn internal_use_note(self: @User, note: UseNoteInput) -> Span<ServerAction> {
@@ -1149,24 +1039,6 @@ pub(crate) impl UserImpl of UserTrait {
         self.safe_execute(client_actions: [ClientAction::SetViewingKey(input)].span())
     }
 
-    #[feature("safe_dispatcher")]
-    fn safe_set_viewing_key_compile_and_panic(
-        self: @User, random: felt252,
-    ) -> Result<(), Array<felt252>> {
-        let input = SetViewingKeyInput { random };
-        self.safe_compile_and_panic(client_actions: [ClientAction::SetViewingKey(input)].span())
-    }
-
-    #[feature("safe_dispatcher")]
-    fn safe_set_viewing_key_compile_actions(
-        self: @User, random: felt252,
-    ) -> Result<Span<ServerAction>, Array<felt252>> {
-        self
-            .safe_compile_actions(
-                client_actions: [ClientAction::SetViewingKey(SetViewingKeyInput { random })].span(),
-            )
-    }
-
     fn get_public_key(self: @User) -> felt252 {
         self.privacy.views.get_public_key(user_addr: *self.address)
     }
@@ -1214,25 +1086,6 @@ pub(crate) impl UserImpl of UserTrait {
                 ),
             );
         self.privacy.apply_actions(actions: actions.span());
-    }
-
-    /// Cheat withdraw in the server side (no client side).
-    fn cheat_withdraw(
-        self: @User, to_addr: ContractAddress, token: Token, amount: u128, nullifier: felt252,
-    ) {
-        let actions = [
-            to_write_once_action(
-                storage_address: map_entry_address(
-                    map_selector: selector!("nullifiers"), keys: [nullifier].span(),
-                ),
-                value: true,
-            ),
-            ServerAction::TransferTo(
-                TransferToInput { to_addr, token: token.contract_address(), amount },
-            ),
-        ]
-            .span();
-        self.privacy.apply_actions(:actions);
     }
 
     fn increase_token_balance(self: @User, token: Token, amount: u128) {
@@ -1738,29 +1591,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_server.apply_actions(:actions, :screening)
     }
 
-    fn cheat_invoke_echo(
-        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
-    ) {
-        let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
-        let input = self.invoke_external_echo_deposits([deposit].span());
-        self.apply_actions(actions: input.into_server_actions());
-    }
-
-    fn safe_cheat_invoke_echo(
-        self: @PrivacyCfg, note_id: felt252, token_addr: ContractAddress, amount: u128,
-    ) -> Result<(), Array<felt252>> {
-        let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
-        let input = self.invoke_external_echo_deposits([deposit].span());
-        self.safe_apply_actions(actions: input.into_server_actions())
-    }
-
-    fn fund_and_cheat_invoke_echo(self: @PrivacyCfg, token: Token, note_id: felt252, amount: u128) {
-        let echo_executor_addr = *self.echo_executor;
-        token.supply(address: echo_executor_addr, :amount);
-        token.approve(owner: echo_executor_addr, spender: *self.address, amount: amount.into());
-        self.cheat_invoke_echo(:note_id, token_addr: token.contract_address(), :amount);
-    }
-
     /// Apply create-actions then deposit-to-open-note actions and return the result.
     /// Convenience for tests that assert on create+deposit in one call.
     #[feature("safe_dispatcher")]
@@ -2051,31 +1881,6 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
 
     fn get_proof_validity_blocks(self: @PrivacyCfg) -> u64 {
         self.views.get_proof_validity_blocks()
-    }
-
-    fn store_zero(self: @PrivacyCfg, storage_address: felt252) {
-        store(target: *self.address, :storage_address, serialized_value: [Zero::zero()].span());
-    }
-
-    fn pop_from_vec(self: @PrivacyCfg, recipient_addr: ContractAddress) {
-        let target = *self.address;
-        let vector_storage_address = map_entry_address(
-            map_selector: selector!("recipient_channels"), keys: [recipient_addr.into()].span(),
-        );
-        let length: u64 = generic_load(:target, storage_address: vector_storage_address);
-        let new_length = length - 1;
-        // Store new length.
-        store(
-            :target,
-            storage_address: vector_storage_address,
-            serialized_value: [new_length.into()].span(),
-        );
-        // Store Zero.
-        let storage_address = map_entry_address(
-            map_selector: vector_storage_address, keys: [new_length.into()].span(),
-        );
-        self.store_zero(:storage_address);
-        self.store_zero(storage_address: storage_address + 1);
     }
 
     fn wrap_inputs_into_calls(
