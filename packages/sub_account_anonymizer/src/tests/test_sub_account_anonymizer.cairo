@@ -15,7 +15,7 @@ use sub_account_anonymizer::sub_account_anonymizer::{
 };
 use sub_account_anonymizer::tests::test_utils::{
     ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components, deploy_sub_account_anonymizer,
-    deploy_token, pay_out_call,
+    deploy_token, transfer_to_caller_call,
 };
 
 const AMOUNT: u128 = 1_000_000;
@@ -73,7 +73,7 @@ fn test_invoke_executes_and_collects_open_note() {
     let deposits = components
         .invoke(
             :identity_commitment,
-            calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
 
@@ -126,8 +126,8 @@ fn test_collects_multiple_open_notes() {
         .invoke(
             :identity_commitment,
             calls: array![
-                pay_out_call(components.mock_dapp, addr_a, amount_a),
-                pay_out_call(components.mock_dapp, addr_b, amount_b),
+                transfer_to_caller_call(components.mock_dapp, addr_a, amount_a),
+                transfer_to_caller_call(components.mock_dapp, addr_b, amount_b),
             ],
             open_notes: array![
                 OpenNote { note_id: 'NOTE_A', token: addr_a },
@@ -171,8 +171,8 @@ fn test_multiple_invokes_run_in_one_call() {
         .invoke(
             :identity_commitment,
             calls: array![
-                pay_out_call(components.mock_dapp, token, first),
-                pay_out_call(components.mock_dapp, token, second),
+                transfer_to_caller_call(components.mock_dapp, token, first),
+                transfer_to_caller_call(components.mock_dapp, token, second),
             ],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
@@ -196,7 +196,7 @@ fn test_invoke_but_not_collect() {
     let deposits = components
         .invoke(
             :identity_commitment,
-            calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![].span(),
         );
     assert_eq!(deposits.len(), 0);
@@ -263,7 +263,7 @@ fn test_sweeps_full_balance_including_preexisting() {
     let deposits = components
         .invoke(
             :identity_commitment,
-            calls: array![pay_out_call(components.mock_dapp, token, AMOUNT)],
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );
 
@@ -358,8 +358,8 @@ fn test_collected_amount_overflow() {
         .invoke(
             :identity_commitment,
             calls: array![
-                pay_out_call(components.mock_dapp, token, max),
-                pay_out_call(components.mock_dapp, token, 1),
+                transfer_to_caller_call(components.mock_dapp, token, max),
+                transfer_to_caller_call(components.mock_dapp, token, 1),
             ],
             open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
         );

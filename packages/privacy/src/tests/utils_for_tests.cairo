@@ -2291,8 +2291,6 @@ pub(crate) fn deploy_sub_account_anonymizer(privacy_address: ContractAddress) ->
     address
 }
 
-/// Deploys the `MockDapp` used by sub-account interactions (its `pay_out` transfers a funded token
-/// balance to the calling sub-account).
 pub(crate) fn deploy_sub_account_mock_dapp() -> ContractAddress {
     let contract = declare(contract: "MockDapp").unwrap_syscall().contract_class();
     let (address, _) = contract.deploy(constructor_calldata: @array![]).unwrap_syscall();
