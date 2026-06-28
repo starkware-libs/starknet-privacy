@@ -13,11 +13,14 @@ import type {
   ProofInvocationResult,
   ProvingBlockId,
   PrivateTransfersUser,
+  SimulateOptions,
+  Proof,
 } from "../interfaces.js";
 import type { TypedContractV2 } from "starknet";
 import { ActionCompiler } from "./compiler.js";
 import { PrivacyPoolABI } from "./abi.js";
 import { AbstractPrivateTransfers } from "./abstract-private-transfers.js";
+import { CallMockProofProvider } from "./mock-proving.js";
 import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
@@ -89,7 +92,19 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     provingBlockId?: ProvingBlockId
   ): Promise<ExecuteResult> {
     const proof = await this.params.provingProvider.prove(invocation, provingBlockId);
+    return this.buildExecuteResult(proof, registry, warnings);
+  }
 
+  /**
+   * Assemble the `apply_actions` call and `ExecuteResult` from a proof. Shared
+   * by `executeWithInvocation` (real proof) and `simulate` (mock proof) so both
+   * produce identical calldata — notably the trailing screening attestation.
+   */
+  private buildExecuteResult(
+    proof: Proof,
+    registry: ProofInvocationResult["registry"],
+    warnings: ProofInvocationResult["warnings"]
+  ): ExecuteResult {
     // proof.output is the L2-to-L1 message payload: [class_hash, ...serialized_actions].
     // Strip the class_hash prefix — apply_actions expects only Span<ServerAction>.
     const serverActionsCalldata = proof.output.slice(1);
@@ -119,5 +134,24 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       registry,
       warnings,
     };
+  }
+
+  async simulate(
+    actions: Actions,
+    options: ExecuteOptions & SimulateOptions
+  ): Promise<ExecuteResult> {
+    const { invocation, registry, warnings } = await this.createProofInvocation(actions, options);
+
+    // Source chainId from the same provider the mock prover calls, so proof
+    // facts and signature validation are computed for the chain that actually
+    // executes the view call.
+    const chainId = await options.provider.getChainId();
+
+    const mockProvider = new CallMockProofProvider(options.provider, chainId, {
+      validateSignature: options.validateSignature ?? false,
+    });
+
+    const proof = await mockProvider.prove(invocation, options.provingBlockId);
+    return this.buildExecuteResult(proof, registry, warnings);
   }
 }
