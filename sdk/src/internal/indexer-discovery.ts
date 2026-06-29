@@ -225,14 +225,10 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
   }> {
     if (recipients === "total-only") {
-      // Walk outgoing channels to the sentinel to get the authoritative count.
-      // The service only sets `total_n_channels` once channel discovery reaches
-      // the sentinel (`channel_discovery_complete`). A single request caps at
-      // `max_channels`, so for a sender past that cap it returns no total —
-      // previously surfaced as `undefined`, which the compiler turned into a
-      // channel index of 0 and a NON_ZERO_VALUE write-once collision. Paginate
-      // to completion, pruning complete channels each round so the cursor frees
-      // slots and discovery can advance past the cap.
+      // The service sets `total_n_channels` only once channel discovery reaches
+      // the sentinel, and a single request discovers at most `max_channels`.
+      // Paginate to completion — pruning complete channels each round frees
+      // cursor slots so discovery advances past the cap — then the count is final.
       let apiCursor: ApiDiscoveryCursor = { channel_discovery_complete: false };
       let blockRef: BlockIdentifier | undefined;
       let complete = false;
