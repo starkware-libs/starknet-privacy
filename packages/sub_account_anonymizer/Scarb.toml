@@ -20,12 +20,17 @@ assert_macros.workspace = true
 snforge_std.workspace = true
 starkware_utils_testing.workspace = true
 
+[features]
+test_utils = []
+
 [lib]
 
 [[test]]
 name = "sub_account_anonymizer_unittest"
 build-external-contracts = [
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "starkware_utils::contracts::sub_account::SubAccount",
+    "sub_account_anonymizer::test_utils_contracts::mock_dapp::MockDapp",
 ]
 
 [scripts]

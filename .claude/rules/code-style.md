@@ -69,6 +69,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Design APIs so callers don't need to know implementation details
 - *Example:* A `start_index` should work as-is; avoid requiring `start_index + 1` adjustments
 
+### Expose new options on every API surface that triggers the behavior
+- When adding a configurable option to a low-level constructor, thread it through the higher-level factory/builder that wraps it — especially if the option changes default behavior. An escape hatch that only exists on a surface most callers don't use is not a real escape hatch
+- *Example:* A `retry` option added to a service constructor must also be reachable from the `createX` factory config; otherwise factory users get the new default-on behavior with no way to tune or disable it
+
 ### Simplify when defaults add no value
 - If `None` just means a default value, consider using a plain type instead
 - *Example:* `start_index: u64` with default 0 is simpler than `Option<u64>` where `None` means 0

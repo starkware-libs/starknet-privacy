@@ -7,15 +7,16 @@ pub mod Privacy {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
     use privacy::actions::{
-        AppendInput, ClientAction, ClientActionTrait, CreateEncNoteInput, CreateOpenNoteInput,
-        DepositInput, InputValidation, InvokeExternalInput, InvokeInput, OpenChannelInput,
-        OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput, TransferToInput,
-        UseNoteInput, WithdrawInput, WriteOnceInput,
+        AppendInput, ClientAction, ClientActionTrait, ComputeAndInvokeInput, CreateEncNoteInput,
+        CreateOpenNoteInput, DepositInput, InputValidation, InvokeExternalInput, InvokeInput,
+        OpenChannelInput, OpenSubchannelInput, ServerAction, SetViewingKeyInput, TransferFromInput,
+        TransferToInput, UseNoteInput, WithdrawInput, WriteOnceInput,
     };
     use privacy::errors::internal_errors;
     use privacy::hashes::{
-        compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
-        compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker,
+        compute_channel_key, compute_channel_marker, compute_identity_key, compute_note_id,
+        compute_nullifier, compute_outgoing_channel_id, compute_subchannel_id,
+        compute_subchannel_marker,
     };
     use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
@@ -25,7 +26,8 @@ pub mod Privacy {
     use privacy::snip12::{ScreeningAttestation, is_screening_attestation_valid};
     use privacy::utils::constants::{
         CONTRACT_VERSION, DEPOSITOR_VALIDATION_MAX_AGE, DEPOSITOR_VALIDATION_MAX_FUTURE,
-        INVOKE_SELECTOR, OPEN_NOTE_SALT, STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
+        INVOKE_SELECTOR, INVOKE_WITH_COMPUTATION_SELECTOR, OPEN_NOTE_SALT, PRIVACY_COMPUTE_SELECTOR,
+        STRK_TOKEN_ADDRESS, VIRTUAL_SNOS, VIRTUAL_SNOS0,
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
@@ -33,8 +35,8 @@ pub mod Privacy {
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
         encrypt_user_addr, extract_compile_actions_inputs,
         extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
-        panic_with_server_actions, send_message_to_server, storage_path_to_felt252,
-        to_write_once_action, unpack,
+        panic_with_server_actions, propagate_external_panic, send_message_to_server,
+        storage_path_to_felt252, to_write_once_action, unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -296,6 +298,8 @@ pub mod Privacy {
                     ClientAction::Withdraw(input) => self
                         .withdraw(:user_addr, :input, ref :token_balances),
                     ClientAction::InvokeExternal(input) => self.invoke_external(:input),
+                    ClientAction::ComputeAndInvoke(input) => self
+                        .compute_and_invoke(:user_addr, :user_private_key, :input),
                 };
                 self._client_apply_actions(actions: actions.span(), ref :has_replay_protection);
                 server_actions.extend(actions);
@@ -534,6 +538,47 @@ pub mod Privacy {
             array![ServerAction::Invoke(InvokeInput { contract_address, calldata })]
         }
 
+        /// Calls the given contract's `privacy_compute` with `[identity_key] ++
+        /// compute_additional_data` and forwards its result as a server-side
+        /// `InvokeWithComputation` action.
+        /// A panic from `privacy_compute` is re-raised via `propagate_external_panic`.
+        fn compute_and_invoke(
+            self: @ContractState,
+            user_addr: ContractAddress,
+            user_private_key: felt252,
+            input: ComputeAndInvokeInput,
+        ) -> Array<ServerAction> {
+            input.assert_valid();
+            let ComputeAndInvokeInput {
+                contract_address, compute_additional_data, invoke_additional_data,
+            } = input;
+            let identity_key = compute_identity_key(
+                :user_addr, :user_private_key, :contract_address,
+            );
+            let mut compute_calldata = array![identity_key];
+            compute_calldata.append_span(compute_additional_data);
+            let compute_result =
+                match call_contract_syscall(
+                    address: contract_address,
+                    entry_point_selector: PRIVACY_COMPUTE_SELECTOR,
+                    calldata: compute_calldata.span(),
+                ) {
+                Ok(compute_result) => compute_result,
+                Err(panic_data) => propagate_external_panic(panic_data.span()),
+            };
+            assert(!compute_result.is_empty(), errors::EMPTY_COMPUTE_RESULT);
+            // The target's `privacy_invoke_with_computation` receives the compute result followed
+            // by the caller-supplied invoke data as a single calldata span.
+            let mut invoke_calldata = array![];
+            invoke_calldata.append_span(compute_result);
+            invoke_calldata.append_span(invoke_additional_data);
+            array![
+                ServerAction::InvokeWithComputation(
+                    InvokeInput { contract_address, calldata: invoke_calldata.span() },
+                ),
+            ]
+        }
+
         /// Returns the server actions to use a note.
         /// Assumes `owner_addr` is non-zero and `owner_private_key` is non-zero and canonical
         /// (checked in `main`).
@@ -720,6 +765,7 @@ pub mod Privacy {
                     ServerAction::TransferFrom(_) => {},
                     ServerAction::TransferTo(_) => {},
                     ServerAction::Invoke(_) => {},
+                    ServerAction::InvokeWithComputation(_) => {},
                     ServerAction::EmitViewingKeySet(_) => {},
                     ServerAction::EmitWithdrawal(_) => {},
                     ServerAction::EmitDeposit(_) => {},
@@ -830,26 +876,18 @@ pub mod Privacy {
                     },
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::Invoke(input) => {
-                        let open_note_deposits = self._apply_invoke(:input);
-                        if !open_note_deposits.is_empty() {
-                            // As we set the input.contract_address as the open_note depositor,
-                            // there can be only one open_note depositor address.
-                            let open_note_depositor = input.contract_address;
-                            assert(
-                                !self.blocked_open_note_depositors.read(open_note_depositor),
-                                errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
+                        self
+                            ._apply_invoke_and_deposits(
+                                :input, selector: INVOKE_SELECTOR, ref :undeposited_open_notes,
                             );
-                            // Apply deposits to open notes returned by Invoke.
-                            for deposit in open_note_deposits {
-                                self
-                                    ._deposit_to_open_note(
-                                        depositor: open_note_depositor, deposit: *deposit,
-                                    );
-                            }
-                            undeposited_open_notes = undeposited_open_notes
-                                .checked_sub(open_note_deposits.len())
-                                .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
-                        }
+                    },
+                    ServerAction::InvokeWithComputation(input) => {
+                        self
+                            ._apply_invoke_and_deposits(
+                                :input,
+                                selector: INVOKE_WITH_COMPUTATION_SELECTOR,
+                                ref :undeposited_open_notes,
+                            );
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
                     ServerAction::EmitWithdrawal(event) => self.emit(event),
@@ -929,17 +967,46 @@ pub mod Privacy {
             checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
-        fn _apply_invoke(ref self: ContractState, input: InvokeInput) -> Span<OpenNoteDeposit> {
+        fn _apply_invoke_and_deposits(
+            ref self: ContractState,
+            input: InvokeInput,
+            selector: felt252,
+            ref undeposited_open_notes: usize,
+        ) {
             let InvokeInput { contract_address, calldata } = input;
             let mut return_data = call_contract_syscall(
-                address: contract_address, entry_point_selector: INVOKE_SELECTOR, :calldata,
+                address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
             assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
-            deposits
+            self
+                ._apply_open_note_deposits(
+                    :deposits, depositor: contract_address, ref :undeposited_open_notes,
+                );
+        }
+
+        fn _apply_open_note_deposits(
+            ref self: ContractState,
+            deposits: Span<OpenNoteDeposit>,
+            depositor: ContractAddress,
+            ref undeposited_open_notes: usize,
+        ) {
+            if !deposits.is_empty() {
+                assert(
+                    !self.blocked_open_note_depositors.read(depositor),
+                    errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
+                );
+                // Apply deposits to open notes returned by Invoke.
+                for deposit in deposits {
+                    self._deposit_to_open_note(:depositor, deposit: *deposit);
+                }
+                undeposited_open_notes = undeposited_open_notes
+                    .checked_sub(deposits.len())
+                    .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
+            }
         }
 
         /// Applies a single deposit to an open note. Used when applying the span returned by an
