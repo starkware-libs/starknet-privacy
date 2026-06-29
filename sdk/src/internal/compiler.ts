@@ -468,7 +468,7 @@ export class ActionCompiler {
         withdrawals,
         poolAddress: this.poolAddress,
       });
-      const calldata = CallData.compile(call.calldata ?? []).map((value) => toBigInt(value));
+      const calldata = CallData.compile(call.calldata ?? []).map(toBigInt);
 
       const input = {
         type: "InvokeExternal",
