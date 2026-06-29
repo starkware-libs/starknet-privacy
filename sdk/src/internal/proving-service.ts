@@ -11,6 +11,19 @@ import type { OhttpClient } from "./ohttp-client.js";
 /** Default request timeout: 30s (proofs typically take a few seconds). */
 export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 
+/** Default number of retries after the initial attempt on a transient prove failure. */
+export const DEFAULT_PROVE_MAX_RETRIES = 3;
+/** Default base delay (ms) for exponential backoff between prove retries. */
+export const DEFAULT_PROVE_BASE_DELAY_MS = 1_000;
+
+/** JSON-RPC error code the prover returns when it is temporarily overloaded ("retry later"). */
+const SERVICE_BUSY_CODE = -32005;
+
+/** HTTP status codes treated as transient (worth retrying) on the plain-fetch transport. */
+const TRANSIENT_HTTP_STATUS = new Set([503]);
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 /**
  * Structured error from the proving service JSON-RPC endpoint.
  *
@@ -39,6 +52,44 @@ export class ProvingServiceError extends Error {
   }
 }
 
+/**
+ * Error thrown when the proving service responds with a non-2xx HTTP status on
+ * the plain-fetch transport. `status` lets callers (and the retry policy) branch
+ * on the HTTP status; 503 (service unavailable) is treated as transient and retried.
+ */
+export class ProvingServiceHttpError extends Error {
+  override readonly name = "ProvingServiceHttpError";
+
+  constructor(
+    public readonly status: number,
+    body: string
+  ) {
+    super(`Proving service HTTP ${status}: ${body}`);
+  }
+}
+
+/**
+ * Retry policy for transient proving-service failures — the prover returning
+ * service-busy (`-32005`) or HTTP 503. Non-transient errors (invalid tx,
+ * screening rejection, network failure) are never retried and surface immediately.
+ *
+ * Applies only to `proveTransaction`; `getSpecVersion`/`isHealthy` never retry so
+ * health checks stay fast.
+ */
+export interface ProvingRetryOptions {
+  /**
+   * Maximum retries after the initial attempt. `0` disables retries (fail on the
+   * first transient error). Default {@link DEFAULT_PROVE_MAX_RETRIES}.
+   */
+  maxRetries?: number;
+  /**
+   * Base delay in ms for exponential backoff: the wait before retry `attempt`
+   * (0-indexed) is `baseDelayMs * 2^attempt` — e.g. 1s, 2s, 4s with the default.
+   * Default {@link DEFAULT_PROVE_BASE_DELAY_MS}.
+   */
+  baseDelayMs?: number;
+}
+
 // TODO: Support "latest-verifiable" and { blocksBack: number } server-side; then accept them here and pass through.
 // Current server only supports block_id: "latest" | { block_number: N } | { block_hash: "0x..." }.
 
@@ -48,6 +99,12 @@ export interface ProvingServiceConfig {
   requestTimeoutMs?: number;
   /** When set, requests are encrypted via OHTTP instead of plain fetch. */
   ohttpClient?: OhttpClient;
+  /**
+   * Retry policy for transient (service-busy / HTTP 503) failures on
+   * `proveTransaction`. Defaults to {@link DEFAULT_PROVE_MAX_RETRIES} retries
+   * with {@link DEFAULT_PROVE_BASE_DELAY_MS} base backoff.
+   */
+  retry?: ProvingRetryOptions;
 }
 
 /** Result of starknet_proveTransaction. */
@@ -124,14 +181,23 @@ export class ProvingService {
   private baseUrl: string;
   private requestTimeoutMs: number;
   private ohttpClient?: OhttpClient;
+  private readonly maxRetries: number;
+  private readonly baseDelayMs: number;
 
   constructor(config: ProvingServiceConfig) {
     this.baseUrl = config.baseUrl;
     this.requestTimeoutMs = config.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS;
     this.ohttpClient = config.ohttpClient;
+    this.maxRetries = config.retry?.maxRetries ?? DEFAULT_PROVE_MAX_RETRIES;
+    this.baseDelayMs = config.retry?.baseDelayMs ?? DEFAULT_PROVE_BASE_DELAY_MS;
   }
 
-  private async call<T>(method: string, params: unknown): Promise<T> {
+  /**
+   * Single JSON-RPC call attempt (no retry). On a non-2xx HTTP response throws
+   * {@link ProvingServiceHttpError}; on a JSON-RPC error body throws
+   * {@link ProvingServiceError}.
+   */
+  private async callOnce<T>(method: string, params: unknown): Promise<T> {
     const body = {
       jsonrpc: "2.0",
       id: Date.now(),
@@ -160,7 +226,7 @@ export class ProvingService {
 
       const text = await res.text();
       if (!res.ok) {
-        throw new Error(`Proving service HTTP ${res.status}: ${text}`);
+        throw new ProvingServiceHttpError(res.status, text);
       }
 
       json = JSON.parse(text) as JsonRpcResponse;
@@ -179,8 +245,26 @@ export class ProvingService {
     return result;
   }
 
+  /**
+   * JSON-RPC call that retries transient failures (service-busy `-32005` or HTTP
+   * 503) with exponential backoff per the configured {@link ProvingRetryOptions}.
+   * Non-transient errors are rethrown on the first attempt.
+   */
+  private async callWithRetry<T>(method: string, params: unknown): Promise<T> {
+    for (let attempt = 0; ; attempt++) {
+      try {
+        return await this.callOnce<T>(method, params);
+      } catch (error) {
+        if (attempt >= this.maxRetries || !isTransientError(error)) {
+          throw error;
+        }
+        await sleep(this.baseDelayMs * 2 ** attempt);
+      }
+    }
+  }
+
   async getSpecVersion(): Promise<string> {
-    return this.call<string>("starknet_specVersion", []);
+    return this.callOnce<string>("starknet_specVersion", []);
   }
 
   async proveTransaction(
@@ -191,7 +275,7 @@ export class ProvingService {
       typeof blockId === "number" || typeof blockId === "bigint"
         ? { block_number: Number(blockId) }
         : blockId;
-    const result = await this.call<ProveTransactionResult>("starknet_proveTransaction", {
+    const result = await this.callWithRetry<ProveTransactionResult>("starknet_proveTransaction", {
       block_id: blockIdParam,
       transaction,
     });
@@ -216,4 +300,15 @@ export class ProvingService {
       return false;
     }
   }
+}
+
+/** Whether an error from a single prove attempt is transient and worth retrying. */
+function isTransientError(error: unknown): boolean {
+  if (error instanceof ProvingServiceError) {
+    return error.code === SERVICE_BUSY_CODE;
+  }
+  if (error instanceof ProvingServiceHttpError) {
+    return TRANSIENT_HTTP_STATUS.has(error.status);
+  }
+  return false;
 }

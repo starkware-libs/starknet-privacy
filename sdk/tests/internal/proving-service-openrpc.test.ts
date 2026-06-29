@@ -135,6 +135,21 @@ function mockProveTransactionResponse(
   } as Response;
 }
 
+/** JSON-RPC error response (HTTP 200 with an `error` body), e.g. service-busy (-32005). */
+function mockJsonRpcErrorResponse(code: number, message: string, data?: string): Response {
+  return {
+    ok: true,
+    status: 200,
+    text: () =>
+      Promise.resolve(JSON.stringify({ jsonrpc: "2.0", id: 1, error: { code, message, data } })),
+  } as Response;
+}
+
+/** Non-2xx HTTP response from the proving service (plain-fetch transport). */
+function mockHttpErrorResponse(status: number, body: string): Response {
+  return { ok: false, status, text: () => Promise.resolve(body) } as Response;
+}
+
 function getRequestBody<T = Record<string, unknown>>(mockFetch: ReturnType<typeof vi.fn>): T {
   const init = mockFetch.mock.calls[0][1] as RequestInit;
   return JSON.parse(init.body as string) as T;
@@ -509,24 +524,12 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
     });
 
     it("ProvingServiceError exposes code for service busy", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue({
-        ok: true,
-        status: 200,
-        text: () =>
-          Promise.resolve(
-            JSON.stringify({
-              jsonrpc: "2.0",
-              id: 1,
-              error: {
-                code: -32005,
-                message: "Service is busy",
-                data: "retry later",
-              },
-            })
-          ),
-      } as Response);
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockJsonRpcErrorResponse(-32005, "Service is busy", "retry later")
+      );
 
-      const service = new ProvingService({ baseUrl: PROVER_URL });
+      // Disable retries so this asserts the single-attempt error shape, not the retry path.
+      const service = new ProvingService({ baseUrl: PROVER_URL, retry: { maxRetries: 0 } });
       const error = await service
         .proveTransaction("latest", MINIMAL_INVOKE_TX)
         .catch((e: unknown) => e);
@@ -549,16 +552,105 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
     });
 
     it("proveTransaction throws when HTTP status is not ok", async () => {
-      vi.spyOn(globalThis, "fetch").mockResolvedValue({
-        ok: false,
-        status: 503,
-        text: () => Promise.resolve("Service Unavailable"),
-      } as Response);
+      vi.spyOn(globalThis, "fetch").mockResolvedValue(
+        mockHttpErrorResponse(503, "Service Unavailable")
+      );
 
-      const service = new ProvingService({ baseUrl: PROVER_URL });
+      // Disable retries so this asserts the single-attempt error shape, not the retry path.
+      const service = new ProvingService({ baseUrl: PROVER_URL, retry: { maxRetries: 0 } });
       await expect(service.proveTransaction("latest", MINIMAL_INVOKE_TX)).rejects.toThrow(
         /Proving service HTTP 503/
       );
+    });
+  });
+
+  describe("proveTransaction retry on transient errors", () => {
+    // baseDelayMs: 0 keeps the exponential backoff at 0ms so retry tests run instantly.
+    const NO_BACKOFF = { baseDelayMs: 0 };
+
+    it("retries service-busy (-32005) then returns the eventual success", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(mockJsonRpcErrorResponse(-32005, "Service is busy"))
+        .mockResolvedValueOnce(mockJsonRpcErrorResponse(-32005, "Service is busy"))
+        .mockResolvedValueOnce(mockProveTransactionResponse());
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        retry: { maxRetries: 3, ...NO_BACKOFF },
+      });
+      const result = await service.proveTransaction("latest", MINIMAL_INVOKE_TX);
+
+      expect(result.proof).toBe(DEFAULT_PROVE_RESULT.proof);
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it("retries HTTP 503 then returns the eventual success", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValueOnce(mockHttpErrorResponse(503, "Service Unavailable"))
+        .mockResolvedValueOnce(mockProveTransactionResponse());
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        retry: { maxRetries: 3, ...NO_BACKOFF },
+      });
+      const result = await service.proveTransaction("latest", MINIMAL_INVOKE_TX);
+
+      expect(result.proof).toBe(DEFAULT_PROVE_RESULT.proof);
+      expect(fetchSpy).toHaveBeenCalledTimes(2);
+    });
+
+    it("gives up after maxRetries and throws the last busy error", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(mockJsonRpcErrorResponse(-32005, "Service is busy"));
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        retry: { maxRetries: 2, ...NO_BACKOFF },
+      });
+      const error = await service
+        .proveTransaction("latest", MINIMAL_INVOKE_TX)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ProvingServiceError);
+      expect((error as ProvingServiceError).code).toBe(-32005);
+      // 1 initial attempt + 2 retries.
+      expect(fetchSpy).toHaveBeenCalledTimes(3);
+    });
+
+    it("does not retry non-transient errors (e.g. screening rejection)", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(
+          mockJsonRpcErrorResponse(10000, "Transaction rejected", "0xbad blocked")
+        );
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        retry: { maxRetries: 3, ...NO_BACKOFF },
+      });
+      const error = await service
+        .proveTransaction("latest", MINIMAL_INVOKE_TX)
+        .catch((e: unknown) => e);
+
+      expect(error).toBeInstanceOf(ProvingServiceError);
+      expect((error as ProvingServiceError).code).toBe(10000);
+      expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+
+    it("getSpecVersion does not retry on service-busy (keeps health checks fast)", async () => {
+      const fetchSpy = vi
+        .spyOn(globalThis, "fetch")
+        .mockResolvedValue(mockJsonRpcErrorResponse(-32005, "Service is busy"));
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        retry: { maxRetries: 5, ...NO_BACKOFF },
+      });
+      await expect(service.getSpecVersion()).rejects.toBeInstanceOf(ProvingServiceError);
+      expect(fetchSpy).toHaveBeenCalledOnce();
     });
   });
 
