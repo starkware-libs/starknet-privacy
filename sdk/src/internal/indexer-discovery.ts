@@ -225,20 +225,41 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
   }> {
     if (recipients === "total-only") {
-      // For total-only, do a minimal outgoing sync to get the total channel count
-      const body: Record<string, unknown> = {
-        contract_address: toHex(this.contractAddress),
-        sender_address: toHex(address),
-        viewing_key: toHex(viewingKey),
-        cursor: { channel_discovery_complete: false },
-      };
-      if (params?.blockIdentifier !== undefined) {
-        body.block_ref = params.blockIdentifier;
+      // Walk outgoing channels to the sentinel to get the authoritative count.
+      // The service only sets `total_n_channels` once channel discovery reaches
+      // the sentinel (`channel_discovery_complete`). A single request caps at
+      // `max_channels`, so for a sender past that cap it returns no total —
+      // previously surfaced as `undefined`, which the compiler turned into a
+      // channel index of 0 and a NON_ZERO_VALUE write-once collision. Paginate
+      // to completion, pruning complete channels each round so the cursor frees
+      // slots and discovery can advance past the cap.
+      let apiCursor: ApiDiscoveryCursor = { channel_discovery_complete: false };
+      let blockRef: BlockIdentifier | undefined;
+      let complete = false;
+      do {
+        const body: Record<string, unknown> = {
+          contract_address: toHex(this.contractAddress),
+          sender_address: toHex(address),
+          viewing_key: toHex(viewingKey),
+          cursor: apiCursor,
+        };
+        if (blockRef) {
+          body.block_ref = blockRef;
+        } else if (params?.blockIdentifier !== undefined) {
+          body.block_ref = params.blockIdentifier;
+        }
+        const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
+        blockRef = resp.block_ref;
+        apiCursor = resp.cursor;
+        complete = isApiCursorComplete(resp.cursor);
+        if (!complete) pruneCompleteCursor(apiCursor);
+      } while (!complete);
+      if (apiCursor.total_n_channels === undefined) {
+        throw new Error("outgoing_state reported complete without total_n_channels");
       }
-      const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
       return {
-        timestamp: resp.block_ref,
-        total: resp.cursor.total_n_channels!,
+        timestamp: blockRef!,
+        total: apiCursor.total_n_channels,
       };
     }
 

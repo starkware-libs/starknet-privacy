@@ -9,6 +9,17 @@
   attestation with the canonical test screener key, so integration suites can
   drive a screening-capable pool's deposit path end to end.
 
+### Fixed
+
+- `discoverChannels("total-only")` now paginates outgoing channel discovery to
+  the sentinel instead of issuing a single request. A sender with at least
+  `max_channels` (default 256) outgoing channels caps the first page before the
+  sentinel, so the service returned no `total_n_channels`; the count surfaced as
+  `undefined` and the compiler turned it into channel index `0`, producing a
+  `NON_ZERO_VALUE` write-once collision when opening a channel to the next
+  (e.g. 257th) recipient. The count is now derived once discovery completes, and
+  a missing total after completion throws instead of being silently coerced.
+
 ### Breaking
 
 - Privacy pool role-management ABI changed (`PrivacyPoolABI` regenerated). The
