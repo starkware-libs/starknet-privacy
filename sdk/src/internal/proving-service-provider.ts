@@ -15,7 +15,11 @@ import type {
 import { toHex } from "../utils/convert.js";
 import { getDefaultProofDetails } from "./proof-invocation-factory.js";
 import { OhttpClient, type OhttpOption } from "./ohttp-client.js";
-import { DEFAULT_REQUEST_TIMEOUT_MS, ProvingService } from "./proving-service.js";
+import {
+  DEFAULT_REQUEST_TIMEOUT_MS,
+  ProvingService,
+  type ProvingRetryOptions,
+} from "./proving-service.js";
 
 /** Options for ProvingServiceProofProvider. */
 export type ProvingServiceProofProviderOptions = {
@@ -40,6 +44,11 @@ export type ProvingServiceProofProviderOptions = {
   poolAddress?: StarknetAddress;
   /** Enable OHTTP envelope encryption. Pass `true` for defaults, or an object for custom relay/key config. */
   ohttp?: OhttpOption;
+  /**
+   * Retry policy for transient (service-busy `-32005` / HTTP 503) prove failures.
+   * Pass `{ maxRetries: 0 }` to disable.
+   */
+  retry?: ProvingRetryOptions;
 };
 
 /**
@@ -74,6 +83,7 @@ export class ProvingServiceProofProvider implements ProofProviderInterface {
       baseUrl: provingServiceUrl,
       requestTimeoutMs: options.requestTimeoutMs ?? DEFAULT_REQUEST_TIMEOUT_MS,
       ohttpClient,
+      retry: options.retry,
     });
     this.blockIdentifier = options.blockIdentifier ?? "latest";
     if (options.nodeUrl != null) {
