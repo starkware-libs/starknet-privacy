@@ -375,6 +375,35 @@ describe("IndexerDiscoveryProvider", () => {
       expect(result.channels).toBeUndefined();
     });
 
+    it("returns total alongside channels for an explicit recipients filter", async () => {
+      const provider = createProvider();
+      mockFetchJson({
+        body: outgoingSyncResponse({
+          channels: [channelEntry(RECIPIENT_ADDR, PUBLIC_KEY_1, CHANNEL_KEY_1)],
+          cursor: {
+            channel_discovery_complete: true,
+            total_n_channels: 9,
+            channels: {
+              [RECIPIENT_ADDR]: {
+                channel_key: CHANNEL_KEY_1,
+                subchannel_discovery_complete: true,
+                subchannels: {},
+              },
+            },
+          },
+        }),
+      });
+
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, [
+        BigInt(RECIPIENT_ADDR),
+      ]);
+
+      // The recipient walk reaches the sentinel, so the count comes back without
+      // a separate total-only request.
+      expect(result.total).toBe(9);
+      expect(result.channels!.has(BigInt(RECIPIENT_ADDR))).toBe(true);
+    });
+
     it("prefers real channels over precomputed channels for the same recipient", async () => {
       const provider = createProvider();
       const PRECOMPUTED_KEY = "0xdd1";

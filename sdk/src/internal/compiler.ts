@@ -521,7 +521,7 @@ export class ActionCompiler {
 
     // Discover channels for all recipients that need discovery in a single call
     // discoverChannels computes channel keys and returns current nonce state
-    const { channels } = await this.discoveryProvider.discoverChannels(
+    const { channels, total } = await this.discoveryProvider.discoverChannels(
       this.userAddress,
       this.userViewingKey,
       recipientsToDiscover,
@@ -533,14 +533,22 @@ export class ActionCompiler {
       return { channels, total: undefined };
     }
 
-    const { total } = await this.discoveryProvider.discoverChannels(
-      this.userAddress,
-      this.userViewingKey,
-      "total-only",
-      { blockIdentifier: options?.provingBlockId }
-    );
+    // Opening a new channel needs the sender's outgoing-channel count. The
+    // discovery above already walked to the sentinel for the indexer provider,
+    // so reuse its count; only providers whose targeted discovery stops short of
+    // the sentinel (e.g. on-chain ContractDiscovery) fall back to a count query.
+    const resolvedTotal =
+      total ??
+      (
+        await this.discoveryProvider.discoverChannels(
+          this.userAddress,
+          this.userViewingKey,
+          "total-only",
+          { blockIdentifier: options?.provingBlockId }
+        )
+      ).total;
 
-    return { channels, total };
+    return { channels, total: resolvedTotal };
   }
 
   /**
