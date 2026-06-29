@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3-RC.1
+
 ### Added
 
 - Prove retries: `proveTransaction` now retries transient failures (prover
