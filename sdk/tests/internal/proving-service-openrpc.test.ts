@@ -13,8 +13,10 @@ import { Ajv } from "ajv";
 import {
   ProvingService,
   ProvingServiceError,
+  MAX_PROVE_BACKOFF_MS,
   type MessageToL1,
 } from "../../src/internal/proving-service.js";
+import type { OhttpClient } from "../../src/internal/ohttp-client.js";
 
 const PROVER_URL = "https://prover.test";
 
@@ -651,6 +653,56 @@ describe("ProvingService (proving-service.ts) vs OpenRPC spec", () => {
       });
       await expect(service.getSpecVersion()).rejects.toBeInstanceOf(ProvingServiceError);
       expect(fetchSpy).toHaveBeenCalledOnce();
+    });
+
+    it("retries service-busy (-32005) over the OHTTP transport", async () => {
+      // OHTTP returns the parsed JSON-RPC object from post(); the busy code is a body
+      // error, so it is retried on this transport too (unlike a transport-level 503).
+      const post = vi
+        .fn()
+        .mockResolvedValueOnce({
+          jsonrpc: "2.0",
+          id: 1,
+          error: { code: -32005, message: "Service is busy" },
+        })
+        .mockResolvedValueOnce({ jsonrpc: "2.0", id: 1, result: DEFAULT_PROVE_RESULT });
+      const ohttpClient = { post } as unknown as OhttpClient;
+
+      const service = new ProvingService({
+        baseUrl: PROVER_URL,
+        ohttpClient,
+        retry: { maxRetries: 3, ...NO_BACKOFF },
+      });
+      const result = await service.proveTransaction("latest", MINIMAL_INVOKE_TX);
+
+      expect(result.proof).toBe(DEFAULT_PROVE_RESULT.proof);
+      expect(post).toHaveBeenCalledTimes(2);
+    });
+
+    it("clamps backoff to MAX_PROVE_BACKOFF_MS for a large baseDelayMs", async () => {
+      vi.useFakeTimers();
+      try {
+        vi.spyOn(globalThis, "fetch")
+          .mockResolvedValueOnce(mockJsonRpcErrorResponse(-32005, "Service is busy"))
+          .mockResolvedValueOnce(mockProveTransactionResponse());
+        const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout");
+
+        const service = new ProvingService({
+          baseUrl: PROVER_URL,
+          // Uncapped, this single backoff would sleep 600_000ms; the cap must clamp it.
+          retry: { maxRetries: 1, baseDelayMs: 600_000 },
+        });
+        const provePromise = service.proveTransaction("latest", MINIMAL_INVOKE_TX);
+        await vi.advanceTimersByTimeAsync(MAX_PROVE_BACKOFF_MS);
+        const result = await provePromise;
+
+        expect(result.proof).toBe(DEFAULT_PROVE_RESULT.proof);
+        const backoffDelays = setTimeoutSpy.mock.calls.map((call) => call[1]);
+        expect(backoffDelays).toContain(MAX_PROVE_BACKOFF_MS);
+        expect(backoffDelays).not.toContain(600_000);
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

@@ -99,6 +99,7 @@ export function createPrivateTransfers(
         nodeUrl: params.provingProvider.nodeUrl,
         poolAddress: params.poolContractAddress,
         ohttp: params.provingProvider.ohttp,
+        retry: params.provingProvider.retry,
       })
     : params.provingProvider;
 

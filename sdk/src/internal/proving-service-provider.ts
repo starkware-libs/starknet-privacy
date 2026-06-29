@@ -46,8 +46,7 @@ export type ProvingServiceProofProviderOptions = {
   ohttp?: OhttpOption;
   /**
    * Retry policy for transient (service-busy `-32005` / HTTP 503) prove failures.
-   * Defaults to 3 retries with 1s base exponential backoff; pass `{ maxRetries: 0 }`
-   * to disable, or raise `maxRetries`/`baseDelayMs` to retry more before raising.
+   * Pass `{ maxRetries: 0 }` to disable.
    */
   retry?: ProvingRetryOptions;
 };

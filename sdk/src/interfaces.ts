@@ -12,7 +12,7 @@ import type {
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
 import type { OhttpOption } from "./internal/ohttp-client.js";
-import type { AdditionalData } from "./internal/proving-service.js";
+import type { AdditionalData, ProvingRetryOptions } from "./internal/proving-service.js";
 
 export type Amount = bigint;
 
@@ -137,6 +137,11 @@ export type ProofProviderConfig = {
   nodeUrl?: string;
   /** Enable OHTTP envelope encryption for the proving service. Pass `true` for defaults, or an object for custom relay/key config. */
   ohttp?: OhttpOption;
+  /**
+   * Retry policy for transient (service-busy `-32005` / HTTP 503) prove failures.
+   * Pass `{ maxRetries: 0 }` to disable.
+   */
+  retry?: ProvingRetryOptions;
 };
 
 /**

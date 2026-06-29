@@ -15,6 +15,11 @@ export const DEFAULT_REQUEST_TIMEOUT_MS = 30_000;
 export const DEFAULT_PROVE_MAX_RETRIES = 3;
 /** Default base delay (ms) for exponential backoff between prove retries. */
 export const DEFAULT_PROVE_BASE_DELAY_MS = 1_000;
+/**
+ * Upper bound on a single backoff delay. Caps `baseDelayMs * 2^attempt` so a large
+ * caller-supplied `maxRetries` can't schedule an unbounded (days-long) sleep.
+ */
+export const MAX_PROVE_BACKOFF_MS = 30_000;
 
 /** JSON-RPC error code the prover returns when it is temporarily overloaded ("retry later"). */
 const SERVICE_BUSY_CODE = -32005;
@@ -75,6 +80,11 @@ export class ProvingServiceHttpError extends Error {
  *
  * Applies only to `proveTransaction`; `getSpecVersion`/`isHealthy` never retry so
  * health checks stay fast.
+ *
+ * Transport note: the service-busy `-32005` code is a JSON-RPC body error and is
+ * retried on both the plain-fetch and OHTTP transports. The HTTP 503 case is only
+ * retried on plain fetch — over OHTTP a 503 surfaces as a generic error from the
+ * OHTTP layer (no status), so it is not classified as transient.
  */
 export interface ProvingRetryOptions {
   /**
@@ -221,6 +231,8 @@ export class ProvingService {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
+        // Per-attempt timeout: each retry gets a fresh budget, so worst-case wall
+        // time on a hung connection is (maxRetries + 1) * requestTimeoutMs plus backoff.
         signal: AbortSignal.timeout(this.requestTimeoutMs),
       });
 
@@ -258,7 +270,7 @@ export class ProvingService {
         if (attempt >= this.maxRetries || !isTransientError(error)) {
           throw error;
         }
-        await sleep(this.baseDelayMs * 2 ** attempt);
+        await sleep(Math.min(this.baseDelayMs * 2 ** attempt, MAX_PROVE_BACKOFF_MS));
       }
     }
   }

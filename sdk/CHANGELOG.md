@@ -6,13 +6,17 @@
 
 - Prove retries: `proveTransaction` now retries transient failures (prover
   service-busy `-32005` and HTTP 503) with exponential backoff. Configurable via
-  a new `retry?: { maxRetries?; baseDelayMs? }` option on `ProvingServiceConfig`
-  and `ProvingServiceProofProviderOptions` (defaults: 3 retries, 1s base →
-  1s/2s/4s). Pass `{ maxRetries: 0 }` to disable, or raise the values to retry
-  more before raising to the caller. Non-transient errors (invalid tx, screening
-  rejection, network failure) still surface on the first attempt, and
-  `getSpecVersion`/`isHealthy` never retry so health checks stay fast. Exported
-  the `ProvingRetryOptions` type and a new `ProvingServiceHttpError` (carries
+  a new `retry?: { maxRetries?; baseDelayMs? }` option on `ProvingServiceConfig`,
+  `ProvingServiceProofProviderOptions`, and the `createPrivateTransfers`
+  `provingProvider` config (defaults: 3 retries, 1s base → 1s/2s/4s; each
+  backoff is capped at `MAX_PROVE_BACKOFF_MS` = 30s so a large `maxRetries`
+  can't schedule an unbounded wait). Pass `{ maxRetries: 0 }` to disable, or
+  raise the values to retry more before raising to the caller. Non-transient
+  errors (invalid tx, screening rejection, network failure) still surface on the
+  first attempt, and `getSpecVersion`/`isHealthy` never retry so health checks
+  stay fast. The busy `-32005` code is retried on both the plain-fetch and OHTTP
+  transports; an HTTP 503 is retried on plain fetch only. Exported the
+  `ProvingRetryOptions` type and a new `ProvingServiceHttpError` (carries
   `status`) thrown for non-2xx HTTP responses on the plain-fetch transport.
 - Testing: exported `ScreeningCallMockProofProvider` from the `/testing` entry
   point. It extends `CallMockProofProvider` to sign each deposit's screening
