@@ -7,6 +7,7 @@ import type {
   Call,
   CallDetails,
   constants,
+  ProviderInterface,
   SignerInterface,
 } from "starknet";
 import { ec } from "starknet";
@@ -321,6 +322,17 @@ export type ExecuteOptions = {
   provingBlockId?: ProvingBlockId;
 };
 
+export type SimulateOptions = {
+  /**
+   * Node provider used to call the pool's view function for fee estimation.
+   * Required because the minimal `PrivateTransfersUser` ({ address, signer })
+   * carries no provider of its own.
+   */
+  provider: ProviderInterface;
+  /** When true, validate the user's signature during simulation. Default: false. */
+  validateSignature?: boolean;
+};
+
 export type Warning = {
   code: WarningCode;
   message: string;
@@ -456,6 +468,13 @@ export interface PrivateTransfersInterface {
   execute(actions: Actions, options?: ExecuteOptions): Promise<ExecuteResult>;
 
   /**
+   * Simulate a private transaction to estimate gas costs without real proof generation.
+   * Uses a mock proof provider internally — the returned CallAndProof has the same
+   * calldata structure as a real transaction, suitable for fee estimation.
+   */
+  simulate(actions: Actions, options: ExecuteOptions & SimulateOptions): Promise<ExecuteResult>;
+
+  /**
    * Return the transaction to be proven so it can be sent independently to the prover
    */
   createProofInvocation(
@@ -545,6 +564,9 @@ export interface TokenOperationsBuilder {
 
   /** Build proof invocation without executing */
   createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
+
+  /** Simulate all queued operations for fee estimation without real proof generation */
+  simulate(options: SimulateOptions): Promise<ExecuteResult>;
 }
 
 /**
@@ -643,6 +665,9 @@ export interface PrivateTransfersBuilder {
 
   /** Build proof invocation without executing */
   createProofInvocation(options?: ExecuteOptions): Promise<ProofInvocationResult>;
+
+  /** Simulate all queued operations for fee estimation without real proof generation */
+  simulate(options: SimulateOptions): Promise<ExecuteResult>;
 }
 
 /** INVOKE branch of AccountInvocationItem; used for proof invocations and buildTransaction. */

@@ -8,11 +8,10 @@
 import type { BlockIdentifier, constants, ETransactionVersion3, ProviderInterface } from "starknet";
 import { EDAMode, encode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
-import { getDefaultProofDetails } from "../internal/proof-invocation-factory.js";
-import { ProvingServiceError } from "../internal/proving-service.js";
+import { getDefaultProofDetails, extractExecuteViewCalldata } from "./proof-invocation-factory.js";
+import { ProvingServiceError } from "./proving-service.js";
 import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
 import { toBigInt } from "../utils/convert.js";
-import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
 
 /** VALIDATED constant - 'VALID' encoded as short string felt252 */
 const VALIDATED = encode.utf8ToBigInt("VALID");
@@ -25,7 +24,8 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
 export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
     protected readonly provider: ProviderInterface,
-    protected readonly chainId: constants.StarknetChainId
+    protected readonly chainId: constants.StarknetChainId,
+    private readonly options?: { validateSignature?: boolean }
   ) {}
 
   async getDefaultDetails() {
@@ -35,7 +35,9 @@ export class CallMockProofProvider implements ProofProviderInterface {
   async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
     // Validate signature similar to how __execute__ does in the contract.
     // compile_actions skips this since view functions don't have tx_info.
-    await this.validateSignature(invocation);
+    if (this.options?.validateSignature !== false) {
+      await this.validateSignature(invocation);
+    }
 
     // __execute__ calldata is Array<Call> with one Call targeting compile_actions.
     // Layout: [1, to, selector, inner_len, ...inner_calldata]
@@ -55,16 +57,23 @@ export class CallMockProofProvider implements ProofProviderInterface {
       blockIdentifier
     );
 
-    // Build proof facts for on-chain validation when provider supports getBlock (e.g. e2e with RpcProvider).
-    // Blockifier requires base_block_number to be at least STORED_BLOCK_HASH_BUFFER blocks behind current.
-    // TODO: Use latest-verifiable.
-    let proofFacts: string[] = [];
-    const latestBlock = await this.provider.getBlock("latest");
-    const currentBlockNumber = BigInt(latestBlock.block_number);
-    const blocksBack = BigInt(10);
-    const baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
+    // Build proof facts for on-chain validation.
+    // When the caller provides an explicit blockIdentifier, use it as the base block directly
+    // (the caller is responsible for picking a block old enough for the blockifier to accept).
+    // When falling back to "latest", subtract STORED_BLOCK_HASH_BUFFER so the blockifier
+    // can verify the block hash from state.
+    let baseBlockNumber: bigint;
+    if (blockIdentifier != null) {
+      const block = await this.provider.getBlock(blockIdentifier);
+      baseBlockNumber = BigInt(block.block_number);
+    } else {
+      const latestBlock = await this.provider.getBlock("latest");
+      const currentBlockNumber = BigInt(latestBlock.block_number);
+      const blocksBack = 10n;
+      baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
+    }
     const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
-    proofFacts = buildProofFacts(
+    const proofFacts = buildProofFacts(
       invocation.sender_address,
       poolClassHash,
       result,

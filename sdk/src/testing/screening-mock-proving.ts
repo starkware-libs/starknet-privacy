@@ -16,7 +16,7 @@ import { CallData, num, type BlockIdentifier } from "starknet";
 import { PrivacyPoolABI } from "../internal/abi.js";
 import type { Proof, ProofInvocation } from "../interfaces.js";
 import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
-import { CallMockProofProvider } from "./mock-proving.js";
+import { CallMockProofProvider } from "../internal/mock-proving.js";
 import { signScreeningAttestation, SCREENING_SIGNER_PRIVATE_KEY } from "./screening-signer.js";
 
 const CLIENT_ACTIONS_TYPE = "core::array::Span::<privacy::actions::ClientAction>" as const;

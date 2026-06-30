@@ -249,4 +249,99 @@ describe("Devnet Integration", () => {
     const strkAfter = strkNotes.reduce((sum, note) => sum + note.amount, 0n);
     expect(strkAfter - strkBefore).toBe(depositAmount - swapAmount);
   }, 120000);
+
+  // ============ Fee Simulation ============
+  // simulate() returns a mock CallAndProof suitable for gas estimation without real proving.
+  // End-to-end flow: simulate at a historical block → check structure → estimate fee →
+  // execute for real and verify simulate didn't consume state.
+
+  it("simulate → structure + historical block + fee estimate + execute without collision", async () => {
+    const { env, transfers } = testEnv;
+
+    // Fresh deposit so alice has a known note to spend.
+    await env.alice.execute({
+      contractAddress: env.strk,
+      entrypoint: "approve",
+      calldata: [env.privacy.address, 100n, 0n],
+    });
+    const depositResult = await transfers.alice
+      .build({
+        autoRegister: true,
+        autoSetup: true,
+        autoDiscover: { notes: "refresh", channels: "refresh" },
+      })
+      .with(env.strk)
+      .deposit({ amount: 100n })
+      .surplusTo(env.alice.address)
+      .execute();
+    const depositReceipt = await devnet.executeOutside(depositResult.callAndProof);
+    expect(depositReceipt.isReverted()).toBe(false);
+
+    // Advance empty blocks so olderBlock (used as provingBlockId and base block for proof
+    // facts) is sufficiently behind latest for the blockifier to accept it.
+    const rpcUrl = devnet.url;
+    for (let blockIndex = 0; blockIndex < 15; blockIndex++) {
+      await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
+      });
+    }
+    const latestBlock = await env.provider.getBlockNumber();
+    const olderBlock = latestBlock - 10;
+
+    const buildOptions = {
+      autoDiscover: { notes: "refresh", channels: "refresh" } as const,
+      autoSelectNotes: "naive" as const,
+      registryConst: true,
+    };
+
+    // Simulate a withdraw at olderBlock — wallet gets a CallAndProof with mock proofFacts.
+    const simResult = await transfers.alice
+      .build({ ...buildOptions, provingBlockId: olderBlock })
+      .with(env.strk)
+      .withdraw({ amount: 50n, recipient: env.alice.address })
+      .surplusTo(env.alice.address)
+      .simulate({ provider: env.provider });
+
+    // Structure checks
+    expect(simResult.callAndProof.call.entrypoint).toBe("apply_actions");
+    expect(simResult.callAndProof.call.contractAddress).toBeDefined();
+    expect(simResult.callAndProof.proof.proofFacts.length).toBe(9);
+
+    // Explicit provingBlockId used as-is for base_block_number in proofFacts[4].
+    const baseBlockNumber = BigInt(simResult.callAndProof.proof.proofFacts[4]);
+    expect(baseBlockNumber).toBe(BigInt(olderBlock));
+
+    // Wallet feeds the simulated CallAndProof into starknet.js's native fee estimation.
+    // proofFacts flow into the transaction-level fields; proof data is ignored under
+    // devnet's --proof-mode none. skipValidate bypasses account-signature validation.
+    const fee = await env.alice.estimateInvokeFee(simResult.callAndProof.call, {
+      proofFacts: simResult.callAndProof.proof.proofFacts,
+      skipValidate: true,
+    });
+    expect(BigInt(fee.overall_fee)).toBeGreaterThan(0n);
+
+    // Execute the same withdrawal for real — must succeed because simulate didn't consume the note.
+    const execResult = await transfers.alice
+      .build(buildOptions)
+      .with(env.strk)
+      .withdraw({ amount: 50n, recipient: env.alice.address })
+      .surplusTo(env.alice.address)
+      .execute();
+
+    // Same call shape as the simulation (same contract, entrypoint, calldata length).
+    expect(simResult.callAndProof.call.contractAddress).toBe(
+      execResult.callAndProof.call.contractAddress
+    );
+    expect(simResult.callAndProof.call.entrypoint).toBe(execResult.callAndProof.call.entrypoint);
+    expect(simResult.callAndProof.call.calldata!.length).toBe(
+      execResult.callAndProof.call.calldata!.length
+    );
+    expect(execResult.callAndProof.proof.proofFacts.length).toBe(9);
+
+    // Submit the execute — must not revert (proves simulate didn't touch on-chain state).
+    const execReceipt = await devnet.executeOutside(execResult.callAndProof);
+    expect(execReceipt.isReverted()).toBe(false);
+  }, 120000);
 });

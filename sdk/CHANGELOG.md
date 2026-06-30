@@ -20,6 +20,12 @@
   transports; an HTTP 503 is retried on plain fetch only. Exported the
   `ProvingRetryOptions` type and a new `ProvingServiceHttpError` (carries
   `status`) thrown for non-2xx HTTP responses on the plain-fetch transport.
+- `simulate()` method on `PrivateTransfersInterface`, `PrivateTransfersBuilder`,
+  and `TokenOperationsBuilder` for gas fee estimation without real proof
+  generation.
+- `SimulateOptions` type with a required `provider` (node provider the mock
+  prover calls to build proof facts — the minimal `{ address, signer }` account
+  carries none) and an optional `validateSignature` flag.
 - Testing: exported `ScreeningCallMockProofProvider` from the `/testing` entry
   point. It extends `CallMockProofProvider` to sign each deposit's screening
   attestation with the canonical test screener key, so integration suites can
