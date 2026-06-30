@@ -40,9 +40,15 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
       poolMode?: PoolCapabilityMode;
+      subAccountAnonymizerAddress?: StarknetAddress;
     }
   ) {
-    super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
+    super(
+      params.account.address,
+      params.viewingKeyProvider,
+      params.discoveryProvider,
+      params.subAccountAnonymizerAddress
+    );
   }
 
   private async getCompiler(): Promise<ActionCompiler> {

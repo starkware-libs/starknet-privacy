@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Added
+
+- Sub-accounts: `transfers.subaccounts(dappName)` returns a `SubAccountsBuilder`. `invoke(nonce, { calls })`
+  queues a `ComputeAndInvoke` against the sub-account anonymizer — `computeAdditionalData = [dappName, nonce]`
+  and `invokeAdditionalData` compiled from the dapp `calls` via the generated anonymizer ABI — and returns the
+  builder so the caller can add the open-note creation and `.execute()`. `dappName` accepts a felt or
+  a short string. Requires the new `subAccountAnonymizerAddress` field on the `createPrivateTransfers`
+  config; calling `subaccounts(...)` without it throws. `identify()` and `deployed()` on the builder
+  are declared but not yet implemented.
+
 ## 0.14.3-RC.2
 
 ### Changed
