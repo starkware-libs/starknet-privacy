@@ -21,7 +21,7 @@ use starknet::ContractAddress;
 use starknet::account::Call;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
 use sub_account_anonymizer::sub_account_anonymizer::{
-    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait,
+    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait, partial_commitment,
 };
 
 // Helper: Constants for e2e testing.
@@ -1985,8 +1985,8 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     // A sub-account was deployed for the derived commitment and holds nothing after collection.
     let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
     let identity_key = user.compute_identity_key(contract_address: anonymizer);
-    let identity_commitment = anonymizer_disp.privacy_compute(:identity_key, :dapp_name, :nonce);
-    let sub_account = anonymizer_disp.get_sub_account(:identity_commitment);
-    assert!(sub_account.is_non_zero());
-    assert_eq!(token.balance_of(address: sub_account), 0);
+    let sub_account_info = *anonymizer_disp
+        .get_sub_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1)[0];
+    assert!(sub_account_info.is_deployed);
+    assert_eq!(token.balance_of(address: sub_account_info.address), 0);
 }
