@@ -160,7 +160,6 @@ pub mod SubAccountAnonymizer {
         /// Address of the authorized privacy contract.
         privacy_contract: ContractAddress,
         /// Class hash of the `SubAccount` contract deployed per identity commitment.
-        // TODO: Consider making this a constant.
         sub_account_class_hash: ClassHash,
         /// Maps an identity commitment to the sub-account deployed for it.
         sub_accounts: Map<IdentityCommitment, ContractAddress>,
