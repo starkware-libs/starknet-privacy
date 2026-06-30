@@ -114,6 +114,12 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Add comments where the reasoning isn't obvious from context
 - Focus on decisions, constraints, and non-obvious requirements
 
+### Describe the present, not the history
+- A comment explains how the code behaves now, not what it used to do or which bug it fixed
+- Don't narrate past errors, prior implementations, or the diff — that belongs in commit messages / PR descriptions
+- *Bad:* `// previously returned undefined, which the caller turned into index 0 and a collision`
+- *Good:* `// the service sets the total only once discovery reaches the sentinel, so paginate to completion`
+
 ### No visual separator comments
 - Don't use decorative comment lines to delineate sections (e.g., `// -----------`, `// =========`, `// ***`)
 - If a file needs visual structure, that's a signal to split into separate modules or use doc comments on items
