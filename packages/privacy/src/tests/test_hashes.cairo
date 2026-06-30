@@ -1,8 +1,35 @@
 use privacy::hashes::{
-    compute_channel_key, compute_channel_marker, compute_note_id, compute_nullifier,
-    compute_outgoing_channel_id, compute_subchannel_id, compute_subchannel_marker, hash,
+    compute_channel_key, compute_channel_marker, compute_identity_key, compute_note_id,
+    compute_nullifier, compute_outgoing_channel_id, compute_subchannel_id,
+    compute_subchannel_marker, hash,
 };
 use starkware_utils::constants::MAX_U32;
+
+#[test]
+fn test_compute_identity_key_different_inputs() {
+    let user_addr = hash(['USER_ADDR'].span()).try_into().unwrap();
+    let user_private_key = hash(['USER_PRIVATE_KEY'].span());
+    let contract_address = hash(['CONTRACT_ADDRESS'].span()).try_into().unwrap();
+    let identity_key = compute_identity_key(:user_addr, :user_private_key, :contract_address);
+    let other_user_addr = hash(['OTHER_USER_ADDR'].span()).try_into().unwrap();
+    let other_user_private_key = hash(['OTHER_USER_PRIVATE_KEY'].span());
+    let other_contract_address = hash(['OTHER_CONTRACT_ADDRESS'].span()).try_into().unwrap();
+    assert_ne!(user_addr, other_user_addr);
+    assert_ne!(user_private_key, other_user_private_key);
+    assert_ne!(contract_address, other_contract_address);
+    let identity_key_diff_user_addr = compute_identity_key(
+        user_addr: other_user_addr, :user_private_key, :contract_address,
+    );
+    let identity_key_diff_user_private_key = compute_identity_key(
+        :user_addr, user_private_key: other_user_private_key, :contract_address,
+    );
+    let identity_key_diff_contract_address = compute_identity_key(
+        :user_addr, :user_private_key, contract_address: other_contract_address,
+    );
+    assert_ne!(identity_key, identity_key_diff_user_addr);
+    assert_ne!(identity_key, identity_key_diff_user_private_key);
+    assert_ne!(identity_key, identity_key_diff_contract_address);
+}
 
 #[test]
 fn test_compute_channel_key_different_inputs() {

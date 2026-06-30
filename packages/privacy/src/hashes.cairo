@@ -35,6 +35,8 @@ pub mod domain_separation {
     pub const ENC_RECIPIENT_ADDR_TAG: felt252 = 'ENC_RECIPIENT_ADDR_TAG:V1';
     /// Tag for `outgoing_channel_id`.
     pub const OUTGOING_CHANNEL_ID_TAG: felt252 = 'OUTGOING_CHANNEL_ID_TAG:V1';
+    /// Tag for `identity_key`.
+    pub const IDENTITY_KEY_TAG: felt252 = 'IDENTITY_KEY_TAG:V1';
 }
 
 
@@ -51,12 +53,11 @@ pub(crate) fn hash(data: Span<felt252>) -> felt252 {
 /// them, and it can be reproduced only by the user. It serves as a pseudonymous proof of
 /// ownership the target can derive sub-accounts from without learning who the user is.
 ///
-/// Returns `h(user_addr, user_private_key, contract_address)`.
-// TODO: Consider adding a domain-separation tag.
+/// Returns `h(IDENTITY_KEY_TAG, user_addr, user_private_key, contract_address)`.
 pub(crate) fn compute_identity_key(
     user_addr: ContractAddress, user_private_key: felt252, contract_address: ContractAddress,
 ) -> felt252 {
-    hash([user_addr.into(), user_private_key, contract_address.into()].span())
+    hash([IDENTITY_KEY_TAG, user_addr.into(), user_private_key, contract_address.into()].span())
 }
 
 /// Computes the hash used to encrypt the private key in `EncPrivateKey`.
