@@ -142,7 +142,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       blockIdentifier?: BlockIdentifier;
     }
   ): Promise<{ timestamp: BlockIdentifier; notes: AddressMap<Note[]>; cursor: NotesCursor }> {
-    const tokenFilter = params?.tokens ? new Set(params.tokens.map((t) => toBigInt(t))) : null;
+    const tokenFilter = params?.tokens ? new Set(params.tokens.map(toBigInt)) : null;
     const cursor = params?.cursor;
     let apiCursor: ApiDiscoveryCursor = cursor ? notesCursorToApiCursor(cursor, tokenFilter) : {};
 
@@ -332,7 +332,7 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     );
 
     if (recipients !== "all") {
-      const requested = new Set(recipients.map((r) => toBigInt(r)));
+      const requested = new Set(recipients.map(toBigInt));
       for (const key of [...channels.keys()]) {
         if (!requested.has(key)) channels.delete(key);
       }

@@ -96,6 +96,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Inline directly in function arguments if it doesn't hurt readability
 - *Example:* `spawn(foo.clone(), bar.clone())` instead of `let foo = foo.clone(); let bar = bar.clone(); spawn(foo, bar)`
 
+### Pass functions point-free when the lambda only forwards arguments
+- A callback that does nothing but forward its single argument is redundant wrapping; pass the function directly
+- *Example:* `values.map(toBigInt)` instead of `values.map((value) => toBigInt(value))`
+- *Caveat:* Only safe when the function ignores the extra arguments `Array.map`/`forEach`/etc. pass (`element, index, array`). A function that reads a second parameter breaks — e.g. `["1","2"].map(parseInt)` feeds the index in as the radix and returns `[1, NaN]`. When in doubt, keep the explicit arrow
+
 ### Check for existing utilities before adding new ones
 - Before writing a local helper function, search the codebase for existing shared utilities
 - If similar code exists in multiple places, extract to a shared module (e.g., `test_fixtures.rs` for test helpers)
