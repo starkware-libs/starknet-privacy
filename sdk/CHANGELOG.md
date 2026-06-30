@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Changed
+
+- Opening a channel to a new recipient no longer issues a second
+  `discoverChannels("total-only")` request. The recipient-discovery walk already
+  runs to the sentinel, so it now returns the outgoing-channel count, and the
+  compiler reuses that count as the new channel's index — halving the outgoing
+  discovery work on that path. Providers whose targeted discovery stops short of
+  the sentinel (e.g. on-chain `ContractDiscovery`) still fall back to the
+  dedicated count query.
+
 ## 0.14.3-RC.1
 
 ### Added

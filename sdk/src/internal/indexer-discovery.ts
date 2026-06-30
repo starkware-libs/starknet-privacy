@@ -338,7 +338,10 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
       }
     }
 
-    return { timestamp: blockRef!, channels };
+    // The loop above runs to the sentinel, so the final cursor carries the
+    // authoritative outgoing-channel count. Surface it so callers opening a new
+    // channel can reuse it instead of issuing a separate "total-only" query.
+    return { timestamp: blockRef!, channels, total: apiCursor.total_n_channels };
   }
 
   async discoverRequirement(
