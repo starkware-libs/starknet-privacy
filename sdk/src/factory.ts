@@ -53,6 +53,11 @@ export interface CreatePrivateTransfersParams {
    * isn't pinned in the SDK (e.g. source-built devnet/test pools).
    */
   poolMode?: PoolCapabilityMode;
+  /**
+   * Sub-account anonymizer contract address. Required for `subaccounts(...)`: the contract the
+   * `ComputeAndInvoke` flow targets and whose views resolve sub-account addresses.
+   */
+  subAccountAnonymizerAddress?: StarknetAddress;
 }
 
 /**
@@ -117,5 +122,6 @@ export function createPrivateTransfers(
     proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
     poolContractAddress: params.poolContractAddress,
     poolMode: params.poolMode,
+    subAccountAnonymizerAddress: params.subAccountAnonymizerAddress,
   });
 }
