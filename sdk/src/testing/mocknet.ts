@@ -6,7 +6,7 @@
  */
 
 import type { SignerInterface } from "starknet";
-import type { ExecuteResult, PrivateRegistry, ViewingKey } from "../interfaces.js";
+import type { ExecuteResult, PrivateRegistry, StarknetAddress, ViewingKey } from "../interfaces.js";
 import { PrivateTransfers } from "../internal/private-transfers.js";
 import { MockContracts } from "./contracts.js";
 import { MockPoolContract } from "./mock-pool-contract.js";
@@ -132,7 +132,11 @@ export class Mocknet {
    * @param userAddress - The user's Starknet address
    * @param viewingKey - The user's viewing key (private key)
    */
-  createPrivateTransfers(userAddress: bigint, viewingKey: ViewingKey): PrivateTransfers {
+  createPrivateTransfers(
+    userAddress: bigint,
+    viewingKey: ViewingKey,
+    options?: { subAccountAnonymizerAddress?: StarknetAddress }
+  ): PrivateTransfers {
     const pool = this.pool;
 
     return new PrivateTransfers({
@@ -146,6 +150,7 @@ export class Mocknet {
       discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),
       poolContractAddress: `0x${this.poolAddress.toString(16)}`,
+      subAccountAnonymizerAddress: options?.subAccountAnonymizerAddress,
     });
   }
 

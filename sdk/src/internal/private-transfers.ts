@@ -38,9 +38,15 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
+      subAccountAnonymizerAddress?: StarknetAddress;
     }
   ) {
-    super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
+    super(
+      params.account.address,
+      params.viewingKeyProvider,
+      params.discoveryProvider,
+      params.subAccountAnonymizerAddress
+    );
   }
 
   private async getCompiler(): Promise<ActionCompiler> {
