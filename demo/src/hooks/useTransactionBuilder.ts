@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef, type RefObject } from "react";
-import { TransactionFinalityStatus, hash, type Account, type RpcProvider } from "starknet";
+import { hash, type Account, type RpcProvider } from "starknet";
 import type { PrivateTransfersInterface } from "starknet-sdk";
 import type { AppConfig } from "../config.ts";
+import { WAIT_OPTIONS } from "../starknet.ts";
 import { type TransactionStatus, waitForProvingBlock } from "./useTransactions.ts";
 import type { BuilderOperation } from "../components/TransactionBuilder.tsx";
 import { Timeline } from "../timeline.ts";
@@ -17,11 +18,6 @@ import {
   normalizeSignature,
   type PaymasterCall,
 } from "../paymaster.ts";
-
-const WAIT_OPTIONS = {
-  successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
-  retryInterval: 100,
-};
 
 function getFeeMode(config: AppConfig): FeeMode {
   return { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken!, tip: "normal" };
