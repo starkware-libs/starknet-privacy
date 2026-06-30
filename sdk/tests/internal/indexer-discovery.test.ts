@@ -375,6 +375,64 @@ describe("IndexerDiscoveryProvider", () => {
       expect(result.channels).toBeUndefined();
     });
 
+    it("paginates 'total-only' until total_n_channels is returned", async () => {
+      const provider = createProvider();
+      const fetchMock = mockFetchJson(
+        {
+          body: outgoingSyncResponse({
+            cursor: {
+              channel_discovery_complete: false,
+              last_channel_index: 255,
+              channels: {
+                [RECIPIENT_ADDR]: {
+                  channel_key: CHANNEL_KEY_1,
+                  subchannel_discovery_complete: false,
+                  subchannels: {},
+                },
+              },
+            },
+          }),
+        },
+        {
+          body: outgoingSyncResponse({
+            cursor: {
+              channel_discovery_complete: true,
+              last_channel_index: 258,
+              total_n_channels: 259,
+            },
+          }),
+        }
+      );
+
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result).toEqual({ timestamp: BLOCK_REF, total: 259 });
+
+      const secondCallBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(secondCallBody.block_ref).toBe(BLOCK_REF);
+      expect(secondCallBody.cursor).toEqual({
+        channel_discovery_complete: false,
+        last_channel_index: 255,
+      });
+    });
+
+    it("derives 'total-only' count from a completed cursor when total_n_channels is absent", async () => {
+      const provider = createProvider();
+      mockFetchJson({
+        body: outgoingSyncResponse({
+          cursor: {
+            channel_discovery_complete: true,
+            last_channel_index: 6,
+          },
+        }),
+      });
+
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+
+      expect(result).toEqual({ timestamp: BLOCK_REF, total: 7 });
+    });
+
     it("prefers real channels over precomputed channels for the same recipient", async () => {
       const provider = createProvider();
       const PRECOMPUTED_KEY = "0xdd1";
