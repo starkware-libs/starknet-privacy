@@ -225,20 +225,37 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     total?: number;
   }> {
     if (recipients === "total-only") {
-      // For total-only, do a minimal outgoing sync to get the total channel count
-      const body: Record<string, unknown> = {
-        contract_address: toHex(this.contractAddress),
-        sender_address: toHex(address),
-        viewing_key: toHex(viewingKey),
-        cursor: { channel_discovery_complete: false },
-      };
-      if (params?.blockIdentifier !== undefined) {
-        body.block_ref = params.blockIdentifier;
+      // The service sets `total_n_channels` only once channel discovery reaches
+      // the sentinel, and a single request discovers at most `max_channels`.
+      // Paginate to completion — pruning complete channels each round frees
+      // cursor slots so discovery advances past the cap — then the count is final.
+      let apiCursor: ApiDiscoveryCursor = { channel_discovery_complete: false };
+      let blockRef: BlockIdentifier | undefined;
+      let complete = false;
+      do {
+        const body: Record<string, unknown> = {
+          contract_address: toHex(this.contractAddress),
+          sender_address: toHex(address),
+          viewing_key: toHex(viewingKey),
+          cursor: apiCursor,
+        };
+        if (blockRef) {
+          body.block_ref = blockRef;
+        } else if (params?.blockIdentifier !== undefined) {
+          body.block_ref = params.blockIdentifier;
+        }
+        const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
+        blockRef = resp.block_ref;
+        apiCursor = resp.cursor;
+        complete = isApiCursorComplete(resp.cursor);
+        if (!complete) pruneCompleteCursor(apiCursor);
+      } while (!complete);
+      if (apiCursor.total_n_channels === undefined) {
+        throw new Error("outgoing_state reported complete without total_n_channels");
       }
-      const resp = await this.post<ApiOutgoingSyncResponse>("/v1/sync/outgoing_state", body);
       return {
-        timestamp: resp.block_ref,
-        total: resp.cursor.total_n_channels!,
+        timestamp: blockRef!,
+        total: apiCursor.total_n_channels,
       };
     }
 

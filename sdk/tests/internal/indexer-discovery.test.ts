@@ -404,6 +404,69 @@ describe("IndexerDiscoveryProvider", () => {
       expect(result.channels!.has(BigInt(RECIPIENT_ADDR))).toBe(true);
     });
 
+    // Regression: a sender with >= max_channels (256) outgoing channels caps the
+    // first page before the sentinel, so the service returns no total_n_channels.
+    // 'total-only' must paginate to the sentinel rather than return undefined,
+    // which the compiler would turn into channel index 0 -> NON_ZERO_VALUE.
+    it("paginates 'total-only' to the sentinel when the first page caps before the count is known", async () => {
+      const provider = createProvider();
+      const fetchMock = mockFetchJson(
+        {
+          // Page 1: cap hit at max_channels, sentinel not yet reached -> no total.
+          body: outgoingSyncResponse({
+            cursor: { channel_discovery_complete: false, last_channel_index: 255, channels: {} },
+          }),
+        },
+        {
+          // Page 2: sentinel reached -> total_n_channels is now authoritative.
+          body: outgoingSyncResponse({
+            cursor: {
+              channel_discovery_complete: true,
+              last_channel_index: 256,
+              total_n_channels: 257,
+              channels: {},
+            },
+          }),
+        }
+      );
+
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(result.total).toBe(257);
+
+      // Second request resumes from the first page (block_ref pinned, cursor advanced).
+      const secondBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+      expect(secondBody.block_ref).toBe(BLOCK_REF);
+      expect(secondBody.cursor.last_channel_index).toBe(255);
+    });
+
+    it("returns total 0 for a brand-new sender (sentinel at index 0) without throwing", async () => {
+      const provider = createProvider();
+      mockFetchJson({
+        body: outgoingSyncResponse({
+          cursor: { channel_discovery_complete: true, total_n_channels: 0, channels: {} },
+        }),
+      });
+
+      const result = await provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only");
+
+      expect(result.total).toBe(0);
+    });
+
+    it("throws if 'total-only' completes without a total_n_channels (service contract violation)", async () => {
+      const provider = createProvider();
+      mockFetchJson({
+        body: outgoingSyncResponse({
+          cursor: { channel_discovery_complete: true, channels: {} },
+        }),
+      });
+
+      await expect(
+        provider.discoverChannels(USER_ADDRESS, VIEWING_KEY, "total-only")
+      ).rejects.toThrow(/total_n_channels/);
+    });
+
     it("prefers real channels over precomputed channels for the same recipient", async () => {
       const provider = createProvider();
       const PRECOMPUTED_KEY = "0xdd1";
