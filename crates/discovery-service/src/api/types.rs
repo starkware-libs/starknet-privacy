@@ -126,13 +126,6 @@ pub fn discovery_error_to_response(error: DiscoveryError) -> (StatusCode, ApiErr
                 ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
             )
         }
-        DiscoveryError::CostOverflow(cost) => {
-            warn!("I/O cost overflow: {} exceeds usize", cost);
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                ApiErrorResponse::new(error_codes::INTERNAL_ERROR, "Internal discovery error"),
-            )
-        }
         DiscoveryError::EventError(msg) => {
             warn!("Event error: {}", msg);
             (

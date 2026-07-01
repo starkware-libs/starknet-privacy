@@ -104,6 +104,33 @@ impl BufferedNoteScanner {
         Ok(block_number.map(|block| (block, block_notes)))
     }
 
+    /// Returns the highest block number among the user's not-yet-drained notes
+    /// **without** draining them or advancing any subchannel index.
+    ///
+    /// Fills empty buffer slots first (so every active subchannel's current head
+    /// is represented), then reports the maximum buffered block. A subsequent
+    /// [`Self::next_block`] drains exactly this block, because nothing between
+    /// the two calls mutates the buffer.
+    ///
+    /// Used by the history scan to learn the next note block before scanning the
+    /// gap above it, so the note is only drained once its gap has been fully
+    /// covered (avoiding a re-scan of the note block on a later page).
+    ///
+    /// Returns:
+    /// - `Ok(Some(block_number))` — highest buffered note block
+    /// - `Ok(None)` — all subchannels exhausted
+    /// - `Err(InsufficientBudget)` — budget ran out filling buffers
+    pub async fn peek_next_block<V: IViews>(
+        &mut self,
+        views: &V,
+        cursor: &HistoryCursor,
+        budget: &IoBudget,
+    ) -> Result<Option<u64>, DiscoveryError> {
+        self.fill_buffers(views, &cursor.subchannels, budget)
+            .await?;
+        Ok(self.buffered_notes.values().map(|(block, _)| *block).max())
+    }
+
     /// Fills empty buffer slots by reading note storage for all active subchannels,
     /// then enriching each with channel context and decrypted amount.
     ///
