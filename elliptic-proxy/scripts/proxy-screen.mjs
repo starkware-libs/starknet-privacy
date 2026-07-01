@@ -2,19 +2,19 @@
 // Call the deployed elliptic-proxy Cloud Function for a single address.
 // Signs the request as a partner using the same HMAC scheme the proxy verifies.
 //
-// Usage:
+// Usage (path defaults to "/screen", matching the proof-interceptor):
 //   PARTNER_NAME=acme PARTNER_SECRET=<base64> \
-//     node scripts/proxy-screen.mjs <proxy-url> <address>
+//     node scripts/proxy-screen.mjs <proxy-url> <address> [path]
 //   PARTNER_NAME=acme PARTNER_SECRET_HEX=<hex> \
-//     node scripts/proxy-screen.mjs <proxy-url> <address>
+//     node scripts/proxy-screen.mjs <proxy-url> <address> [path]
 //
 // Build first: `npm run build` (imports computeHmacSignature from dist/).
 
 import { computeHmacSignature } from "../dist/auth.js";
 
-const [, , proxyUrlArg, address] = process.argv;
+const [, , proxyUrlArg, address, pathArg] = process.argv;
 if (!proxyUrlArg || !address) {
-  console.error("usage: proxy-screen.mjs <proxy-url> <address>");
+  console.error("usage: proxy-screen.mjs <proxy-url> <address> [path]");
   process.exit(2);
 }
 
@@ -30,11 +30,10 @@ if (!partnerName || !partnerSecret) {
   process.exit(2);
 }
 
-const proxyUrl = new URL(proxyUrlArg);
-// Cloud Functions (cloudfunctions.net/<name>) strips the function-name segment
-// before dispatching to the container, so the server always sees req.path="/".
-// Override with PROXY_SIGN_PATH if you deploy behind a path-preserving gateway.
-const path = process.env.PROXY_SIGN_PATH ?? "/";
+// Append the path to the base URL and sign it, like the proof-interceptor.
+// Defaults to "/screen"; pass the optional path arg (leading "/") to override.
+const path = pathArg ?? "/screen";
+const proxyUrl = new URL(proxyUrlArg.replace(/\/+$/, "") + path);
 const body = JSON.stringify({ address });
 const timestamp = Date.now().toString();
 const signature = computeHmacSignature(
