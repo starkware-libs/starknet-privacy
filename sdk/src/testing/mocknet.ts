@@ -6,7 +6,13 @@
  */
 
 import type { SignerInterface } from "starknet";
-import type { ExecuteResult, PrivateRegistry, StarknetAddress, ViewingKey } from "../interfaces.js";
+import type {
+  DiscoveryProviderInterface,
+  ExecuteResult,
+  PrivateRegistry,
+  StarknetAddress,
+  ViewingKey,
+} from "../interfaces.js";
 import { PrivateTransfers } from "../internal/private-transfers.js";
 import { MockContracts } from "./contracts.js";
 import { MockPoolContract } from "./mock-pool-contract.js";
@@ -135,7 +141,11 @@ export class Mocknet {
   createPrivateTransfers(
     userAddress: bigint,
     viewingKey: ViewingKey,
-    options?: { subAccountAnonymizerAddress?: StarknetAddress }
+    options?: {
+      subAccountAnonymizerAddress?: StarknetAddress;
+      /** Resolver for `subaccounts(...).identify(...)`; the mock pool has no anonymizer view. */
+      getSubAccounts?: DiscoveryProviderInterface["getSubAccounts"];
+    }
   ): PrivateTransfers {
     const pool = this.pool;
 
@@ -147,7 +157,9 @@ export class Mocknet {
       },
       viewingKeyProvider: { getViewingKey: async () => viewingKey },
       provingProvider: new MockProofProvider(pool),
-      discoveryProvider: new ContractDiscoveryProvider(pool),
+      discoveryProvider: new ContractDiscoveryProvider(pool, {
+        getSubAccounts: options?.getSubAccounts,
+      }),
       proofInvocationFactory: new MockProofInvocationFactory(),
       poolContractAddress: `0x${this.poolAddress.toString(16)}`,
       subAccountAnonymizerAddress: options?.subAccountAnonymizerAddress,

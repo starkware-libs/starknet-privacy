@@ -1,5 +1,13 @@
 import { BlockIdentifier } from "starknet";
-import { ViewingKey, Note, Channel, StarknetAddressBigint } from "../interfaces.js";
+import {
+  ViewingKey,
+  Note,
+  Channel,
+  StarknetAddressBigint,
+  DiscoveryProviderInterface,
+  GetSubAccountsParams,
+  SubAccount,
+} from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { AbstractDiscoveryProvider } from "./abstract-discovery.js";
 import { debugLog } from "../utils/logging.js";
@@ -381,14 +389,36 @@ class ChannelsDiscovery {
 export type DiscoveryOptions = {
   /** Rate limiting for pool contract RPC calls */
   rateLimit?: RateLimitOptions;
+  /**
+   * Resolver for `getSubAccounts`. The pool interface this provider wraps has no view for the
+   * sub-account anonymizer, so sub-account resolution is delegated to a caller-supplied function
+   * (e.g. one that calls the anonymizer's `get_sub_accounts` over RPC). `getSubAccounts` throws
+   * when this is absent.
+   */
+  getSubAccounts?: DiscoveryProviderInterface["getSubAccounts"];
 };
 
 export class ContractDiscoveryProvider extends AbstractDiscoveryProvider {
   private readonly pool: PoolContractInterface;
+  private readonly subAccountsResolver?: DiscoveryProviderInterface["getSubAccounts"];
 
   constructor(pool: PoolContractInterface, options?: DiscoveryOptions) {
     super();
     this.pool = options?.rateLimit ? createRateLimitedObject(pool, options.rateLimit) : pool;
+    this.subAccountsResolver = options?.getSubAccounts;
+  }
+
+  async getSubAccounts(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    params: GetSubAccountsParams
+  ): Promise<{ subAccounts: SubAccount[] }> {
+    if (!this.subAccountsResolver) {
+      throw new Error(
+        "ContractDiscoveryProvider cannot resolve sub-accounts: pass a `getSubAccounts` option, or use IndexerDiscoveryProvider."
+      );
+    }
+    return this.subAccountsResolver(address, viewingKey, params);
   }
 
   async discoverNotes(

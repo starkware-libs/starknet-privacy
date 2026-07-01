@@ -26,6 +26,7 @@ function createMockProvider(overrides: Partial<DiscoveryProviderInterface> = {})
       ]),
     }),
     discoverRequirement: vi.fn().mockResolvedValue(SetupRequirement.Ready),
+    getSubAccounts: vi.fn().mockResolvedValue({ subAccounts: [] }),
     ...overrides,
   } satisfies DiscoveryProviderInterface;
 }

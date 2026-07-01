@@ -533,6 +533,64 @@ describe("IndexerDiscoveryProvider", () => {
     });
   });
 
+  describe("getSubAccounts", () => {
+    const ANONYMIZER = 0xab0an;
+    const PARTIAL = 0xdead_beefn;
+
+    it("posts the anonymizer address + partial_commitment + nonce range and maps the response", async () => {
+      const provider = createProvider();
+      const fetchMock = mockFetchJson({
+        body: {
+          block_ref: BLOCK_REF,
+          sub_accounts: [
+            { nonce: 0, address: "0x5a10", is_deployed: true },
+            { nonce: 1, address: "0x5a11", is_deployed: false },
+          ],
+        },
+      });
+
+      const { subAccounts } = await provider.getSubAccounts(USER_ADDRESS, VIEWING_KEY, {
+        anonymizerAddress: ANONYMIZER,
+        partialCommitment: PARTIAL,
+        startNonce: 0,
+        endNonce: 2,
+      });
+
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe(`${API_URL}/v1/sub_accounts`);
+      const requestBody = JSON.parse(init.body);
+      expect(requestBody).toEqual({
+        contract_address: "0xab0a",
+        partial_commitment: "0xdeadbeef",
+        start_nonce: 0,
+        end_nonce: 2,
+      });
+      // Sub-account discovery reveals no viewing key; the partial commitment stands in for it.
+      expect(requestBody.viewing_key).toBeUndefined();
+
+      expect(subAccounts).toEqual([
+        { nonce: 0, address: 0x5a10n, isDeployed: true },
+        { nonce: 1, address: 0x5a11n, isDeployed: false },
+      ]);
+    });
+
+    it("pins reads with block_ref when a block identifier is given", async () => {
+      const provider = createProvider();
+      const fetchMock = mockFetchJson({ body: { block_ref: BLOCK_REF, sub_accounts: [] } });
+
+      await provider.getSubAccounts(USER_ADDRESS, VIEWING_KEY, {
+        anonymizerAddress: ANONYMIZER,
+        partialCommitment: PARTIAL,
+        startNonce: 0,
+        endNonce: 1,
+        blockIdentifier: BLOCK_REF,
+      });
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(requestBody.block_ref).toBe(BLOCK_REF);
+    });
+  });
+
   describe("request body validation", () => {
     it("includes contract_address and viewing_key in discoverNotes requests", async () => {
       const provider = createProvider();

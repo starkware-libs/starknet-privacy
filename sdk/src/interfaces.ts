@@ -525,8 +525,28 @@ export interface PrivateTransfersInterface {
   subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
 }
 
-/** A sub-account: its `nonce` for the dapp and the deployed `address`. */
-export type SubAccount = { nonce: number; address: StarknetAddressBigint };
+/**
+ * A resolved sub-account for one nonce: its deterministic `address` (the stored address if
+ * `isDeployed`, otherwise the address it would deploy to) and whether it is already deployed.
+ */
+export type SubAccount = {
+  nonce: number;
+  address: StarknetAddressBigint;
+  isDeployed: boolean;
+};
+
+/**
+ * Parameters for resolving sub-accounts through a sub-account anonymizer. `partialCommitment =
+ * hash(identity_key, dappName)` is derived off-chain by the caller; the anonymizer resolves the
+ * nonces in `[startNonce, endNonce)` against it.
+ */
+export type GetSubAccountsParams = {
+  anonymizerAddress: StarknetAddressBigint;
+  partialCommitment: bigint;
+  startNonce: number;
+  endNonce: number;
+  blockIdentifier?: BlockIdentifier;
+};
 
 /**
  * Sub-account operations for one user + dapp, driven through the sub-account anonymizer contract.
@@ -534,16 +554,13 @@ export type SubAccount = { nonce: number; address: StarknetAddressBigint };
  */
 export interface SubAccountsBuilder {
   /**
-   * The deterministic sub-account address for `nonce` (deployed or not). Resolved through the
-   * anonymizer's on-chain views; see the discovery provider.
+   * Resolve the sub-accounts for nonces `[startNonce, endNonce)` (default `endNonce =
+   * startNonce + 1`, i.e. the single nonce). Each entry carries its deterministic `address` and
+   * whether it `isDeployed`, resolved through the anonymizer's `get_sub_accounts` view (see the
+   * discovery provider). Sub-accounts are allocated consecutively from nonce 0, so a caller
+   * enumerating the deployed ones takes the leading `isDeployed` run of `identify(0, max)`.
    */
-  identify(nonce: BigNumberish): Promise<StarknetAddressBigint>;
-
-  /**
-   * The sub-accounts already deployed for this dapp, scanning consecutive nonces from `startNonce`
-   * (default 0) and stopping at the first undeployed one or `maxNonce`.
-   */
-  deployed(opts?: { startNonce?: number; maxNonce?: number }): Promise<SubAccount[]>;
+  identify(startNonce: number, endNonce?: number): Promise<SubAccount[]>;
 
   /**
    * Queue a `computeAndInvoke` against the sub-account for `nonce`: run `calls` through it and
@@ -797,6 +814,21 @@ export interface DiscoveryProviderInterface {
     recipient: StarknetAddressBigint,
     token: StarknetAddressBigint
   ): Promise<SetupRequirement>;
+
+  /**
+   * Resolve the sub-accounts for nonces `[startNonce, endNonce)` through a sub-account anonymizer.
+   *
+   * A thin proxy over the anonymizer's `get_sub_accounts` view: the contract owns the commitment
+   * derivation and address computation. `partialCommitment = hash(identity_key, dappName)` is
+   * derived off-chain by the caller and reveals neither the identity key nor the dapp, so no
+   * viewing key travels on the wire — `address`/`viewingKey` are accepted only for symmetry with
+   * the other discover methods and are unused by the proxy.
+   */
+  getSubAccounts(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    params: GetSubAccountsParams
+  ): Promise<{ subAccounts: SubAccount[] }>;
 }
 
 type BlobT = string | Uint8Array;

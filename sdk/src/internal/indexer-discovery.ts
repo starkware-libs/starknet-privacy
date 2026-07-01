@@ -2,9 +2,11 @@ import type { BlockIdentifier } from "starknet";
 import {
   SetupRequirement,
   type Channel as ChannelInterface,
+  type GetSubAccountsParams,
   type Note,
   type StarknetAddress,
   type StarknetAddressBigint,
+  type SubAccount,
   type ViewingKey,
 } from "../interfaces.js";
 import { toBigInt } from "../utils/crypto.js";
@@ -94,6 +96,17 @@ type ApiOutgoingSyncResponse = {
   channels: ApiOutgoingChannel[];
   subchannels: ApiOutgoingSubchannelInfo[];
   cursor: ApiDiscoveryCursor;
+};
+
+type ApiSubAccountEntry = {
+  nonce: number;
+  address: string;
+  is_deployed: boolean;
+};
+
+type ApiSubAccountsResponse = {
+  block_ref: BlockIdentifier;
+  sub_accounts: ApiSubAccountEntry[];
 };
 
 export type DiscoveryHealthResponse = {
@@ -383,6 +396,30 @@ export class IndexerDiscoveryProvider extends AbstractDiscoveryProvider {
     if (!resp.channel_exists) return SetupRequirement.SetupChannel;
     if (!resp.subchannel_exists) return SetupRequirement.SetupToken;
     return SetupRequirement.Ready;
+  }
+
+  async getSubAccounts(
+    _address: StarknetAddressBigint,
+    _viewingKey: ViewingKey,
+    params: GetSubAccountsParams
+  ): Promise<{ subAccounts: SubAccount[] }> {
+    const body: Record<string, unknown> = {
+      contract_address: toHex(params.anonymizerAddress),
+      partial_commitment: toHex(params.partialCommitment),
+      start_nonce: params.startNonce,
+      end_nonce: params.endNonce,
+    };
+    if (params.blockIdentifier !== undefined) {
+      body.block_ref = params.blockIdentifier;
+    }
+    const resp = await this.post<ApiSubAccountsResponse>("/v1/sub_accounts", body);
+    return {
+      subAccounts: resp.sub_accounts.map((entry) => ({
+        nonce: entry.nonce,
+        address: toBigInt(entry.address),
+        isDeployed: entry.is_deployed,
+      })),
+    };
   }
 
   async fetchHistory(

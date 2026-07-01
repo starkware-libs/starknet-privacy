@@ -9,8 +9,23 @@
   and `invokeAdditionalData` compiled from the dapp `calls` via the generated anonymizer ABI — and returns the
   builder so the caller can add the open-note creation and `.execute()`. `dappName` accepts a felt or
   a short string. Requires the new `subAccountAnonymizerAddress` field on the `createPrivateTransfers`
-  config; calling `subaccounts(...)` without it throws. `identify()` and `deployed()` on the builder
-  are declared but not yet implemented.
+  config; calling `subaccounts(...)` without it throws.
+- Sub-accounts: `SubAccountsBuilder.identify(startNonce, endNonce = startNonce + 1)` resolves the
+  sub-accounts for a nonce range, returning `SubAccount[]` (`{ nonce, address, isDeployed }`) — a
+  passthrough of the anonymizer's `get_sub_accounts` view (single lookup = `identify(n)`; enumerate
+  deployed = `identify(0, max)` then take the leading `isDeployed` run). The SDK derives
+  `partial_commitment = hash(compute_identity_key(user, viewingKey, anonymizer), dappName)` off-chain
+  (no viewing key on the wire) and resolves it through the discovery provider's new `getSubAccounts`:
+  `IndexerDiscoveryProvider` posts to `/v1/sub_accounts`; `ContractDiscoveryProvider` delegates to a
+  `getSubAccounts` resolver supplied in `DiscoveryOptions` (throwing when absent). Replaces the
+  previously stubbed `identify()`/`deployed()`.
+
+### Breaking
+
+- `DiscoveryProviderInterface` now requires a `getSubAccounts(address, viewingKey, params)` method
+  (params typed by the new exported `GetSubAccountsParams`: `{ anonymizerAddress, partialCommitment,
+  startNonce, endNonce, blockIdentifier? }`). Custom implementations must add it. The `SubAccount`
+  type gained an `isDeployed: boolean` field.
 
 ## 0.14.3-RC.2
 

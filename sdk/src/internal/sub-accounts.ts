@@ -1,16 +1,18 @@
 import { BigNumberish, Call, CallData, hash, shortString } from "starknet";
 import type {
   ComputeAndInvokeDetails,
+  DiscoveryProviderInterface,
   InvokeCalldataBuilderArgs,
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
   StarknetAddress,
-  StarknetAddressBigint,
   SubAccount,
   SubAccountsBuilder,
+  ViewingKey,
 } from "../interfaces.js";
 import { SubAccountAnonymizerABI } from "./anonymizer-abi.js";
-import { toBigInt, toHex } from "../utils/index.js";
+import { hash as poseidonHash, toBigInt, toHex } from "../utils/index.js";
+import { compute_identity_key } from "../utils/hashes.js";
 
 /** Encodes a dapp name to a felt: a string is a Cairo short string, a felt passes through. */
 function encodeDappName(dappName: string | BigNumberish): bigint {
@@ -28,6 +30,9 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
       transfers: PrivateTransfersInterface;
       dappName: string | BigNumberish;
       subAccountAnonymizerAddress: StarknetAddress;
+      user: bigint;
+      getViewingKey: () => Promise<ViewingKey>;
+      discoveryProvider: DiscoveryProviderInterface;
     }
   ) {
     this.dappName = encodeDappName(params.dappName);
@@ -65,11 +70,24 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
       });
   }
 
-  async identify(_nonce: BigNumberish): Promise<StarknetAddressBigint> {
-    throw new Error("SubAccountsBuilder.identify() is not implemented yet.");
-  }
-
-  async deployed(_opts?: { startNonce?: number; maxNonce?: number }): Promise<SubAccount[]> {
-    throw new Error("SubAccountsBuilder.deployed() is not implemented yet.");
+  async identify(startNonce: number, endNonce: number = startNonce + 1): Promise<SubAccount[]> {
+    const { user, getViewingKey, discoveryProvider } = this.params;
+    const viewingKey = await getViewingKey();
+    // partial_commitment = hash(identity_key, dapp_name); it reveals neither the identity key nor
+    // the dapp, so the anonymizer's `get_sub_accounts` view can resolve addresses without a
+    // viewing key. Mirrors `partial_commitment` in the anonymizer Cairo.
+    const identityKey = compute_identity_key(
+      user,
+      toBigInt(viewingKey),
+      this.subAccountAnonymizerAddress
+    );
+    const partialCommitment = poseidonHash(identityKey, this.dappName);
+    const { subAccounts } = await discoveryProvider.getSubAccounts(user, viewingKey, {
+      anonymizerAddress: this.subAccountAnonymizerAddress,
+      partialCommitment,
+      startNonce,
+      endNonce,
+    });
+    return subAccounts;
   }
 }

@@ -2,8 +2,10 @@ import type { BlockIdentifier } from "starknet";
 import type {
   Channel,
   DiscoveryProviderInterface,
+  GetSubAccountsParams,
   Note,
   StarknetAddressBigint,
+  SubAccount,
   ViewingKey,
 } from "../interfaces.js";
 import { SetupRequirement } from "../interfaces.js";
@@ -33,6 +35,12 @@ export abstract class AbstractDiscoveryProvider implements DiscoveryProviderInte
     recipients: RecipientsFilter,
     params?: { cursor?: ChannelCursor; blockIdentifier?: BlockIdentifier }
   ): Promise<{ timestamp: BlockIdentifier; channels?: AddressMap<Channel>; total?: number }>;
+
+  abstract getSubAccounts(
+    address: StarknetAddressBigint,
+    viewingKey: ViewingKey,
+    params: GetSubAccountsParams
+  ): Promise<{ subAccounts: SubAccount[] }>;
 
   // Default implementation provided by the abstract class
   async discoverRequirement(
