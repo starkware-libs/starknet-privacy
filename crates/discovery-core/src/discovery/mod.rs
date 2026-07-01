@@ -79,9 +79,6 @@ pub enum DiscoveryError {
     /// The I/O budget is too small to make progress.
     #[error("insufficient budget: needed {needed}, available {available}")]
     InsufficientBudget { needed: usize, available: usize },
-    /// A computed cost exceeds `usize` (only reachable on 32-bit targets).
-    #[error("cost overflow: {0} exceeds usize")]
-    CostOverflow(u64),
     /// Expected event not found on-chain.
     #[error("missing event: {0}")]
     EventError(String),
