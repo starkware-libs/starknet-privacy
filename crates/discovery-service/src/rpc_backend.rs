@@ -9,8 +9,8 @@ use discovery_core::storage_backend::{
 };
 use starknet_core::types::{
     requests::GetStorageAtRequest, AddressFilter, BlockId, BlockTag, EmittedEvent, EventFilter,
-    Felt, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey,
-    StorageResponseFlag, StorageResult,
+    Felt, FunctionCall, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes, StarknetError,
+    StorageKey, StorageResponseFlag, StorageResult,
 };
 use starknet_providers::{
     jsonrpc::{HttpTransport, JsonRpcClient},
@@ -89,6 +89,61 @@ impl RpcBackend {
                 event_page_size: config.event_page_size,
             }),
         })
+    }
+}
+
+/// Errors from a read-only contract view call.
+#[derive(Debug, Error)]
+pub enum ContractViewError {
+    /// The called contract is not deployed at the pinned block.
+    #[error("contract not found")]
+    ContractNotFound,
+    /// The RPC `call` request failed.
+    #[error("RPC request failed: {0}")]
+    Request(String),
+}
+
+/// Reads a contract's view entrypoints. Kept separate from [`StorageBackend`] (which reads storage
+/// slots) so the sub-account endpoints can call the anonymizer's views without a storage snapshot.
+#[async_trait]
+pub trait ContractView: Send + Sync {
+    /// Calls the read-only `selector` entrypoint on `contract_address` at `block_id`, returning the
+    /// raw felt result.
+    async fn call_view(
+        &self,
+        contract_address: Felt,
+        selector: Felt,
+        calldata: Vec<Felt>,
+        block_id: BlockId,
+    ) -> Result<Vec<Felt>, ContractViewError>;
+}
+
+#[async_trait]
+impl ContractView for RpcBackend {
+    async fn call_view(
+        &self,
+        contract_address: Felt,
+        selector: Felt,
+        calldata: Vec<Felt>,
+        block_id: BlockId,
+    ) -> Result<Vec<Felt>, ContractViewError> {
+        self.inner
+            .provider
+            .call(
+                FunctionCall {
+                    contract_address,
+                    entry_point_selector: selector,
+                    calldata,
+                },
+                block_id,
+            )
+            .await
+            .map_err(|e| match &e {
+                ProviderError::StarknetError(StarknetError::ContractNotFound) => {
+                    ContractViewError::ContractNotFound
+                }
+                _ => ContractViewError::Request(e.to_string()),
+            })
     }
 }
 

@@ -28,15 +28,17 @@ use crate::chain_state::ChainState;
 use crate::config::OhttpConfig;
 use crate::config::{ApiServerConfig, ValidationLimits};
 use crate::public_key_cache::PublicKeyCache;
+use crate::rpc_backend::ContractView;
 
 pub use handlers::{
     health_handler, history_handler, incoming_sync_handler, outgoing_sync_handler,
-    preflight_check_handler,
+    preflight_check_handler, sub_accounts_handler,
 };
 pub use types::{
     ApiErrorBody, ApiErrorResponse, HealthResponse, HistoryRequest, HistoryResponse,
     IncomingSyncRequest, IncomingSyncResponse, OutgoingSyncRequest, OutgoingSyncResponse,
-    PreflightCheckRequest, PreflightCheckResponse, SyncRequestBase,
+    PreflightCheckRequest, PreflightCheckResponse, SubAccountEntry, SubAccountsRequest,
+    SubAccountsResponse, SyncRequestBase,
 };
 
 /// API server for the discovery service.
@@ -69,7 +71,7 @@ pub struct AppState<B> {
 
 impl<B> ApiServer<B>
 where
-    B: StorageBackend + ChainState + Clone + Send + Sync + 'static,
+    B: StorageBackend + ChainState + ContractView + Clone + Send + Sync + 'static,
     B::Snapshot: RawEventAccess + Clone + Send + Sync + 'static,
 {
     /// Creates a new API server.
@@ -109,6 +111,7 @@ where
                 post(preflight_check_handler::<B>),
             )
             .route("/v1/history", post(history_handler::<B>))
+            .route("/v1/sub_accounts", post(sub_accounts_handler::<B>))
             .with_state(app_state);
 
         // Conditionally add OHTTP envelope encryption.

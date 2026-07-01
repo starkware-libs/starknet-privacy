@@ -358,3 +358,59 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - `409 BLOCK_REORGED` — `last_known_block` was reorged out.
 - `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
 - Standard `DiscoveryError` mapping for storage and event errors.
+
+## 6.9 Sub-Accounts Endpoint
+
+`POST /v1/sub_accounts`
+
+Discovers the sub-accounts deployed for a user + dapp through a sub-account anonymizer. Unlike the
+sync endpoints, this is a **thin proxy over the anonymizer's on-chain views** — the contract owns the
+commitment derivation and nonce iteration. No viewing key is sent: the client derives the
+`partial_commitment = hash(identity_key, dapp_name)` off-chain (a Poseidon hash that reveals neither
+the identity key nor the dapp) and passes it in.
+
+**Request:**
+
+```json
+{
+  "contract_address": "0x...",       // the sub-account anonymizer
+  "partial_commitment": "0x...",     // hash(identity_key, dapp_name)
+  "start_nonce": 0,                  // optional, default 0
+  "end_nonce": 64,                   // exclusive upper bound (scan cap)
+  "last_known_block": "0x...",       // optional, reorg detection
+  "block_ref": "0x..."               // optional, pins reads
+}
+```
+
+**Behavior:**
+
+- Resolves `block_ref` (same rules as §6.2), then calls the anonymizer's
+  `get_sub_accounts(partial_commitment, start_nonce, end_nonce)` view. The contract resolves **every**
+  nonce in the range to a `{ nonce, address, is_deployed }`: a deployed nonce carries its stored
+  address, an undeployed one the deterministic address it would deploy to. The endpoint is a thin
+  proxy — the contract owns the commitment derivation and the address computation.
+- Callers enumerating deployed sub-accounts take the leading `is_deployed` run (sub-accounts are
+  allocated consecutively from nonce 0); `identify(nonce)` requests the single-nonce range
+  `[nonce, nonce+1)`.
+- The scan span is capped: `end_nonce - start_nonce` must not exceed the anonymizer's
+  `MAX_SCAN_RANGE` (1024). The endpoint validates this and returns `400 INVALID_REQUEST` before
+  calling the contract (the anonymizer itself reverts with `RANGE_TOO_LARGE` above the cap).
+
+**Response:**
+
+```json
+{
+  "block_ref": "0x...",
+  "sub_accounts": [
+    { "nonce": 0, "address": "0x...", "is_deployed": true },
+    { "nonce": 1, "address": "0x...", "is_deployed": false }
+  ]
+}
+```
+
+**Error responses:**
+
+- `400 INVALID_REQUEST` — `end_nonce - start_nonce` exceeds `MAX_SCAN_RANGE` (1024).
+- `404 CONTRACT_NOT_FOUND` — the anonymizer is not deployed at the pinned block.
+- `409 BLOCK_REORGED` — `last_known_block` was reorged out.
+- `502 RPC_UNAVAILABLE` — the RPC `call` to the anonymizer failed.

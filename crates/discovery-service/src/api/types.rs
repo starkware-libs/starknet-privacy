@@ -357,6 +357,54 @@ pub struct HistoryResponse {
     pub cursor: HistoryCursor,
 }
 
+/// Request body for POST /v1/sub_accounts.
+///
+/// Proxies the sub-account anonymizer's `get_sub_accounts(partial_commitment, start_nonce,
+/// end_nonce)` view. `partial_commitment` is the caller-derived `hash(identity_key, dapp_name)`;
+/// it reveals neither the identity key nor the dapp, so no viewing key is sent.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAccountsRequest {
+    /// The sub-account anonymizer contract address.
+    pub contract_address: Felt,
+    /// The user+dapp half of the commitment, `hash(identity_key, dapp_name)`.
+    pub partial_commitment: Felt,
+    /// First nonce to resolve (inclusive). Defaults to 0.
+    #[serde(default)]
+    pub start_nonce: u64,
+    /// Upper bound to resolve (exclusive).
+    pub end_nonce: u64,
+    /// Block hash for reorg detection; see [`SyncRequestBase::last_known_block`].
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub last_known_block: Option<Felt>,
+    /// Block identifier to pin reads to; see [`SyncRequestBase::block_ref`].
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "block_id_serde::option"
+    )]
+    pub block_ref: Option<BlockId>,
+}
+
+/// A resolved sub-account: its `nonce`, `address` (stored if deployed, else the deterministic
+/// deploy address), and whether it `is_deployed`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAccountEntry {
+    pub nonce: u64,
+    pub address: Felt,
+    pub is_deployed: bool,
+}
+
+/// Response body for POST /v1/sub_accounts.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubAccountsResponse {
+    /// Block identifier pinning the reads.
+    #[serde(with = "block_id_serde")]
+    pub block_ref: BlockId,
+    /// One entry per nonce in `[start_nonce, end_nonce)`, ascending. Callers enumerating deployed
+    /// sub-accounts take the leading `is_deployed` run.
+    pub sub_accounts: Vec<SubAccountEntry>,
+}
+
 /// Well-known error codes.
 pub mod error_codes {
     pub const INVALID_REQUEST: &str = "INVALID_REQUEST";
