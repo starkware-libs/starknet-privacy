@@ -1,11 +1,11 @@
 import { useState, useCallback, useMemo, useRef, type RefObject } from "react";
-import { TransactionFinalityStatus, transaction, type Account, type RpcProvider } from "starknet";
+import { transaction, type Account, type RpcProvider } from "starknet";
 import { Open, type PrivateTransfersInterface, type PrivateTransfersBuilder } from "starknet-sdk";
 import { getQuotes, quoteToCalls } from "../avnu.ts";
 import { findEkuboPool, type AppConfig } from "../config.ts";
 import { Timeline } from "../timeline.ts";
 import { toRawAmount } from "../format.ts";
-import { previewRedeem, STRK_TOKEN_ADDRESS } from "../starknet.ts";
+import { previewRedeem, STRK_TOKEN_ADDRESS, WAIT_OPTIONS } from "../starknet.ts";
 import {
   type FeeAction,
   type FeeMode,
@@ -13,11 +13,6 @@ import {
   paymasterExecuteApplyAction,
   toPaymasterCall,
 } from "../paymaster.ts";
-
-const WAIT_OPTIONS = {
-  successStates: [TransactionFinalityStatus.PRE_CONFIRMED],
-  retryInterval: 100,
-};
 
 function getFeeMode(config: AppConfig): FeeMode {
   return { mode: "sponsored_private", pool_fee_token: config.paymasterFeeToken!, tip: "normal" };
