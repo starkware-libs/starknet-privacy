@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3-RC.2
+
 ### Changed
 
 - Opening a channel to a new recipient no longer issues a second
