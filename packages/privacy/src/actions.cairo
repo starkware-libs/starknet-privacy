@@ -391,5 +391,7 @@ pub enum ServerAction {
     /// Invoke an external contract via the
     /// [`INVOKE_WITH_COMPUTATION_SELECTOR`](privacy::utils::constants::INVOKE_WITH_COMPUTATION_SELECTOR)
     /// selector.
+    /// *NOTE:* The target selector should assert the caller is the privacy contract,
+    /// otherwise anyone could invoke it directly and bypass the privacy pool.
     InvokeWithComputation: InvokeInput,
 }
