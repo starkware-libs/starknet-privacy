@@ -36,7 +36,7 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
-use privacy::snip12::{DepositorValidation, ScreeningAttestation, compute_screening_message_hash};
+use privacy::snip12::{ScreeningAttestation, compute_screening_message_hash};
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::test_contracts::mock_swap_executor::{
@@ -1989,8 +1989,9 @@ pub(crate) fn sign_screening_attestation(
 pub(crate) fn sign_screening_attestation_with(
     key_pair: StarkCurveKeyPair, depositor: ContractAddress, issued_at: u64,
 ) -> ScreeningAttestation {
-    let validation = DepositorValidation { depositor, issued_at };
-    let message_hash = compute_screening_message_hash(@validation, key_pair.public_key);
+    let message_hash = compute_screening_message_hash(
+        :depositor, :issued_at, signer: key_pair.public_key,
+    );
     let signature = key_pair.sign(message_hash).unwrap();
     ScreeningAttestation { issued_at, signature }
 }
