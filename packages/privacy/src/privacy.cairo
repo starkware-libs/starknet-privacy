@@ -982,26 +982,16 @@ pub mod Privacy {
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
             assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
-            self
-                ._apply_open_note_deposits(
-                    :deposits, depositor: contract_address, ref :undeposited_open_notes,
-                );
-        }
 
-        fn _apply_open_note_deposits(
-            ref self: ContractState,
-            deposits: Span<OpenNoteDeposit>,
-            depositor: ContractAddress,
-            ref undeposited_open_notes: usize,
-        ) {
+            // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
             if !deposits.is_empty() {
                 assert(
-                    !self.blocked_open_note_depositors.read(depositor),
+                    !self.blocked_open_note_depositors.read(contract_address),
                     errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
                 );
                 // Apply deposits to open notes returned by Invoke.
                 for deposit in deposits {
-                    self._deposit_to_open_note(:depositor, deposit: *deposit);
+                    self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
                 undeposited_open_notes = undeposited_open_notes
                     .checked_sub(deposits.len())
