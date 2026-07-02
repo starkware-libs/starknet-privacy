@@ -10,7 +10,7 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
 };
 use sub_account_anonymizer::sub_account_anonymizer::{
-    ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
+    CollectPolicy, ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
     ISubAccountAnonymizerSafeDispatcherTrait, OpenNote, errors,
 };
 use sub_account_anonymizer::tests::test_utils::{
@@ -74,7 +74,10 @@ fn test_invoke_executes_and_collects_open_note() {
         .invoke(
             :identity_commitment,
             calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All },
+            ]
+                .span(),
         );
 
     // One deposit returned, matching the collected token/amount.
@@ -130,8 +133,8 @@ fn test_collects_multiple_open_notes() {
                 transfer_to_caller_call(components.mock_dapp, addr_b, amount_b),
             ],
             open_notes: array![
-                OpenNote { note_id: 'NOTE_A', token: addr_a },
-                OpenNote { note_id: 'NOTE_B', token: addr_b },
+                OpenNote { note_id: 'NOTE_A', token: addr_a, collect_policy: CollectPolicy::All },
+                OpenNote { note_id: 'NOTE_B', token: addr_b, collect_policy: CollectPolicy::All },
             ]
                 .span(),
         );
@@ -174,7 +177,10 @@ fn test_multiple_invokes_run_in_one_call() {
                 transfer_to_caller_call(components.mock_dapp, token, first),
                 transfer_to_caller_call(components.mock_dapp, token, second),
             ],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All },
+            ]
+                .span(),
         );
 
     let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
@@ -246,7 +252,7 @@ fn test_sub_account_is_reused_per_identity_commitment() {
 }
 
 #[test]
-fn test_sweeps_full_balance_including_preexisting() {
+fn test_collects_full_balance_including_preexisting() {
     let components = deploy_components();
     let token = components.token.contract_address();
     let identity_commitment = anonymizer_disp(components.anonymizer)
@@ -264,10 +270,13 @@ fn test_sweeps_full_balance_including_preexisting() {
         .invoke(
             :identity_commitment,
             calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All },
+            ]
+                .span(),
         );
 
-    // The full balance is swept: pre-existing plus the amount added by the interaction.
+    // The full balance is collected: pre-existing plus the amount added by the interaction.
     let total = preexisting + AMOUNT;
     assert_eq!(deposits.len(), 1);
     let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
@@ -282,27 +291,59 @@ fn test_sweeps_full_balance_including_preexisting() {
 
 #[test]
 #[feature("safe_dispatcher")]
-fn test_empty_balance_open_note_reverts() {
+fn test_zero_balance_reverts() {
     let components = deploy_components();
     let token = components.token.contract_address();
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
-
-    // No calls and no funds, so the sub-account's balance is zero. A zero-amount deposit would be
-    // rejected downstream, so collecting it reverts with `ZERO_BALANCE`.
-    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
     let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    let open_note_all = OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All };
+    let calls = array![];
+
+    // Deploy the sub-account (empty invoke) first.
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
+
+    // All with zero balance.
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
     let result = safe
         .privacy_invoke_with_computation(
-            :identity_commitment,
-            calls: array![],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            :identity_commitment, :calls, open_notes: array![open_note_all].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_BALANCE);
+
+    // Diff with zero balance.
+    let open_note_diff = OpenNote { collect_policy: CollectPolicy::Diff, ..open_note_all };
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
+    let result = safe
+        .privacy_invoke_with_computation(
+            :identity_commitment, calls: array![], open_notes: array![open_note_diff].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_BALANCE);
+
+    // Zero diff with non-zero balance.
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let preexisting: u128 = 500_000;
+    components.token.supply(address: sub_account, amount: preexisting);
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
+    let result = safe
+        .privacy_invoke_with_computation(
+            :identity_commitment, calls: array![], open_notes: array![open_note_diff].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::ZERO_BALANCE);
+
+    // Exact with zero balance.
+    let open_note_exact = OpenNote { collect_policy: CollectPolicy::Exact(0), ..open_note_all };
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
+    let result = safe
+        .privacy_invoke_with_computation(
+            :identity_commitment, calls: array![], open_notes: array![open_note_exact].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_BALANCE);
 }
 
 #[test]
-fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
+#[feature("safe_dispatcher")]
+fn test_collects_remaining_balance_after_invoke_transfers_out() {
     let components = deploy_components();
     let token = components.token.contract_address();
     let identity_commitment = anonymizer_disp(components.anonymizer)
@@ -314,7 +355,7 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
     let preexisting: u128 = 1_000_000;
     components.token.supply(address: sub_account, amount: preexisting);
 
-    // The invoke makes the sub-account send some tokens out; only the remainder is swept.
+    // The invoke makes the sub-account send some tokens out; only the remainder is collected.
     let sink: ContractAddress = 'SINK'.try_into().unwrap();
     let sent: u128 = 300_000;
     let transfer = Call {
@@ -326,10 +367,13 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
         .invoke(
             :identity_commitment,
             calls: array![transfer],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All },
+            ]
+                .span(),
         );
 
-    // The balance left after the outbound transfer is swept; funds sent out are not recovered.
+    // The balance left after the outbound transfer is collected; funds sent out are not recovered.
     let remaining = preexisting - sent;
     let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
     assert_eq!(note_id, NOTE_ID);
@@ -338,6 +382,145 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
     assert_eq!(components.token.balance_of(sub_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), remaining.into());
     assert_eq!(components.token.balance_of(sink), sent.into());
+
+    // Try to collect with diff policy.
+    components.token.supply(address: sub_account, amount: preexisting);
+    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
+    let result = safe
+        .privacy_invoke_with_computation(
+            :identity_commitment,
+            calls: array![transfer],
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::Diff },
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::NEGATIVE_DIFF);
+}
+
+#[test]
+fn test_collect_diff_takes_only_interaction_gain() {
+    let components = deploy_components();
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
+
+    // When no pre-existing balance, `Diff` collects everything.
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+    let deposits = components
+        .invoke(
+            :identity_commitment,
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::Diff },
+            ]
+                .span(),
+        );
+    let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
+    assert_eq!(note_id, NOTE_ID);
+    assert_eq!(deposit_token, token);
+    assert_eq!(amount, AMOUNT);
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(components.anonymizer), AMOUNT.into());
+    assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
+
+    // Fund the sub-account with a pre-existing balance that `Diff` must leave untouched.
+    let preexisting: u128 = 500_000;
+    components.token.supply(address: sub_account, amount: preexisting);
+
+    // The interaction adds `AMOUNT`; `Diff` collects only that gain.
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+    let deposits = components
+        .invoke(
+            :identity_commitment,
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::Diff },
+            ]
+                .span(),
+        );
+
+    let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
+    assert_eq!(note_id, NOTE_ID);
+    assert_eq!(deposit_token, token);
+    assert_eq!(amount, AMOUNT);
+    // Only the interaction gain is collected; the pre-existing balance stays in the sub-account.
+    assert_eq!(components.token.balance_of(sub_account), preexisting.into());
+    assert_eq!(components.token.balance_of(components.anonymizer), 2 * AMOUNT.into());
+    assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_collect_exact_policy() {
+    let components = deploy_components();
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
+
+    // The interaction pays the sub-account `AMOUNT`; `Exact` collects only part of it.
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+    let exact: u128 = 400_000;
+    let deposits = components
+        .invoke(
+            :identity_commitment,
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::Exact(exact) },
+            ]
+                .span(),
+        );
+
+    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    assert_eq!(deposits.len(), 1);
+    let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
+    assert_eq!(note_id, NOTE_ID);
+    assert_eq!(deposit_token, token);
+    assert_eq!(amount, exact);
+    // Only `exact` is collected; the rest of the interaction payout stays in the sub-account.
+    let remaining = AMOUNT - exact;
+    assert_eq!(components.token.balance_of(sub_account), remaining.into());
+    assert_eq!(components.token.balance_of(components.anonymizer), exact.into());
+    assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), exact.into());
+
+    // Test collect exact remaining balance.
+    let deposits = components
+        .invoke(
+            :identity_commitment,
+            calls: array![],
+            open_notes: array![
+                OpenNote {
+                    note_id: NOTE_ID, token, collect_policy: CollectPolicy::Exact(remaining),
+                },
+            ]
+                .span(),
+        );
+    assert_eq!(deposits.len(), 1);
+    let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
+    assert_eq!(note_id, NOTE_ID);
+    assert_eq!(deposit_token, token);
+    assert_eq!(amount, remaining);
+    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(components.anonymizer), remaining.into() + exact.into());
+    assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), remaining.into());
+
+    // Try to collect exceeding balance.
+    cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
+    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    let result = safe
+        .privacy_invoke_with_computation(
+            :identity_commitment,
+            calls: array![],
+            open_notes: array![
+                OpenNote {
+                    note_id: NOTE_ID, token, collect_policy: CollectPolicy::Exact(remaining),
+                },
+            ]
+                .span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INSUFFICIENT_BALANCE);
 }
 
 #[test]
@@ -361,7 +544,10 @@ fn test_collected_amount_overflow() {
                 transfer_to_caller_call(components.mock_dapp, token, max),
                 transfer_to_caller_call(components.mock_dapp, token, 1),
             ],
-            open_notes: array![OpenNote { note_id: NOTE_ID, token }].span(),
+            open_notes: array![
+                OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All },
+            ]
+                .span(),
         );
 }
 

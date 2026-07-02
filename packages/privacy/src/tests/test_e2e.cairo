@@ -21,7 +21,7 @@ use starknet::ContractAddress;
 use starknet::account::Call;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
 use sub_account_anonymizer::sub_account_anonymizer::{
-    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait,
+    CollectPolicy, ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait, OpenNote,
 };
 
 // Helper: Constants for e2e testing.
@@ -1941,7 +1941,10 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
         calldata: array![token_addr.into(), amount.into(), 0].span(),
     };
     let calls: Array<Call> = array![transfer_to_caller];
-    let open_notes: Span<(felt252, ContractAddress)> = [(note_id, token_addr)].span();
+    let open_notes: Span<OpenNote> = [
+        OpenNote { note_id, token: token_addr, collect_policy: CollectPolicy::All },
+    ]
+        .span();
     let mut invoke_data: Array<felt252> = array![];
     calls.serialize(ref invoke_data);
     open_notes.serialize(ref invoke_data);
