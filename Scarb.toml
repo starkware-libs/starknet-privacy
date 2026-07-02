@@ -17,8 +17,9 @@ snforge_std = "0.59.0"
 assert_macros = "2.17.0"
 openzeppelin = "3.0.0"
 ekubo = { git = "https://github.com/EkuboProtocol/starknet-contracts", rev = "8b4de8b5701d10b101c06b786740bf45b6cf15cb" }
-starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="56d2606bfd5e7d5106b884916f6bb6d9b44039c4" }
-starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="56d2606bfd5e7d5106b884916f6bb6d9b44039c4" }
+starkware_utils = { git ="https://github.com/starkware-libs/starkware-starknet-utils", rev="671bac4dd7ec765ffb2e64711f93acef94802d43" }
+starkware_utils_testing = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="671bac4dd7ec765ffb2e64711f93acef94802d43" }
+starkware_accounts = { git="https://github.com/starkware-libs/starkware-starknet-utils", rev="671bac4dd7ec765ffb2e64711f93acef94802d43" }
 
 [workspace.tool.fmt]
 sort-module-level-items = true

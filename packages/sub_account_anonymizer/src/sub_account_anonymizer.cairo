@@ -1,7 +1,7 @@
 //! Sub-account anonymizer for privacy-preserving dapp interactions.
 //!
 //! Runs arbitrary dapp calls on behalf of the privacy contract through per-identity-commitment
-//! [`SubAccount`](starkware_utils::contracts::sub_account::SubAccount) contracts. Each identity
+//! [`SubAccount`](starkware_accounts::sub_account::SubAccount) contracts. Each identity
 //! commitment maps to a dedicated sub-account that performs the dapp calls and holds the resulting
 //! funds; the anonymizer then collects those funds into itself and approves the privacy contract to
 //! pull them into open notes. Driving interactions is restricted to the configured privacy
@@ -127,13 +127,11 @@ pub mod SubAccountAnonymizer {
     use starknet::{
         ClassHash, ContractAddress, SyscallResultTrait, get_caller_address, get_contract_address,
     };
+    use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
     use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
-    use starkware_utils::contracts::sub_account::{
-        ISubAccountDispatcher, ISubAccountDispatcherTrait,
-    };
     use super::{ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
