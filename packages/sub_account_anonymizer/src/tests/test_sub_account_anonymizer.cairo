@@ -5,7 +5,7 @@ use privacy::objects::OpenNoteDeposit;
 use snforge_std::{DeclareResultTrait, TokenTrait, declare};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_utils::contracts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
+use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
 };

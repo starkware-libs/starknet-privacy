@@ -19,6 +19,7 @@ assert_macros.workspace = true
 ekubo.workspace = true
 ekubo_swap_anonymizer = { path = "../ekubo_swap_anonymizer", features = ["test_utils"] }
 snforge_std.workspace = true
+starkware_accounts.workspace = true
 starkware_utils_testing.workspace = true
 sub_account_anonymizer = { path = "../sub_account_anonymizer", features = ["test_utils"] }
 vesu_lending_anonymizer = { path = "../vesu_lending_anonymizer", features = ["test_utils"] }
@@ -27,7 +28,7 @@ vesu_lending_anonymizer = { path = "../vesu_lending_anonymizer", features = ["te
 name = "privacy_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "starkware_utils::contracts::sub_account::SubAccount",
+    "starkware_accounts::sub_account::SubAccount",
     "ekubo_swap_anonymizer::ekubo_swap_anonymizer::EkuboSwapAnonymizer",
     "ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
     "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer",
