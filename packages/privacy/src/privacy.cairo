@@ -33,10 +33,9 @@ pub mod Privacy {
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs,
-        extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
-        panic_with_server_actions, propagate_external_panic, send_message_to_server,
-        storage_path_to_felt252, to_write_once_action, unpack,
+        encrypt_user_addr, extract_compile_actions_inputs, extract_server_actions_from_panic,
+        is_canonical_key, open_note, pack, panic_with_server_actions, propagate_external_panic,
+        send_message_to_server, storage_path_to_felt252, to_write_once_action, unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -227,7 +226,7 @@ pub mod Privacy {
                 calldata: calldata.span(),
             );
 
-            extract_server_actions_from_compile_and_panic(:syscall_result)
+            extract_server_actions_from_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall

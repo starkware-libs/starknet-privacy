@@ -422,7 +422,7 @@ pub(crate) fn send_message_to_server(
 
 /// Gets the result from `compile_and_panic` and returns the server actions on success.
 /// Panics on failure with the result's panic data.
-pub(crate) fn extract_server_actions_from_compile_and_panic(
+pub(crate) fn extract_server_actions_from_panic(
     syscall_result: Result<Span<felt252>, Array<felt252>>,
 ) -> Span<ServerAction> {
     let origin_panic_data = syscall_result.expect_err(internal_errors::EXPECTED_PANIC).span();
