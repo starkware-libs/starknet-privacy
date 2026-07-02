@@ -2,13 +2,17 @@ use core::hash::HashStateTrait;
 use core::num::traits::{Bounded, Zero};
 use core::poseidon::PoseidonTrait;
 use privacy::objects::OpenNoteDeposit;
-use snforge_std::{DeclareResultTrait, TokenTrait, declare};
+use snforge_std::{
+    DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare, spy_events,
+};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
 use starkware_utils_testing::test_utils::{
-    TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
+    TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
+    cheat_caller_address_once,
 };
+use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed;
 use sub_account_anonymizer::sub_account_anonymizer::{
     ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
     ISubAccountAnonymizerSafeDispatcherTrait, OpenNote, errors,
@@ -91,6 +95,33 @@ fn test_invoke_executes_and_collects_open_note() {
     assert_eq!(components.token.balance_of(sub_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), AMOUNT.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
+}
+
+#[test]
+fn test_deploy_emits_sub_account_deployed_event() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
+
+    // The first invoke deploys the sub-account and emits the event.
+    let mut spy = spy_events();
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
+    let sub_account = anonymizer.get_sub_account(identity_commitment);
+    let expected_event = SubAccountDeployed { identity_commitment, sub_account };
+    let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
+    assert_eq!(events.len(), 1);
+    assert_expected_event_emitted(
+        spied_event: events[0],
+        :expected_event,
+        expected_event_selector: @selector!("SubAccountDeployed"),
+        expected_event_name: "SubAccountDeployed",
+    );
+
+    // A second invoke reuses the sub-account, so no new deployment event is emitted.
+    let mut spy = spy_events();
+    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
+    let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
+    assert_eq!(events.len(), 0);
 }
 
 #[test]

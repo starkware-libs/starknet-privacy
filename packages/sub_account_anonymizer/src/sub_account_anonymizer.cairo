@@ -163,6 +163,17 @@ pub mod SubAccountAnonymizer {
         sub_accounts: Map<IdentityCommitment, ContractAddress>,
     }
 
+    /// Emitted when a sub-account is deployed for an identity commitment on its first use.
+    #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+    pub struct SubAccountDeployed {
+        /// The identity commitment the sub-account is bound to.
+        #[key]
+        pub identity_commitment: IdentityCommitment,
+        /// The deployed sub-account address.
+        #[key]
+        pub sub_account: ContractAddress,
+    }
+
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -174,6 +185,7 @@ pub mod SubAccountAnonymizer {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        SubAccountDeployed: SubAccountDeployed,
     }
 
     #[constructor]
@@ -246,6 +258,7 @@ pub mod SubAccountAnonymizer {
             )
                 .unwrap_syscall();
             self.sub_accounts.write(identity_commitment, sub_account_addr);
+            self.emit(SubAccountDeployed { identity_commitment, sub_account: sub_account_addr });
             ISubAccountDispatcher { contract_address: sub_account_addr }
         }
 
