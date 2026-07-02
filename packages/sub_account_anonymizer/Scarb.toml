@@ -12,6 +12,7 @@ scarb.workspace = true
 [dependencies]
 starknet.workspace = true
 openzeppelin.workspace = true
+starkware_accounts.workspace = true
 starkware_utils.workspace = true
 privacy = { path = "../privacy" }
 
@@ -29,7 +30,7 @@ test_utils = []
 name = "sub_account_anonymizer_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "starkware_utils::contracts::sub_account::SubAccount",
+    "starkware_accounts::sub_account::SubAccount",
     "sub_account_anonymizer::test_utils_contracts::mock_dapp::MockDapp",
 ]
 
