@@ -168,6 +168,16 @@ pub mod SubAccountAnonymizer {
         sub_accounts: IterableMap<IdentityCommitment, ContractAddress>,
     }
 
+    #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+    pub struct SubAccountDeployed {
+        /// The identity commitment the sub-account is bound to.
+        #[key]
+        pub identity_commitment: IdentityCommitment,
+        /// The deployed sub-account address.
+        #[key]
+        pub sub_account: ContractAddress,
+    }
+
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -179,6 +189,7 @@ pub mod SubAccountAnonymizer {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        SubAccountDeployed: SubAccountDeployed,
     }
 
     #[constructor]
@@ -242,7 +253,7 @@ pub mod SubAccountAnonymizer {
             if let Some(sub_account_addr) = self.sub_accounts.read(identity_commitment) {
                 return ISubAccountDispatcher { contract_address: sub_account_addr };
             }
-            let (sub_account_addr, _) = deploy_syscall(
+            let (sub_account, _) = deploy_syscall(
                 class_hash: self.sub_account_class_hash.read(),
                 contract_address_salt: identity_commitment,
                 calldata: array![].span(),
@@ -250,9 +261,10 @@ pub mod SubAccountAnonymizer {
             )
                 .unwrap_syscall();
             // Sanity check: deployed address cannot be zero.
-            assert(sub_account_addr.is_non_zero(), errors::ZERO_ADDRESS);
-            self.sub_accounts.write(identity_commitment, sub_account_addr);
-            ISubAccountDispatcher { contract_address: sub_account_addr }
+            assert(sub_account.is_non_zero(), errors::ZERO_ADDRESS);
+            self.sub_accounts.write(identity_commitment, sub_account);
+            self.emit(SubAccountDeployed { identity_commitment, sub_account });
+            ISubAccountDispatcher { contract_address: sub_account }
         }
 
         /// Settles each note in `open_notes`, returning one [`OpenNoteDeposit`] per note.
