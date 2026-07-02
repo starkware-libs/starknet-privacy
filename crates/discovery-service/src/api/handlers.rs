@@ -565,3 +565,189 @@ mod tests {
         assert!(result.is_err());
     }
 }
+
+/// API-level tests for the `/v1/sub_accounts` handler over a mock `ContractView` backend: routing,
+/// the scan-range validation, error mapping, and response decoding — without a devnet. The full
+/// on-chain round-trip against a deployed anonymizer is covered by the SDK e2e suite
+/// (`e2e/tests/devnet/sub-account-compute-invoke.test.ts`).
+#[cfg(test)]
+mod sub_accounts_api_tests {
+    use super::sub_accounts_handler;
+    use crate::api::AppState;
+    use crate::chain_state::{ChainHead, ChainState, ChainStateError};
+    use crate::config::ValidationLimits;
+    use crate::public_key_cache::PublicKeyCache;
+    use crate::rpc_backend::{ContractView, ContractViewError};
+    use async_trait::async_trait;
+    use axum::body::Body;
+    use axum::http::{header, Request, StatusCode};
+    use axum::routing::post;
+    use axum::Router;
+    use http_body_util::BodyExt;
+    use starknet_core::types::{BlockId, Felt};
+    use std::sync::Arc;
+    use tower::ServiceExt;
+
+    /// What the mock anonymizer view returns for `get_sub_accounts`.
+    #[derive(Clone)]
+    enum ViewResult {
+        Ok(Vec<Felt>),
+        NotFound,
+        RpcFailure,
+    }
+
+    #[derive(Clone)]
+    struct MockBackend {
+        view: ViewResult,
+    }
+
+    #[async_trait]
+    impl ContractView for MockBackend {
+        async fn call_view(
+            &self,
+            _contract_address: Felt,
+            _selector: Felt,
+            _calldata: Vec<Felt>,
+            _block_id: BlockId,
+        ) -> Result<Vec<Felt>, ContractViewError> {
+            match &self.view {
+                ViewResult::Ok(felts) => Ok(felts.clone()),
+                ViewResult::NotFound => Err(ContractViewError::ContractNotFound),
+                ViewResult::RpcFailure => Err(ContractViewError::Request(
+                    "simulated transport failure".to_string(),
+                )),
+            }
+        }
+    }
+
+    #[async_trait]
+    impl ChainState for MockBackend {
+        async fn get_head(&self) -> Option<ChainHead> {
+            // These tests send no `block_ref`/`last_known_block`, so `validate_block_ref` resolves
+            // the read to this head's hash.
+            Some(ChainHead {
+                block_number: 1,
+                block_hash: Felt::from(0x1234u64),
+                timestamp: 0,
+            })
+        }
+        async fn set_head(&self, _head: ChainHead) {
+            unreachable!("set_head is not exercised on the read path")
+        }
+        async fn is_canonical(&self, _block_hash: Felt) -> Result<bool, ChainStateError> {
+            unreachable!("is_canonical is only called when last_known_block is set")
+        }
+    }
+
+    async fn post_sub_accounts(
+        view: ViewResult,
+        body: serde_json::Value,
+    ) -> (StatusCode, serde_json::Value) {
+        let state = Arc::new(AppState {
+            backend: MockBackend { view },
+            health_max_lag_secs: 0,
+            validation_limits: ValidationLimits::default(),
+            public_key_cache: PublicKeyCache::new(16),
+        });
+        let app = Router::new()
+            .route(
+                "/v1/sub_accounts",
+                post(sub_accounts_handler::<MockBackend>),
+            )
+            .with_state(state);
+        let request = Request::builder()
+            .method("POST")
+            .uri("/v1/sub_accounts")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(serde_json::to_vec(&body).unwrap()))
+            .unwrap();
+        let response = app.oneshot(request).await.unwrap();
+        let status = response.status();
+        let bytes = response.into_body().collect().await.unwrap().to_bytes();
+        let json = serde_json::from_slice(&bytes).unwrap_or(serde_json::Value::Null);
+        (status, json)
+    }
+
+    #[tokio::test]
+    async fn rejects_scan_range_exceeding_max() {
+        // end - start = 1025 > MAX_SCAN_RANGE (1024): rejected as 400 before any backend call.
+        let (status, body) = post_sub_accounts(
+            ViewResult::Ok(vec![]),
+            serde_json::json!({
+                "contract_address": "0x1",
+                "partial_commitment": "0x2",
+                "start_nonce": 0,
+                "end_nonce": 1025,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body["error"]["code"], "INVALID_REQUEST");
+    }
+
+    #[tokio::test]
+    async fn resolves_deployed_and_undeployed_entries() {
+        // Span<SubAccountInfo> serialized as [len, (nonce, address, is_deployed) * len].
+        let view = ViewResult::Ok(vec![
+            Felt::from(2u64),
+            Felt::from(0u64),
+            Felt::from(0xAAAu64),
+            Felt::from(1u64),
+            Felt::from(1u64),
+            Felt::from(0xBBBu64),
+            Felt::ZERO,
+        ]);
+        let (status, body) = post_sub_accounts(
+            view,
+            serde_json::json!({
+                "contract_address": "0x1",
+                "partial_commitment": "0x2",
+                "end_nonce": 2,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::OK);
+        let entries = body["sub_accounts"].as_array().expect("sub_accounts array");
+        assert_eq!(entries.len(), 2);
+        assert_eq!(entries[0]["nonce"], 0);
+        assert_eq!(entries[0]["is_deployed"], true);
+        assert_eq!(entries[1]["nonce"], 1);
+        assert_eq!(entries[1]["is_deployed"], false);
+    }
+
+    #[tokio::test]
+    async fn maps_contract_not_found_to_404() {
+        let (status, body) = post_sub_accounts(
+            ViewResult::NotFound,
+            serde_json::json!({
+                "contract_address": "0x1",
+                "partial_commitment": "0x2",
+                "end_nonce": 1,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body["error"]["code"], "CONTRACT_NOT_FOUND");
+    }
+
+    #[tokio::test]
+    async fn maps_rpc_failure_to_502_without_leaking_detail() {
+        let (status, body) = post_sub_accounts(
+            ViewResult::RpcFailure,
+            serde_json::json!({
+                "contract_address": "0x1",
+                "partial_commitment": "0x2",
+                "end_nonce": 1,
+            }),
+        )
+        .await;
+        assert_eq!(status, StatusCode::BAD_GATEWAY);
+        assert_eq!(body["error"]["code"], "RPC_UNAVAILABLE");
+        // The raw transport detail must not leak to the client.
+        let message = body["error"]["message"].as_str().unwrap_or_default();
+        assert!(
+            !message.contains("simulated transport failure"),
+            "leaked RPC detail to client: {message}"
+        );
+    }
+}
