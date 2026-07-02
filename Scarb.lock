@@ -164,6 +164,7 @@ dependencies = [
  "ekubo_swap_anonymizer",
  "openzeppelin",
  "snforge_std",
+ "starkware_accounts",
  "starkware_utils",
  "starkware_utils_testing",
  "sub_account_anonymizer",
@@ -186,9 +187,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "starkware_accounts"
+version = "1.0.0"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=671bac4dd7ec765ffb2e64711f93acef94802d43#671bac4dd7ec765ffb2e64711f93acef94802d43"
+dependencies = [
+ "openzeppelin",
+ "starkware_utils",
+]
+
+[[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=56d2606bfd5e7d5106b884916f6bb6d9b44039c4#56d2606bfd5e7d5106b884916f6bb6d9b44039c4"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=671bac4dd7ec765ffb2e64711f93acef94802d43#671bac4dd7ec765ffb2e64711f93acef94802d43"
 dependencies = [
  "openzeppelin",
 ]
@@ -196,7 +206,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=56d2606bfd5e7d5106b884916f6bb6d9b44039c4#56d2606bfd5e7d5106b884916f6bb6d9b44039c4"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=671bac4dd7ec765ffb2e64711f93acef94802d43#671bac4dd7ec765ffb2e64711f93acef94802d43"
 dependencies = [
  "openzeppelin",
  "snforge_std",
@@ -210,6 +220,7 @@ dependencies = [
  "openzeppelin",
  "privacy",
  "snforge_std",
+ "starkware_accounts",
  "starkware_utils",
  "starkware_utils_testing",
 ]
