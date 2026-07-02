@@ -14,14 +14,17 @@ use privacy::objects::{EncSubchannelInfo, EncUserAddr, OpenNoteDeposit};
 use privacy::snip12::compute_call_set_hash;
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::mock_invoke_returns::MockCompute::COMPUTE_PANIC;
-use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::COMPUTED_MARKER;
+use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::{
+    COMPUTED_MARKER_1, COMPUTED_MARKER_2,
+};
 use privacy::tests::mock_invoke_returns::{IMockComputeDispatcher, IMockComputeDispatcherTrait};
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
-    deploy_mock_compute, deploy_mock_compute_empty, deploy_mock_compute_multi_felt,
-    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_stark_account,
+    deploy_mock_compute, deploy_mock_compute_array, deploy_mock_compute_empty,
+    deploy_mock_compute_multi_felt, deploy_mock_reentrancy, deploy_mock_return_garbage,
+    deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
     ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
@@ -5936,10 +5939,65 @@ fn test_compute_and_invoke_assembles_empty_compute_and_multi_felt_result() {
     );
     let expected = ServerAction::InvokeWithComputation(
         InvokeInput {
-            contract_address: mock, calldata: [identity_key, COMPUTED_MARKER, 'INVOKE'].span(),
+            contract_address: mock,
+            calldata: [COMPUTED_MARKER_1, identity_key, COMPUTED_MARKER_2, 'INVOKE'].span(),
         },
     );
     assert_eq!(*actions[actions.len() - 1], expected);
+}
+
+#[test]
+fn test_compute_and_invoke_assembles_multi_felt_result() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_multi_felt();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: [].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+    // Test invoke_with_computation gets the correct calldata.
+    test.privacy.apply_actions(:actions);
+}
+
+#[test]
+fn test_compute_and_invoke_assembles_array_result() {
+    // Full client -> server round-trip against a mock that serdes `Array<felt252>` on both legs.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_array();
+    let compute_input = array![1, 2].span();
+    let mut compute_additional_data = array![];
+    compute_input.serialize(ref compute_additional_data);
+    let invoke_input = array![3, 4].span();
+    let mut invoke_additional_data = array![];
+    invoke_input.serialize(ref invoke_additional_data);
+
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: compute_additional_data.span(),
+        invoke_additional_data: invoke_additional_data.span(),
+    };
+    // SetViewingKey provides the WriteOnce replay protection the batch requires.
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+    test.privacy.apply_actions(:actions);
 }
 
 #[test]
