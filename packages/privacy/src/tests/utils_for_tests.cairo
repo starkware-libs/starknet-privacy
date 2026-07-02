@@ -46,6 +46,7 @@ use privacy::test_contracts::mock_swap_executor::{
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
 use privacy::tests::mock_invoke_returns::MockCompute::deploy_for_test as deploy_mock_compute_for_test;
+use privacy::tests::mock_invoke_returns::MockComputeArray::deploy_for_test as deploy_mock_compute_array_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeEmpty::deploy_for_test as deploy_mock_compute_empty_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::deploy_for_test as deploy_mock_compute_multi_felt_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
@@ -2308,6 +2309,21 @@ pub(crate) fn deploy_mock_compute_multi_felt() -> ContractAddress {
         class_hash: *class_hash, :deployment_params,
     )
         .expect('MOCK_COMPUTE_MULTI_DEPLOY_FAIL');
+    contract_address
+}
+
+/// Deploys a `MockComputeArray` target, whose `privacy_compute` takes no `compute_additional_data`
+/// and returns an `Array<felt252>` (a length-prefixed `compute_result`).
+pub(crate) fn deploy_mock_compute_array() -> ContractAddress {
+    let class_hash = declare(contract: "MockComputeArray")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_compute_array_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MOCK_COMPUTE_ARRAY_DEPLOY_FAIL');
     contract_address
 }
 
