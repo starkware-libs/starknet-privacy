@@ -557,15 +557,12 @@ pub mod Privacy {
             );
             let mut compute_calldata = array![identity_key];
             compute_calldata.append_span(compute_additional_data);
-            let compute_result =
-                match call_contract_syscall(
-                    address: contract_address,
-                    entry_point_selector: PRIVACY_COMPUTE_SELECTOR,
-                    calldata: compute_calldata.span(),
-                ) {
-                Ok(compute_result) => compute_result,
-                Err(panic_data) => propagate_external_panic(panic_data.span()),
-            };
+            let compute_result = call_contract_syscall(
+                address: contract_address,
+                entry_point_selector: PRIVACY_COMPUTE_SELECTOR,
+                calldata: compute_calldata.span(),
+            )
+                .unwrap_or_else(|panic_data| propagate_external_panic(panic_data.span()));
             assert(!compute_result.is_empty(), errors::EMPTY_COMPUTE_RESULT);
             // The target's `privacy_invoke_with_computation` receives the compute result followed
             // by the caller-supplied invoke data as a single calldata span.
