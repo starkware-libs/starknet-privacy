@@ -1986,7 +1986,7 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
     let identity_key = user.compute_identity_key(contract_address: anonymizer);
     let identity_commitment = anonymizer_disp.privacy_compute(:identity_key, :dapp_name, :nonce);
-    let sub_account = anonymizer_disp.get_sub_account(:identity_commitment);
+    let sub_account = anonymizer_disp.get_sub_account(:identity_commitment).unwrap();
     assert!(sub_account.is_non_zero());
     assert_eq!(token.balance_of(address: sub_account), 0);
 }

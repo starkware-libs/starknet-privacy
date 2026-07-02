@@ -35,9 +35,9 @@ fn test_get_sub_account_class_hash() {
 }
 
 #[test]
-fn test_get_sub_account_unknown_identity_commitment_is_zero() {
+fn test_get_sub_account_unknown_identity_commitment_is_none() {
     let anonymizer = deploy_sub_account_anonymizer();
-    assert!(anonymizer_disp(anonymizer).get_sub_account('UNKNOWN').is_zero());
+    assert!(anonymizer_disp(anonymizer).get_sub_account('UNKNOWN').is_none());
 }
 
 #[test]
@@ -84,7 +84,9 @@ fn test_invoke_executes_and_collects_open_note() {
     assert_eq!(deposit_token, token);
     assert_eq!(amount, AMOUNT);
 
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let sub_account = anonymizer_disp(components.anonymizer)
+        .get_sub_account(identity_commitment)
+        .unwrap();
     assert!(sub_account.is_non_zero());
     // Funds flowed dapp -> sub-account -> anonymizer, and the privacy contract is approved to pull.
     assert_eq!(components.token.balance_of(components.mock_dapp), 0);
@@ -201,7 +203,9 @@ fn test_invoke_but_not_collect() {
         );
     assert_eq!(deposits.len(), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), 0);
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let sub_account = anonymizer_disp(components.anonymizer)
+        .get_sub_account(identity_commitment)
+        .unwrap();
     assert_eq!(components.token.balance_of(sub_account), AMOUNT.into());
 }
 
@@ -212,7 +216,9 @@ fn test_deployed_sub_account_owned_by_anonymizer() {
         .privacy_compute('USER', 'DAPP', 1);
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
 
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let sub_account = anonymizer_disp(components.anonymizer)
+        .get_sub_account(identity_commitment)
+        .unwrap();
     // The anonymizer is the sub-account's deployer, so it is the only authorized controller.
     assert_eq!(
         ISubAccountDispatcher { contract_address: sub_account }.owner(), components.anonymizer,
@@ -230,7 +236,7 @@ fn test_sub_account_is_reused_per_identity_commitment() {
     components
         .invoke(identity_commitment: identity_commitment_a, calls: array![], open_notes: no_notes);
     let sub_account_a = anonymizer.get_sub_account(identity_commitment_a);
-    assert!(sub_account_a.is_non_zero());
+    assert!(sub_account_a.is_some());
 
     // Same identity commitment reuses the same sub-account (no redeploy).
     components
@@ -241,7 +247,7 @@ fn test_sub_account_is_reused_per_identity_commitment() {
     components
         .invoke(identity_commitment: identity_commitment_b, calls: array![], open_notes: no_notes);
     let sub_account_b = anonymizer.get_sub_account(identity_commitment_b);
-    assert!(sub_account_b.is_non_zero());
+    assert!(sub_account_b.is_some());
     assert!(sub_account_b != sub_account_a);
 }
 
@@ -254,7 +260,9 @@ fn test_sweeps_full_balance_including_preexisting() {
 
     // Deploy the sub-account (empty invoke) so we can give it a pre-existing balance.
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let sub_account = anonymizer_disp(components.anonymizer)
+        .get_sub_account(identity_commitment)
+        .unwrap();
     let preexisting: u128 = 500_000;
     components.token.supply(address: sub_account, amount: preexisting);
 
@@ -310,7 +318,9 @@ fn test_sweeps_remaining_balance_after_invoke_transfers_out() {
 
     // Deploy and pre-fund the sub-account.
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let sub_account = anonymizer_disp(components.anonymizer)
+        .get_sub_account(identity_commitment)
+        .unwrap();
     let preexisting: u128 = 1_000_000;
     components.token.supply(address: sub_account, amount: preexisting);
 
