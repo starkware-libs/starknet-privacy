@@ -53,6 +53,13 @@
   point. It extends `CallMockProofProvider` to sign each deposit's screening
   attestation with the canonical test screener key, so integration suites can
   drive a screening-capable pool's deposit path end to end.
+- `computeAndInvoke` builder method on `PrivateTransfersBuilder`: queues a
+  `ComputeAndInvoke` client action that, after the private operations, queries the
+  target contract's `privacy_compute` (with the derived identity key and `computeAdditionalData`)
+  and forwards its result plus `invokeAdditionalData` to `privacy_invoke_with_computation`. The
+  call builder receives the same `{ openNotes, withdrawals, poolAddress }` as `invoke`.
+  Mutually exclusive with `invoke` (one invoke-phase action per transaction). Supported
+  by the `MockPoolContract` simulate flow.
 
 ### Changed
 
