@@ -466,7 +466,9 @@ pub trait IServer<T> {
     /// ([`TransferFrom`](privacy::actions::ServerAction::TransferFrom))
     /// must be accompanied by a fresh, valid `screening` attestation for its depositor, and all
     /// deposits in one tx must share a single depositor.
-    /// - The open-note depositor (the [`Invoke`](privacy::actions::ServerAction::Invoke) target
+    /// - The open-note depositor (the target of the
+    /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action
     /// that funds the deposit) must not be on the block list.
     ///
     /// #### Events Emitted
@@ -486,7 +488,11 @@ pub trait IServer<T> {
     /// - [`NoteUsed`](privacy::events::NoteUsed): Emitted when
     /// [`EmitNoteUsed`](privacy::actions::ServerAction::EmitNoteUsed) action is executed.
     /// - [`OpenNoteDeposited`](privacy::events::OpenNoteDeposited): Emitted for each
-    /// `OpenNoteDeposit` returned by an [`Invoke`](privacy::actions::ServerAction::Invoke) action.
+    /// `OpenNoteDeposit` returned by an [`Invoke`](privacy::actions::ServerAction::Invoke) or
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action.
+    /// - [`ExternalContractInvoked`](privacy::events::ExternalContractInvoked): Emitted for each
+    /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action.
     ///
     /// #### Reverts
     /// **Context validation (before applying actions):**
