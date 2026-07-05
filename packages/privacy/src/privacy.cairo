@@ -562,7 +562,10 @@ pub mod Privacy {
                 calldata: compute_calldata.span(),
             )
                 .unwrap_or_else(|panic_data| propagate_external_panic(panic_data.span()));
+            // The compute result should be non-empty, as `privacy_compute` is assumed to bind the
+            // identity key to it.
             assert(!compute_result.is_empty(), errors::EMPTY_COMPUTE_RESULT);
+
             // The target's `privacy_invoke_with_computation` receives the compute result followed
             // by the caller-supplied invoke data as a single calldata span.
             let mut invoke_calldata = array![];
