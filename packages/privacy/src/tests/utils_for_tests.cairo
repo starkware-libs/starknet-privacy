@@ -1298,7 +1298,7 @@ pub(crate) impl TestImpl of TestTrait {
         }
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
-        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid);
+        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid, public_key: 0);
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
@@ -2198,15 +2198,18 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a depositor account with custom-signature-validation.
-/// `is_valid` controls the signature validation result.
-pub(crate) fn deploy_mock_custom_account(salt: felt252, is_valid: bool) -> ContractAddress {
+/// `is_valid` controls the custom-validation verdict; `public_key` is the key its raw-hash
+/// `is_valid_signature` verifies against (0 disables that path).
+pub(crate) fn deploy_mock_custom_account(
+    salt: felt252, is_valid: bool, public_key: felt252,
+) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockCustomAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_custom_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :is_valid,
+        class_hash: *contract_class_hash, :deployment_params, :is_valid, :public_key,
     )
         .expect('MockCustomAccount deploy failed');
     contract_address
