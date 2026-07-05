@@ -23,8 +23,8 @@ use privacy::tests::utils_for_tests::{
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
     deploy_mock_compute, deploy_mock_compute_array, deploy_mock_compute_empty,
-    deploy_mock_compute_multi_felt, deploy_mock_reentrancy, deploy_mock_return_garbage,
-    deploy_mock_stark_account,
+    deploy_mock_compute_multi_felt, deploy_mock_custom_account, deploy_mock_reentrancy,
+    deploy_mock_return_garbage, deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
     ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
@@ -6540,8 +6540,9 @@ fn test_deposit_custom_account_valid() {
     assert!(result.is_ok());
 }
 
-/// A capable account whose `is_custom_signature_valid` returns 0 must hard-fail with
-/// INVALID_SIGNATURE — no silent fallback to the legacy raw-hash check.
+/// A custom-capable account whose `is_custom_signature_valid` returns 0 rejects: its raw-hash
+/// `is_valid_signature` is disabled (`public_key` 0), so none of the three checks accept and the
+/// deposit fails with INVALID_SIGNATURE.
 #[test]
 fn test_deposit_custom_account_rejected() {
     let mut test: Test = Default::default();
@@ -6549,6 +6550,63 @@ fn test_deposit_custom_account_rejected() {
     let random = user.get_random();
     let result = user.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+}
+
+/// Fallback path: a custom-capable account whose `is_custom_signature_valid` rejects can still
+/// authenticate via a valid standard signature. Custom validation returns 0, but the account holds
+/// `key` and the wallet signs the SNIP-12 `CallSet` message, so check III accepts.
+#[test]
+fn test_deposit_custom_account_custom_fails_but_call_set_sig_passes() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 11, is_valid: false, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_FALLBACK_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "custom rejection must fall through to a valid CallSet signature");
+    stop_cheat_chain_id_global();
+}
+
+/// A custom-capable account where custom validation rejects AND the standard signature is over the
+/// wrong message must fail all three checks and revert with INVALID_SIGNATURE.
+#[test]
+fn test_deposit_custom_account_all_checks_fail_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 12, is_valid: false, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_FALLBACK_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty) — matches neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
 }
 
 /// A legacy SN wallet that signs the SNIP-12 `CallSet` message (not the tx hash).

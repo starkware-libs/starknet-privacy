@@ -22,9 +22,9 @@ const DEPOSITOR_VALIDATION_TYPE_HASH: felt252 = selector!(
 );
 
 #[derive(Copy, Drop, Hash)]
-pub(crate) struct DepositorValidation {
-    pub(crate) depositor: ContractAddress,
-    pub(crate) issued_at: u64,
+struct DepositorValidation {
+    depositor: ContractAddress,
+    issued_at: u64,
 }
 
 /// Off-chain screening attestation relayed into `apply_actions` for deposits.
@@ -48,8 +48,9 @@ pub struct ScreeningAttestation {
 pub fn is_screening_attestation_valid(
     depositor: ContractAddress, attestation: ScreeningAttestation, signer_public_key: felt252,
 ) -> bool {
-    let validation = DepositorValidation { depositor, issued_at: attestation.issued_at };
-    let message_hash = compute_screening_message_hash(@validation, signer_public_key);
+    let message_hash = compute_screening_message_hash(
+        :depositor, issued_at: attestation.issued_at, signer: signer_public_key,
+    );
     let (r, s) = attestation.signature;
     check_ecdsa_signature(message_hash, signer_public_key, r, s)
 }
@@ -71,14 +72,16 @@ fn snip12_message_hash(
         .finalize()
 }
 
-/// SNIP-12 off-chain message hash for a `DepositorValidation`.
+/// SNIP-12 off-chain message hash for the `DepositorValidation { depositor, issued_at }` typed
+/// message.
 ///
 /// `signer` is the trusted signer's STARK-curve public key (felt252). Exposed so off-chain tooling
 /// (TS/Python reference signers, test-vector generators) can derive the exact hash the verifier
 /// will check against.
 pub(crate) fn compute_screening_message_hash(
-    validation: @DepositorValidation, signer: felt252,
+    depositor: ContractAddress, issued_at: u64, signer: felt252,
 ) -> felt252 {
+    let validation = DepositorValidation { depositor, issued_at };
     snip12_message_hash(
         SCREENING_SNIP12_NAME, SCREENING_SNIP12_VERSION, signer, validation.hash_struct(),
     )
