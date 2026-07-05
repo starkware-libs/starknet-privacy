@@ -114,6 +114,20 @@ fn test_call_set_hash_signature_roundtrip() {
 }
 
 #[test]
+fn test_call_set_hash_matches_sdk_golden_vector() {
+    // Cross-layer golden (L2 <-> L3): this exact value is recomputed by the SNIP-12 CallSet signer
+    // (starknet.js) for the same vector — signer=0x1234, [approve(0x111, [0x1, 0x2])],
+    // chain 'TEST'. If either side's encoding drifts, one of the two asserts fails. Keep in sync
+    // with custom-signers/tests/snip12-call-set-signer.test.ts.
+    setup_chain_id();
+    let signer: ContractAddress = 0x1234.try_into().unwrap();
+    assert_eq!(
+        compute_call_set_hash(signer, sample_calls(), [].span()),
+        0x79d05f5b8993f5a0a18c6f7001e4d573c3eb97f322f6008cc1420f4f611501f,
+    );
+}
+
+#[test]
 fn test_call_set_hash_binds_calls() {
     setup_chain_id();
     let signer: ContractAddress = 0x1234.try_into().unwrap();

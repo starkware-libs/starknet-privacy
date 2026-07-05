@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Added
+
+- `@starkware-libs/starknet-privacy-sdk/signers` subpath export: `Snip12CallSetSigner`
+  and `Eip712CallSetSigner` (starknet.js `SignerInterface` implementations for authorizing
+  privacy-pool invocations with legacy SN wallets and `Eth712Account` / EVM wallets), plus the
+  `computeCallSetHash` / `computeCallSet712Hash` golden-vector oracles. Both signers accept an
+  optional `additionalData` bound into the signed `CallSet` message (empty by default, matching
+  the pool). SDK core stays signer-agnostic.
+
 ## 0.14.3-RC.2
 
 ### Changed
