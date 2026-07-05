@@ -108,7 +108,7 @@ fn test_call_set_hash_signature_roundtrip() {
     setup_chain_id();
     let key = trusted_signer();
     let signer: ContractAddress = 0x1234.try_into().unwrap();
-    let hash = compute_call_set_hash(signer, sample_calls());
+    let hash = compute_call_set_hash(signer, sample_calls(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     assert!(check_ecdsa_signature(hash, key.public_key, r, s));
 }
@@ -119,14 +119,28 @@ fn test_call_set_hash_binds_calls() {
     let signer: ContractAddress = 0x1234.try_into().unwrap();
     // The hash binds the exact call set: a different set (here, empty) yields a different hash.
     assert!(
-        compute_call_set_hash(signer, sample_calls()) != compute_call_set_hash(signer, [].span()),
+        compute_call_set_hash(
+            signer, sample_calls(), [].span(),
+        ) != compute_call_set_hash(signer, [].span(), [].span()),
     );
 }
 
 #[test]
 fn test_call_set_hash_binds_signer() {
     setup_chain_id();
-    let a = compute_call_set_hash(0x1.try_into().unwrap(), sample_calls());
-    let b = compute_call_set_hash(0x2.try_into().unwrap(), sample_calls());
+    let a = compute_call_set_hash(0x1.try_into().unwrap(), sample_calls(), [].span());
+    let b = compute_call_set_hash(0x2.try_into().unwrap(), sample_calls(), [].span());
     assert!(a != b);
+}
+
+#[test]
+fn test_call_set_hash_binds_additional_data() {
+    setup_chain_id();
+    let signer: ContractAddress = 0x1234.try_into().unwrap();
+    // The hash binds `additional_data`: empty vs non-empty (and differing values) diverge.
+    let empty = compute_call_set_hash(signer, sample_calls(), [].span());
+    let with_data = compute_call_set_hash(signer, sample_calls(), [0xA, 0xB].span());
+    let other_data = compute_call_set_hash(signer, sample_calls(), [0xA, 0xC].span());
+    assert!(empty != with_data);
+    assert!(with_data != other_data);
 }

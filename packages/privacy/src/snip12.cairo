@@ -97,13 +97,16 @@ impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
 }
 
 // SNIP-12 type hash `CallSet`.
+// `AdditionalData` carries opaque extra data (e.g. a nonce) bound into the signed message.
+// The privacy pool passes it empty.
 const CALL_SET_TYPE_HASH: felt252 = selector!(
-    "\"CallSet\"(\"Calls\":\"Call*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
+    "\"CallSet\"(\"Calls\":\"Call*\",\"AdditionalData\":\"felt*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
 );
 
 #[derive(Drop)]
 pub(crate) struct CallSet {
     pub(crate) calls: Span<Call>,
+    pub(crate) additional_data: Span<felt252>,
 }
 
 impl CallSetStructHashImpl of StructHash<CallSet> {
@@ -115,6 +118,7 @@ impl CallSetStructHashImpl of StructHash<CallSet> {
         PoseidonTrait::new()
             .update_with(CALL_SET_TYPE_HASH)
             .update_with(poseidon_hash_span(hashed_calls.span()))
+            .update_with(poseidon_hash_span(*self.additional_data))
             .finalize()
     }
 }
@@ -122,11 +126,14 @@ impl CallSetStructHashImpl of StructHash<CallSet> {
 /// SNIP-12 off-chain message hash for a `CallSet` authorized by `signer` (the depositor account
 /// address — the SNIP-12 envelope binds the signing account, matching starknet.js
 /// `typedData.getMessageHash(td, accountAddress)`). The off-chain golden oracle for the SDK.
-pub(crate) fn compute_call_set_hash(signer: ContractAddress, calls: Span<Call>) -> felt252 {
+/// `additional_data` is opaque extra data bound into the message (empty for the pool's own path).
+pub(crate) fn compute_call_set_hash(
+    signer: ContractAddress, calls: Span<Call>, additional_data: Span<felt252>,
+) -> felt252 {
     snip12_message_hash(
         CALL_SET_SNIP12_NAME,
         CALL_SET_SNIP12_VERSION,
         signer.into(),
-        CallSet { calls }.hash_struct(),
+        CallSet { calls, additional_data }.hash_struct(),
     )
 }

@@ -6572,7 +6572,7 @@ fn test_deposit_custom_account_custom_fails_but_call_set_sig_passes() {
         );
 
     // The wallet signs the SNIP-12 CallSet message over exactly these calls.
-    let hash = compute_call_set_hash(depositor, calls.span());
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6600,7 +6600,7 @@ fn test_deposit_custom_account_all_checks_fail_reverts() {
         );
 
     // Sign a DIFFERENT CallSet (empty) — matches neither the tx hash nor the real CallSet hash.
-    let wrong_hash = compute_call_set_hash(depositor, [].span());
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
     let (r, s) = key.sign(wrong_hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6630,7 +6630,7 @@ fn test_deposit_legacy_sn_wallet_via_snip12_call_set() {
         );
 
     // The wallet signs the SNIP-12 CallSet message over exactly these calls.
-    let hash = compute_call_set_hash(depositor, calls.span());
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6655,7 +6655,7 @@ fn test_deposit_legacy_sn_wallet_wrong_call_set_reverts() {
         );
 
     // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
-    let wrong_hash = compute_call_set_hash(depositor, [].span());
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
     let (r, s) = key.sign(wrong_hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6684,7 +6684,7 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
             user_addr: depositor, user_private_key: 'NO_SRC5_PROTOCOL_PK', :client_actions,
         );
 
-    let hash = compute_call_set_hash(depositor, calls.span());
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 

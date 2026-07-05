@@ -43,7 +43,10 @@ pub mod MockCustomAccount {
     #[abi(embed_v0)]
     impl CustomSignatureValidationImpl of ICustomSignatureValidation<ContractState> {
         fn is_custom_signature_valid(
-            self: @ContractState, calls: Span<Call>, signature: Span<felt252>,
+            self: @ContractState,
+            calls: Span<Call>,
+            additional_data: Span<felt252>,
+            signature: Span<felt252>,
         ) -> felt252 {
             self.custom_result.read()
         }

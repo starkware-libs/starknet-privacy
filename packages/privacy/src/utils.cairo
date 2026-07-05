@@ -41,7 +41,7 @@ pub(crate) const ICUSTOM_SIGNATURE_VALIDATION_ID: felt252 = selector!("is_custom
 #[starknet::interface]
 pub(crate) trait ICustomSignatureValidation<TState> {
     fn is_custom_signature_valid(
-        self: @TState, calls: Span<Call>, signature: Span<felt252>,
+        self: @TState, calls: Span<Call>, additional_data: Span<felt252>, signature: Span<felt252>,
     ) -> felt252;
 }
 
@@ -374,7 +374,8 @@ pub(crate) fn extract_compile_actions_inputs(
 /// account can also be authenticated by a valid standard signature:
 ///
 /// I. **Custom validation** (e.g. an Eth712Account advertising SRC5):
-///    the account's `is_custom_signature_valid(calls, signature)` accepts.
+///    the account's `is_custom_signature_valid(calls, additional_data, signature)` accepts
+///    (the pool passes `additional_data` empty).
 /// II. **Supported SN Wallet:**
 ///    `is_valid_signature` accepts the signature over the SN tx hash.
 /// III. **Legacy SN Wallet:**
@@ -395,9 +396,11 @@ pub(crate) fn assert_valid_signature(
         return;
     }
     // III. Legacy SN wallet: signature over the SNIP-12 `CallSet` hash of `calls`.
+    // The pool binds no extra data, so `additional_data` is empty.
     if user_account
         .is_valid_signature(
-            hash: compute_call_set_hash(user_addr, calls), signature: tx_info.signature.into(),
+            hash: compute_call_set_hash(user_addr, calls, array![].span()),
+            signature: tx_info.signature.into(),
         ) == VALIDATED {
         return;
     }
@@ -407,12 +410,13 @@ pub(crate) fn assert_valid_signature(
 /// Returns whether `user_addr`'s custom validator accepts `signature` over `calls`.
 /// False when the account doesn't advertise custom validation — so the (reverting) custom
 /// dispatcher is never invoked on an account that doesn't implement it.
+/// The pool binds no extra data, so `additional_data` is passed empty.
 fn custom_signature_valid(
     user_addr: ContractAddress, calls: Span<Call>, signature: Span<felt252>,
 ) -> bool {
     supports_custom_validation(user_addr)
         && ICustomSignatureValidationDispatcher { contract_address: user_addr }
-            .is_custom_signature_valid(calls, signature) == VALIDATED
+            .is_custom_signature_valid(calls, array![].span(), signature) == VALIDATED
 }
 
 /// Returns whether `user_addr` advertises SRC5 `ICUSTOM_SIGNATURE_VALIDATION_ID`.
