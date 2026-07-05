@@ -118,6 +118,9 @@ fn default_handshake_timeout() -> Duration {
 #[serde(default)]
 pub struct ApiServerConfig {
     pub host: String,
+    /// `GET /health` returns 503 once wall-clock time minus the latest block's
+    /// on-chain timestamp exceeds this. Keep it above the chain's block interval
+    /// so a caught-up indexer is not flagged between blocks.
     pub health_max_lag_secs: u64,
     /// Maximum duration for an HTTP request before timeout.
     #[serde(deserialize_with = "deserialize_secs")]
@@ -133,7 +136,7 @@ impl Default for ApiServerConfig {
     fn default() -> Self {
         Self {
             host: "127.0.0.1:8080".to_string(),
-            health_max_lag_secs: 5,
+            health_max_lag_secs: 60,
             request_timeout: Duration::from_secs(30),
             tls: None,
             validation_limits: ValidationLimits::default(),
