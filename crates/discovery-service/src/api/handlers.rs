@@ -46,7 +46,7 @@ where
             if lag <= state.health_max_lag_secs {
                 ("OK", lag, StatusCode::OK)
             } else {
-                ("UNHEALTHY", lag, StatusCode::OK)
+                ("UNHEALTHY", lag, StatusCode::SERVICE_UNAVAILABLE)
             }
         }
         None => ("UNHEALTHY", 0, StatusCode::SERVICE_UNAVAILABLE),
