@@ -3,9 +3,9 @@ use constants::{ESTIMATION_BASE_TX_VERSION, TX_V3};
 use constants::{VIRTUAL_SNOS, VIRTUAL_SNOS0};
 use core::ec::stark_curve::{GEN_X, GEN_Y};
 use core::ec::{EcPoint, EcPointTrait};
-use core::never;
 use core::num::traits::{WrappingAdd, WrappingSub, Zero};
 use core::poseidon::poseidon_hash_span;
+use core::{never, panic_with_felt252};
 use openzeppelin::interfaces::introspection::{ISRC5SafeDispatcher, ISRC5SafeDispatcherTrait};
 use privacy::actions::{ClientAction, ServerAction, WriteOnceInput};
 use privacy::errors;
@@ -368,34 +368,51 @@ pub(crate) fn extract_compile_actions_inputs(
 }
 
 /// Authenticates the user account that authorized `calls`.
-/// Three cases:
+///
+/// The signature authorizes the transaction if ANY of three checks passes; each is attempted in
+/// turn and the first success returns. Custom validation is NOT exclusive — a custom-capable
+/// account can also be authenticated by a valid standard signature:
 ///
 /// I. **Custom validation** (e.g. an Eth712Account advertising SRC5):
-///    delegate to the account's `is_custom_signature_valid(calls, signature)`.
-/// II. Supported SN Wallet:
-///    `is_valid_signature` is checked against the SN tx hash that was signed by the SN Wallet.
-/// III. Legacy SN Wallet:
-///    `is_valid_signature` is checked against the SNIP-12 `CallSet` hash of `calls`.
+///    the account's `is_custom_signature_valid(calls, signature)` accepts.
+/// II. **Supported SN Wallet:**
+///    `is_valid_signature` accepts the signature over the SN tx hash.
+/// III. **Legacy SN Wallet:**
+///    `is_valid_signature` accepts the signature over the SNIP-12 `CallSet` hash of `calls`.
 pub(crate) fn assert_valid_signature(
     user_addr: ContractAddress, calls: Span<Call>, tx_info: Box<TxInfo>,
 ) {
-    if supports_custom_validation(user_addr) {
-        let res = ICustomSignatureValidationDispatcher { contract_address: user_addr }
-            .is_custom_signature_valid(calls, tx_info.signature);
-        assert(res == VALIDATED, errors::INVALID_SIGNATURE);
-    } else {
-        let user_account = IAccountDispatcher { contract_address: user_addr };
-        let is_valid = user_account
-            .is_valid_signature(
-                hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
-            ) == VALIDATED
-            || user_account
-                .is_valid_signature(
-                    hash: compute_call_set_hash(user_addr, calls),
-                    signature: tx_info.signature.into(),
-                ) == VALIDATED;
-        assert(is_valid, errors::INVALID_SIGNATURE);
+    // I. Custom validation, if the account advertises it.
+    if custom_signature_valid(user_addr, calls, tx_info.signature) {
+        return;
     }
+    let user_account = IAccountDispatcher { contract_address: user_addr };
+    // II. Standard SN wallet: signature over the tx hash.
+    if user_account
+        .is_valid_signature(
+            hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
+        ) == VALIDATED {
+        return;
+    }
+    // III. Legacy SN wallet: signature over the SNIP-12 `CallSet` hash of `calls`.
+    if user_account
+        .is_valid_signature(
+            hash: compute_call_set_hash(user_addr, calls), signature: tx_info.signature.into(),
+        ) == VALIDATED {
+        return;
+    }
+    panic_with_felt252(errors::INVALID_SIGNATURE);
+}
+
+/// Returns whether `user_addr`'s custom validator accepts `signature` over `calls`.
+/// False when the account doesn't advertise custom validation — so the (reverting) custom
+/// dispatcher is never invoked on an account that doesn't implement it.
+fn custom_signature_valid(
+    user_addr: ContractAddress, calls: Span<Call>, signature: Span<felt252>,
+) -> bool {
+    supports_custom_validation(user_addr)
+        && ICustomSignatureValidationDispatcher { contract_address: user_addr }
+            .is_custom_signature_valid(calls, signature) == VALIDATED
 }
 
 /// Returns whether `user_addr` advertises SRC5 `ICUSTOM_SIGNATURE_VALIDATION_ID`.
