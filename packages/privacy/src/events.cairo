@@ -79,6 +79,18 @@ pub struct OpenNoteDeposited {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
+pub struct ExternalContractInvoked {
+    /// The external contract the pool invoked.
+    #[key]
+    pub contract_address: ContractAddress,
+    /// The entry point selector the pool called: `privacy_invoke` for a plain invoke,
+    /// `privacy_invoke_with_computation` for a compute-and-invoke. Lets consumers tell the
+    /// two apart (the private computation itself is not observable). Calldata is not emitted.
+    #[key]
+    pub selector: felt252,
+}
+
+#[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
 pub struct EncNoteCreated {
     /// The note ID.
     #[key]

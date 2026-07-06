@@ -221,13 +221,15 @@ pub(crate) impl InvokeExternalInputValid of InputValidation<InvokeExternalInput>
 /// Input for the `ComputeAndInvoke` client action.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct ComputeAndInvokeInput {
-    /// The target contract address whose `privacy_compute` is queried and
-    /// `privacy_invoke_with_computation` is later invoked.
+    /// The target contract address on which `privacy_compute` is called and later
+    /// `privacy_invoke_with_computation` is executed.
     pub contract_address: ContractAddress,
-    /// Extra calldata forwarded after the derived `identity_key` when calling `privacy_compute`.
+    /// User-supplied raw calldata for `privacy_compute`, appended after the derived `identity_key`.
+    /// Full calldata: `[identity_key, ...compute_additional_data]`.
     pub compute_additional_data: Span<felt252>,
-    /// Extra calldata forwarded to `privacy_invoke_with_computation` in addition to (appended
-    /// after) the `privacy_compute` result.
+    /// User-supplied raw calldata for `privacy_invoke_with_computation`, appended after the
+    /// `privacy_compute` result.
+    /// Full calldata: `[...compute_result, ...invoke_additional_data]`.
     pub invoke_additional_data: Span<felt252>,
 }
 
@@ -391,5 +393,7 @@ pub enum ServerAction {
     /// Invoke an external contract via the
     /// [`INVOKE_WITH_COMPUTATION_SELECTOR`](privacy::utils::constants::INVOKE_WITH_COMPUTATION_SELECTOR)
     /// selector.
+    /// *NOTE:* The target selector should assert the caller is the privacy contract,
+    /// otherwise anyone could invoke it directly and bypass the privacy pool.
     InvokeWithComputation: InvokeInput,
 }

@@ -24,6 +24,8 @@ import {
   type TransferOutput,
   type SurplusAction,
   type InvokeAction,
+  type ComputeAndInvokeAction,
+  type ComputeAndInvokeDetails,
   type Amount,
   type InvokeCalldataBuilderArgs,
   type SimulateOptions,
@@ -157,6 +159,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public setViewingKey?: SetViewingKeyAction;
   public openChannels: OpenChannelAction[] = [];
   public invokeExternal?: InvokeAction;
+  public computeAndInvokeAction?: ComputeAndInvokeAction;
   public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
     (token) => new TokenOperationsBuilderImpl(this, token)
   );
@@ -186,13 +189,31 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   }
 
   invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this {
-    if (this.invokeExternal !== undefined) {
-      throw new Error("At most one .invoke() per transaction; already set.");
-    }
+    this.assertNoInvokePhaseAction();
     this.invokeExternal = {
       callBuilder,
     };
     return this;
+  }
+
+  computeAndInvoke(
+    callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails
+  ): this {
+    this.assertNoInvokePhaseAction();
+    this.computeAndInvokeAction = {
+      callBuilder,
+    };
+    return this;
+  }
+
+  // `invoke` and `computeAndInvoke` both occupy the single invoke phase the contract allows
+  // per transaction, so only one of them may be queued.
+  private assertNoInvokePhaseAction(): void {
+    if (this.invokeExternal !== undefined || this.computeAndInvokeAction !== undefined) {
+      throw new Error(
+        "At most one invoke-phase action (.invoke() / .computeAndInvoke()) per transaction; already set."
+      );
+    }
   }
 
   surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
@@ -261,6 +282,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       withdraws,
       surpluses,
       invoke: this.invokeExternal,
+      computeAndInvoke: this.computeAndInvokeAction,
     };
 
     return { actions, mergedOptions };
