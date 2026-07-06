@@ -96,8 +96,8 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   private nullifiers = new Set<Hash>();
   private outgoingChannels = new Map<bigint, EncOutgoingChannelInfo>();
   private outgoingChannelCounters = new AddressMap<number>(() => 0);
-  // Class hash this mock pool is "deployed" under; heads the proof payload so
-  // tests can drive the SDK's class-hash pool-mode detection.
+  // Class hash this mock pool is "deployed" under; heads the proof payload,
+  // where the SDK strips it before building apply_actions calldata.
   classHash = "0x0";
 
   // Allow dynamic access for MockContract interface
@@ -308,11 +308,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   /**
    * Apply server actions to mutate state.
    *
-   * Mirrors the on-chain calldata shape. Against a screening-capable pool the
-   * action span is followed by a Serde-encoded Option<ScreeningAttestation> —
-   * [0x1] when absent, [0x0, issued_at, sig_r, sig_s] when present (Cairo's
-   * Option Serde: Some=0, None=1). Against the current pool there is no suffix
-   * at all (compatibility mode).
+   * Mirrors the on-chain calldata shape: the action span is followed by a
+   * Serde-encoded Option<ScreeningAttestation> — [0x1] when absent,
+   * [0x0, issued_at, sig_r, sig_s] when present (Cairo's Option Serde:
+   * Some=0, None=1).
    */
   apply_actions(calldata: string[]): void {
     const actionCount = this.serverActions.length;
@@ -326,11 +325,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.serverActions = [];
 
     const screeningSuffix = calldata.slice(actionCount);
-    const isCompatibility = screeningSuffix.length == 0;
     const isNoneAttestation = screeningSuffix.length == 1 && screeningSuffix[0] == "0x1";
     const isSomeAttestation = screeningSuffix.length == 4 && screeningSuffix[0] == "0x0";
     assert(
-      isCompatibility || isNoneAttestation || isSomeAttestation,
+      isNoneAttestation || isSomeAttestation,
       () => `Malformed screening attestation suffix: [${screeningSuffix.join(", ")}]`
     );
   }

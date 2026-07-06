@@ -46,7 +46,7 @@ export {
 export {
   Devnet,
   createDevnetTestEnv,
-  createCompatibilityAliceTransfers,
+  createUnattestedAliceTransfers,
   type DevnetConfig,
   type DevnetEnvironment,
   type DevnetTestEnv,

@@ -42,8 +42,8 @@ const devnet = new Devnet();
 const env = await devnet.initialize();
 const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
-// Source-built pool: unpinned class hash, so set the mode explicitly. The pool
-// screens deposits, so use the provider that signs each deposit's attestation.
+// The pool screens deposits, so the proving provider signs each deposit's attestation with the
+// screener key the pool was deployed with.
 const transfers = {
   alice: createPrivateTransfers({
     account: env.alice,
@@ -51,7 +51,6 @@ const transfers = {
     provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
-    poolMode: "screening",
   }),
   bob: createPrivateTransfers({
     account: env.bob,
@@ -59,7 +58,6 @@ const transfers = {
     provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
-    poolMode: "screening",
   }),
 };
 

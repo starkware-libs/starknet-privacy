@@ -89,8 +89,6 @@ describe("E2E OHTTP via relay", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     // Discover notes via relay — validates full client → relay → gateway pipeline
@@ -128,8 +126,6 @@ describe("E2E OHTTP via relay", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes: bobNotes } = await bobOhttp.discoverNotes();

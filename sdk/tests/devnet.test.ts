@@ -13,7 +13,7 @@ import { hash } from "starknet";
 import {
   Devnet,
   createDevnetTestEnv,
-  createCompatibilityAliceTransfers,
+  createUnattestedAliceTransfers,
   type DevnetTestEnv,
 } from "../src/testing/index.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
@@ -144,21 +144,21 @@ describe("Devnet Integration", () => {
     expect(channels!.get(env.bob.address)?.tokens.get(env.strk)?.noteNonce).toBe(1);
   });
 
-  it("rejects a compatibility-mode deposit (no attestation) on the screening pool", async () => {
+  it("rejects an un-attested deposit on the screening pool", async () => {
     const { env } = testEnv;
 
-    // alice is registered and set up by the deposit test above. A compatibility
-    // client omits the screening attestation suffix, which the screening pool
-    // requires for every deposit, so the deposit must revert. This is the
-    // safety property: an un-attested deposit cannot slip through.
+    // alice is registered and set up by the deposit test above. An un-attested
+    // client sends a trailing `Option::None`, but the screening pool requires
+    // an attestation for every deposit, so the deposit must revert. This is
+    // the safety property: an un-attested deposit cannot slip through.
     await env.alice.execute({
       contractAddress: env.strk,
       entrypoint: "approve",
       calldata: [env.privacy.address, 100n, 0n],
     });
 
-    const compatibilityAlice = createCompatibilityAliceTransfers(env);
-    const { callAndProof } = await compatibilityAlice
+    const unattestedAlice = createUnattestedAliceTransfers(env);
+    const { callAndProof } = await unattestedAlice
       .build({
         autoRegister: false,
         autoSetup: false,
@@ -170,9 +170,8 @@ describe("Devnet Integration", () => {
       .execute();
 
     // executeOutside throws on an on-chain revert rather than returning a
-    // reverted receipt. The pool can't deserialize apply_actions without the
-    // trailing screening Option, so the deposit is rejected.
-    await expect(devnet.executeOutside(callAndProof)).rejects.toThrow(/reverted|deserialize/i);
+    // reverted receipt. The pool rejects the deposit with SCREENING_REQUIRED.
+    await expect(devnet.executeOutside(callAndProof)).rejects.toThrow(/SCREENING_REQUIRED/);
   });
 
   it("should swap STRK to ETH through Cairo mock executor and create open note", async () => {
