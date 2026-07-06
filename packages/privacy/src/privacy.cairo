@@ -139,6 +139,7 @@ pub mod Privacy {
         OpenNoteCreated: events::OpenNoteCreated,
         EncNoteCreated: events::EncNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
+        ExternalContractInvoked: events::ExternalContractInvoked,
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
@@ -562,7 +563,10 @@ pub mod Privacy {
                 calldata: compute_calldata.span(),
             )
                 .unwrap_or_else(|panic_data| propagate_external_panic(panic_data.span()));
+            // The compute result should be non-empty, as `privacy_compute` is assumed to bind the
+            // identity key to it.
             assert(!compute_result.is_empty(), errors::EMPTY_COMPUTE_RESULT);
+
             // The target's `privacy_invoke_with_computation` receives the compute result followed
             // by the caller-supplied invoke data as a single calldata span.
             let mut invoke_calldata = array![];
@@ -963,6 +967,11 @@ pub mod Privacy {
             checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
+        /// Executes the external invoke on `contract_address` with `selector`, emits an
+        /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
+        /// returned open notes.
+        /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
+        /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
             ref self: ContractState,
             input: InvokeInput,
@@ -974,6 +983,7 @@ pub mod Privacy {
                 address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
+            self.emit(events::ExternalContractInvoked { contract_address, selector });
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
