@@ -534,16 +534,20 @@ export type SubAccount = { nonce: number; address: StarknetAddressBigint };
  */
 export interface SubAccountsBuilder {
   /**
-   * The deterministic sub-account address for `nonce` (deployed or not). Resolved through the
-   * anonymizer's on-chain views; see the discovery provider.
+   * Return the nonce-independent commitment for this user + dapp:
+   * `hash(identity_key, dappName)`.
+   *
+   * Computed locally in TypeScript; does not call the anonymizer contract.
    */
-  identify(nonce: BigNumberish): Promise<StarknetAddressBigint>;
+  partialCommitment(): Promise<bigint>;
 
   /**
-   * The sub-accounts already deployed for this dapp, scanning consecutive nonces from `startNonce`
-   * (default 0) and stopping at the first undeployed one or `maxNonce`.
+   * Return the full sub-account commitment for `nonce`:
+   * `hash(partialCommitment(), nonce)`.
+   *
+   * Computed locally in TypeScript; does not call the anonymizer contract.
    */
-  deployed(opts?: { startNonce?: number; maxNonce?: number }): Promise<SubAccount[]>;
+  commitment(nonce: BigNumberish): Promise<bigint>;
 
   /**
    * Queue a `computeAndInvoke` against the sub-account for `nonce`: run `calls` through it and

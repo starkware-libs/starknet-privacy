@@ -116,6 +116,8 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
       transfers: this,
       dappName,
       subAccountAnonymizerAddress: this.subAccountAnonymizerAddress,
+      user: this.user,
+      getViewingKey: () => this.getViewingKey(),
     });
   }
 

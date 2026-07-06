@@ -5,12 +5,12 @@ import type {
   PrivateTransfersBuilder,
   PrivateTransfersInterface,
   StarknetAddress,
-  StarknetAddressBigint,
-  SubAccount,
   SubAccountsBuilder,
+  ViewingKey,
 } from "../interfaces.js";
 import { SubAccountAnonymizerABI } from "./anonymizer-abi.js";
-import { toBigInt, toHex } from "../utils/index.js";
+import { hash as poseidonHash, toBigInt, toHex } from "../utils/index.js";
+import { compute_identity_key } from "../utils/hashes.js";
 
 /** Encodes a dapp name to a felt: a string is a Cairo short string, a felt passes through. */
 function encodeDappName(dappName: string | BigNumberish): bigint {
@@ -28,6 +28,8 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
       transfers: PrivateTransfersInterface;
       dappName: string | BigNumberish;
       subAccountAnonymizerAddress: StarknetAddress;
+      user: bigint;
+      getViewingKey: () => Promise<ViewingKey>;
     }
   ) {
     this.dappName = encodeDappName(params.dappName);
@@ -65,11 +67,17 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
       });
   }
 
-  async identify(_nonce: BigNumberish): Promise<StarknetAddressBigint> {
-    throw new Error("SubAccountsBuilder.identify() is not implemented yet.");
+  async partialCommitment(): Promise<bigint> {
+    const viewingKey = await this.params.getViewingKey();
+    const identityKey = compute_identity_key(
+      this.params.user,
+      toBigInt(viewingKey),
+      this.subAccountAnonymizerAddress
+    );
+    return poseidonHash(identityKey, this.dappName);
   }
 
-  async deployed(_opts?: { startNonce?: number; maxNonce?: number }): Promise<SubAccount[]> {
-    throw new Error("SubAccountsBuilder.deployed() is not implemented yet.");
+  async commitment(nonce: BigNumberish): Promise<bigint> {
+    return poseidonHash(await this.partialCommitment(), toBigInt(nonce));
   }
 }
