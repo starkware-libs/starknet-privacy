@@ -50,7 +50,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
       return BigInt(result[0]) + (BigInt(result[1]) << 128n);
     };
 
-    // Fund the dapp so its `pay_out` can transfer the payout to the sub-account.
+    // Fund the dapp so its `transfer_to_caller` can transfer the payout to the sub-account.
     const mintTx = await de.admin.execute({
       contractAddress: tokens.usdToken,
       entrypoint: "mint",
@@ -62,7 +62,9 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
     // the derived identity key. The commitment it returns selects the per-commitment sub-account.
     const dappName = BigInt(shortString.encodeShortString("DAPP"));
     const seqNonce = 0n;
-    const payOutSelector = BigInt(hash.getSelectorFromName("pay_out"));
+    const transferToCallerSelector = BigInt(
+      hash.getSelectorFromName("transfer_to_caller"),
+    );
     const usdToken = BigInt(tokens.usdToken);
 
     const poolBalanceBefore = await balanceOf(de.privacy.address);
@@ -90,7 +92,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
             [
               {
                 to: subAccount.mockDapp,
-                selector: payOutSelector,
+                selector: transferToCallerSelector,
                 calldata: CallData.compile([
                   usdToken,
                   cairo.uint256(payoutAmount),

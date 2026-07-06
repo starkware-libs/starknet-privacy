@@ -58,6 +58,10 @@ jobs:
       # All workspace packages + ekubo-contracts + test-token use Scarb 2.17.0
       - name: Build contracts
         run: |
+          # Remove Scarb's dev build dir so we don't load stale incremental cache
+          # (rust-cache restores target/ which can contain Scarb's target/dev/ from a
+          # previous run; a dangling fingerprint there panics scarb — see rust-ci.yaml).
+          rm -rf target/dev
           scarb --profile release build -p privacy
           scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer -p sub_account_anonymizer
           # SubAccount + MockDapp come from the test build (sierra only); the e2e setup
