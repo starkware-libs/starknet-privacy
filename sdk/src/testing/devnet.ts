@@ -490,11 +490,8 @@ export async function createDevnetTestEnv(
   const env = await devnet.initialize();
   const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
-  // The in-repo pool screens deposits, so drive it in screening mode and use a
-  // proving provider that signs each deposit's attestation with the screener
-  // key the pool was deployed with. poolMode is set explicitly because the
-  // source-built pool's class hash is unpinned (auto-detection is covered by
-  // the pool-mode unit tests).
+  // The pool screens deposits, so use a proving provider that signs each deposit's attestation
+  // with the screener key the pool was deployed with.
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
@@ -502,7 +499,6 @@ export async function createDevnetTestEnv(
       provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
-      poolMode: "screening",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
@@ -510,7 +506,6 @@ export async function createDevnetTestEnv(
       provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
-      poolMode: "screening",
     }),
   };
 
@@ -518,22 +513,18 @@ export async function createDevnetTestEnv(
 }
 
 /**
- * A compatibility-mode transfers object for `env.alice`: it omits the screening
- * attestation suffix, exactly as a pre-screening client would. Against the
- * in-repo screening pool a deposit through it is expected to revert, so this is
- * used to assert the pool rejects an un-attested deposit. It shares alice's
- * account and viewing key, so register/setup performed by the screening
- * transfers apply to it too.
+ * A transfers object for `env.alice` whose proving provider never produces a screening attestation,
+ * so a deposit goes out with a trailing `Option::None`. The pool requires an attestation for every
+ * deposit, so such a deposit is expected to revert; this is used to assert an un-attested deposit
+ * cannot slip through. It shares alice's account and viewing key, so register/setup performed by
+ * the screening transfers apply to it too.
  */
-export function createCompatibilityAliceTransfers(
-  env: DevnetEnvironment
-): PrivateTransfersInterface {
+export function createUnattestedAliceTransfers(env: DevnetEnvironment): PrivateTransfersInterface {
   return createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
     provingProvider: new CallMockProofProvider(env.provider, constants.StarknetChainId.SN_SEPOLIA),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
-    poolMode: "compatibility",
   });
 }

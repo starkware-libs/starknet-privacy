@@ -125,8 +125,8 @@ export async function createE2eTestEnv(
   });
   await indexer.waitUntilReady(devnet.url);
 
-  // Source-built pool: unpinned class hash, so set the mode explicitly. The pool
-  // screens deposits, so use the provider that signs each deposit's attestation.
+  // The pool screens deposits, so the proving provider signs each deposit's attestation with the
+  // screener key the pool was deployed with.
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
@@ -140,7 +140,6 @@ export async function createE2eTestEnv(
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
-      poolMode: "screening",
     }),
     bob: createPrivateTransfers({
       account: env.bob,
@@ -154,7 +153,6 @@ export async function createE2eTestEnv(
         env.privacy.address,
       ),
       poolContractAddress: env.privacy.address,
-      poolMode: "screening",
     }),
   };
 
