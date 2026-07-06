@@ -234,6 +234,21 @@ export type InvokeAction = {
   callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
 };
 
+/**
+ * Result of a `computeAndInvoke` call builder.
+ * `computeAdditionalData` is forwarded to the target's `privacy_compute` (after the derived identity key);
+ * `invokeAdditionalData` is forwarded to its `privacy_invoke_with_computation` (after the compute result).
+ */
+export type ComputeAndInvokeDetails = {
+  contractAddress: string;
+  computeAdditionalData?: CallDetails["calldata"];
+  invokeAdditionalData?: CallDetails["calldata"];
+};
+
+export type ComputeAndInvokeAction = {
+  callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails;
+};
+
 /** Actions - context comes from registry */
 export type Actions = {
   setViewingKey?: SetViewingKeyAction;
@@ -245,6 +260,7 @@ export type Actions = {
   withdraws?: WithdrawAction[];
   surpluses?: SurplusAction[];
   invoke?: InvokeAction;
+  computeAndInvoke?: ComputeAndInvokeAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -647,6 +663,14 @@ export interface PrivateTransfersBuilder {
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
   invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
+
+  /**
+   * Add a `privacy_invoke_with_computation` call that runs on starknet after the private
+   * operations: the pool first queries the target's `privacy_compute` (with the derived
+   * identity key and `computeAdditionalData`), then invokes it with the compute result and `invokeAdditionalData`.
+   * Mutually exclusive with `invoke` — at most one invoke-phase action per transaction.
+   */
+  computeAndInvoke(callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails): this;
 
   /**
    * Set the default recipient for any surplus across all tokens.

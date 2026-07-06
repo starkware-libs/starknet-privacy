@@ -601,8 +601,12 @@ fn test_apply_invoke_with_computation_deposit() {
     assert_eq!(stored_amount, amount);
     assert_eq!(deposited_note.token, token_addr);
 
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: echo_executor_addr,
+        selector: selector!("privacy_invoke_with_computation"),
+    };
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert_expected_event_emitted(
         spied_event: events[0],
         expected_event: expected_create_event,
@@ -611,6 +615,12 @@ fn test_apply_invoke_with_computation_deposit() {
     );
     assert_expected_event_emitted(
         spied_event: events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -705,8 +715,11 @@ fn test_apply_emit_open_note_created() {
     actions.append_span(deposit_actions);
     let mut spy = spy_events();
     test.privacy.apply_actions(actions.span());
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: echo_executor_addr, selector: selector!("privacy_invoke"),
+    };
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     assert_expected_event_emitted(
         spied_event: events[0],
         expected_event: expected_create_event,
@@ -715,6 +728,12 @@ fn test_apply_emit_open_note_created() {
     );
     assert_expected_event_emitted(
         spied_event: events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -989,8 +1008,11 @@ fn test_deposit_to_open_note() {
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: echo_executor, token: token_addr, note_id, amount,
     };
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: echo_executor, selector: selector!("privacy_invoke"),
+    };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     assert_expected_event_emitted(
         spied_event: emitted_events[0],
         expected_event: expected_create_event,
@@ -999,6 +1021,12 @@ fn test_deposit_to_open_note() {
     );
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: emitted_events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -1305,8 +1333,11 @@ fn test_apply_invoke_swap() {
         note_id,
         amount: swap_amount,
     };
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: executor_addr, selector: selector!("privacy_invoke"),
+    };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     assert_expected_event_emitted(
         spied_event: emitted_events[0],
         expected_event: expected_create_event,
@@ -1315,6 +1346,12 @@ fn test_apply_invoke_swap() {
     );
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: emitted_events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -1852,8 +1889,11 @@ fn test_apply_invoke_vesu_deposit() {
     let expected_event_deposit = events::OpenNoteDeposited {
         depositor: anonymizer_addr, token: vault_addr, note_id, amount: deposit_amount,
     };
+    let expected_event_external_invoke = events::ExternalContractInvoked {
+        contract_address: anonymizer_addr, selector: selector!("privacy_invoke"),
+    };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     assert_expected_event_emitted(
         spied_event: emitted_events[0],
         expected_event: expected_event_created,
@@ -1862,6 +1902,12 @@ fn test_apply_invoke_vesu_deposit() {
     );
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
+        expected_event: expected_event_external_invoke,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: emitted_events[2],
         expected_event: expected_event_deposit,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -1968,8 +2014,11 @@ fn test_apply_invoke_vesu_withdraw() {
     let expected_event_deposit = events::OpenNoteDeposited {
         depositor: anonymizer_addr, token: underlying_token_addr, note_id, amount: deposit_amount,
     };
+    let expected_event_external_invoke = events::ExternalContractInvoked {
+        contract_address: anonymizer_addr, selector: selector!("privacy_invoke"),
+    };
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     assert_expected_event_emitted(
         spied_event: emitted_events[0],
         expected_event: expected_event_created,
@@ -1978,6 +2027,12 @@ fn test_apply_invoke_vesu_withdraw() {
     );
     assert_expected_event_emitted(
         spied_event: emitted_events[1],
+        expected_event: expected_event_external_invoke,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+    assert_expected_event_emitted(
+        spied_event: emitted_events[2],
         expected_event: expected_event_deposit,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",

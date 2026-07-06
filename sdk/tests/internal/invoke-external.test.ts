@@ -170,7 +170,9 @@ describe("InvokeExternal (at most one invoke per tx)", () => {
           calldata: [3n, 4n],
         };
       })
-    ).toThrow("At most one .invoke() per transaction; already set.");
+    ).toThrow(
+      "At most one invoke-phase action (.invoke() / .computeAndInvoke()) per transaction; already set."
+    );
   });
 
   it("deposit -> withdraw + invoke works with auto-setup", async () => {

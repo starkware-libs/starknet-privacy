@@ -1,7 +1,7 @@
 use snforge_std::{start_cheat_chain_id, test_address};
+use starknet::ContractAddress;
 use crate::snip12::{
-    DepositorValidation, ScreeningAttestation, compute_screening_message_hash,
-    is_screening_attestation_valid,
+    ScreeningAttestation, compute_screening_message_hash, is_screening_attestation_valid,
 };
 use super::screening_vectors::screening_vectors;
 
@@ -18,20 +18,16 @@ use super::screening_vectors::screening_vectors;
 fn test_committed_screening_vectors_validate() {
     for vector in screening_vectors() {
         start_cheat_chain_id(test_address(), vector.chain_id);
-        let validation = DepositorValidation {
-            depositor: vector.depositor.try_into().unwrap(), issued_at: vector.issued_at,
-        };
+        let depositor: ContractAddress = vector.depositor.try_into().unwrap();
         assert_eq!(
-            compute_screening_message_hash(@validation, vector.signer_public_key),
+            compute_screening_message_hash(
+                :depositor, issued_at: vector.issued_at, signer: vector.signer_public_key,
+            ),
             vector.message_hash,
         );
         let attestation = ScreeningAttestation {
             issued_at: vector.issued_at, signature: (vector.sig_r, vector.sig_s),
         };
-        assert!(
-            is_screening_attestation_valid(
-                validation.depositor, attestation, vector.signer_public_key,
-            ),
-        );
+        assert!(is_screening_attestation_valid(depositor, attestation, vector.signer_public_key));
     }
 }
