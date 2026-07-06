@@ -1,18 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { PrivateTransfers } from "../../src/internal/private-transfers.js";
 import { screeningCalldataSuffix } from "../../src/internal/screening-calldata.js";
-import {
-  COMPATIBILITY_POOL_CLASS_HASHES,
-  type PoolCapabilityMode,
-} from "../../src/internal/pool-mode.js";
 import type { Proof, ProofInvocationResult, ProofProviderInterface } from "../../src/interfaces.js";
 import type { AdditionalData } from "../../src/internal/proving-service.js";
-import { toHex } from "../../src/utils/convert.js";
 
 const POOL_ADDRESS = "0x1";
-// A pinned (deployed pre-screening) pool class vs. any other class hash.
-const COMPATIBILITY_CLASS_HASH = toHex(COMPATIBILITY_POOL_CLASS_HASHES[0]);
-const SCREENING_CLASS_HASH = "0xdec1a23ed";
+// Heads the proof payload; executeWithInvocation strips it from the calldata.
+const POOL_CLASS_HASH = "0xdec1a23ed";
 const ACTIONS = ["0xaction1", "0xaction2"];
 
 const SIGNATURE: AdditionalData = {
@@ -25,17 +19,13 @@ const SIGNATURE: AdditionalData = {
 
 /**
  * Build a PrivateTransfers whose proving provider returns a fixed proof headed
- * by the given pool class hash. Only the surface executeWithInvocation touches
- * is stubbed.
+ * by the pool class hash. Only the surface executeWithInvocation touches is
+ * stubbed.
  */
-function makeTransfers(
-  poolClassHash: string,
-  additionalData?: AdditionalData,
-  poolMode?: PoolCapabilityMode
-): PrivateTransfers {
+function makeTransfers(additionalData?: AdditionalData): PrivateTransfers {
   const proof: Proof = {
     data: "",
-    output: [poolClassHash, ...ACTIONS],
+    output: [POOL_CLASS_HASH, ...ACTIONS],
     proofFacts: [],
     additionalData,
   };
@@ -50,7 +40,6 @@ function makeTransfers(
     discoveryProvider: {} as never,
     proofInvocationFactory: { parseOutput: () => ({}) } as never,
     poolContractAddress: POOL_ADDRESS,
-    poolMode,
   });
 }
 
@@ -60,41 +49,20 @@ const EMPTY_INVOCATION = {
   warnings: [],
 } satisfies ProofInvocationResult;
 
-async function calldataFor(
-  poolClassHash: string,
-  additionalData?: AdditionalData,
-  poolMode?: PoolCapabilityMode
-): Promise<string[]> {
-  const result = await makeTransfers(poolClassHash, additionalData, poolMode).executeWithInvocation(
-    EMPTY_INVOCATION
-  );
+async function calldataFor(additionalData?: AdditionalData): Promise<string[]> {
+  const result = await makeTransfers(additionalData).executeWithInvocation(EMPTY_INVOCATION);
   return result.callAndProof.call.calldata as string[];
 }
 
-describe("executeWithInvocation calldata gating", () => {
-  it("pinned pool class hash: no suffix, even when a signature is present", async () => {
-    expect(await calldataFor(COMPATIBILITY_CLASS_HASH, SIGNATURE)).toEqual(ACTIONS);
-  });
-
-  it("unpinned pool class hash + signature: trailing [0x0, issued_at, sig_r, sig_s]", async () => {
-    expect(await calldataFor(SCREENING_CLASS_HASH, SIGNATURE)).toEqual([
+describe("executeWithInvocation screening calldata", () => {
+  it("signature present: trailing [0x0, issued_at, sig_r, sig_s]", async () => {
+    expect(await calldataFor(SIGNATURE)).toEqual([
       ...ACTIONS,
       ...screeningCalldataSuffix(SIGNATURE),
     ]);
   });
 
-  it("unpinned pool class hash + no signature: trailing Option::None ([0x1])", async () => {
-    expect(await calldataFor(SCREENING_CLASS_HASH, undefined)).toEqual([...ACTIONS, "0x1"]);
-  });
-
-  it("poolMode compatibility override wins over an unpinned class hash", async () => {
-    expect(await calldataFor(SCREENING_CLASS_HASH, SIGNATURE, "compatibility")).toEqual(ACTIONS);
-  });
-
-  it("poolMode screening override wins over a pinned class hash", async () => {
-    expect(await calldataFor(COMPATIBILITY_CLASS_HASH, undefined, "screening")).toEqual([
-      ...ACTIONS,
-      "0x1",
-    ]);
+  it("no signature: trailing Option::None ([0x1])", async () => {
+    expect(await calldataFor(undefined)).toEqual([...ACTIONS, "0x1"]);
   });
 });

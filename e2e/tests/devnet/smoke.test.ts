@@ -74,8 +74,6 @@ describe("E2E Smoke", () => {
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes } = await aliceIndexer.discoverNotes();
@@ -107,8 +105,6 @@ describe("E2E Smoke", () => {
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     // Bob should discover 1 incoming note: 50 STRK from Alice

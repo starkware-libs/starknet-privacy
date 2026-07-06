@@ -61,8 +61,6 @@ describe("Payment Service Discovery", () => {
         ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-        poolMode: "screening",
       }),
     );
 
@@ -235,8 +233,6 @@ describe("Payment Service Discovery", () => {
       provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes } = await aliceDiscover.discoverNotes();
@@ -266,8 +262,6 @@ describe("Payment Service Discovery", () => {
       provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const allAddresses = [de.alice.address, ...users.map((u) => u.address)];
@@ -299,8 +293,6 @@ describe("Payment Service Discovery", () => {
         ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-        poolMode: "screening",
       });
 
       const { notes } = await userDiscover.discoverNotes();
@@ -331,8 +323,6 @@ describe("Payment Service Discovery", () => {
         ),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
-        // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-        poolMode: "screening",
       });
 
       const { channels } = await userDiscover.discoverChannels([

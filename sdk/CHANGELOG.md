@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Breaking
+
+- Removed pool-mode selection: the screening attestation `Option` suffix is now
+  always appended to `apply_actions` calldata, so the SDK only supports
+  screening-capable pools (whose `apply_actions` takes the trailing
+  `Option<ScreeningAttestation>` parameter). Class-hash detection, the
+  `PoolCapabilityMode` export, and the `poolMode` override on
+  `createPrivateTransfers()` are gone; pre-screening pools now revert on
+  calldata arity.
+- Testing: `createCompatibilityAliceTransfers()` is renamed to
+  `createUnattestedAliceTransfers()` — with pool-mode selection removed it can
+  no longer omit the attestation suffix; it now sends `Option::None`, which the
+  screening pool still rejects for deposits (`SCREENING_REQUIRED`).
+
 ## 0.14.3-RC.2
 
 ### Changed

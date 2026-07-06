@@ -25,7 +25,6 @@ import { debugLog } from "../utils/logging.js";
 import type { ProofInvocationFactoryInterface } from "./proof-invocation-factory.js";
 import { toBigInt, toHex } from "../utils/convert.js";
 import { screeningCalldataSuffix } from "./screening-calldata.js";
-import { poolModeForClassHash, type PoolCapabilityMode } from "./pool-mode.js";
 
 // Export the specific typed contract type for the Privacy Pool
 export type PrivacyPoolContract = TypedContractV2<typeof PrivacyPoolABI>;
@@ -39,7 +38,6 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
-      poolMode?: PoolCapabilityMode;
     }
   ) {
     super(params.account.address, params.viewingKeyProvider, params.discoveryProvider);
@@ -114,13 +112,9 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       this.params.proofInvocationFactory.parseOutput(serverActionsCalldata);
     debugLog("private-transfers", "execute", "parsed server actions", parsedOutput);
 
-    // The pool version — not signature presence — decides the calldata shape:
-    // a screening-capable pool expects a trailing Option<ScreeningAttestation>,
-    // the pre-screening pool none. poolMode overrides detection for pools
-    // whose class hash isn't pinned.
-    const mode = this.params.poolMode ?? poolModeForClassHash(proof.output[0]);
-    const screeningSuffix =
-      mode === "screening" ? screeningCalldataSuffix(proof.additionalData) : [];
+    // apply_actions takes a trailing Serde-encoded Option<ScreeningAttestation>:
+    // Some when the prover attached a screening signature, None otherwise.
+    const screeningSuffix = screeningCalldataSuffix(proof.additionalData);
 
     return {
       callAndProof: {

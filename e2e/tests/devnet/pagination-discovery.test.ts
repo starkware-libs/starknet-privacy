@@ -76,8 +76,6 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     // total-only: exercises total_n_channels
@@ -112,8 +110,6 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes } = await aliceTransfers.discoverNotes();
@@ -131,8 +127,6 @@ describe("Discovery pagination with small budget", () => {
       ),
       discoveryProvider: discovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes: bobNotes } = await bobTransfers.discoverNotes();
