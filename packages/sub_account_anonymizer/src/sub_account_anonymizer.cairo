@@ -107,6 +107,8 @@ pub mod errors {
     pub const UNAUTHORIZED_CALLER: felt252 = 'UNAUTHORIZED_CALLER';
     pub const ZERO_BALANCE: felt252 = 'ZERO_BALANCE';
     pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
+    /// Internal error.
+    pub const ZERO_ADDRESS: felt252 = 'ZERO_ADDRESS';
 }
 
 #[starknet::contract]
@@ -120,7 +122,7 @@ pub mod SubAccountAnonymizer {
     use privacy::objects::OpenNoteDeposit;
     use starknet::account::Call;
     use starknet::storage::{
-        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
     use starknet::syscalls::deploy_syscall;
@@ -132,6 +134,9 @@ pub mod SubAccountAnonymizer {
     use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
+    use starkware_utils::storage::iterable_map::{
+        IterableMap, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+    };
     use super::{ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
@@ -160,7 +165,7 @@ pub mod SubAccountAnonymizer {
         /// Class hash of the `SubAccount` contract deployed per identity commitment.
         sub_account_class_hash: ClassHash,
         /// Maps an identity commitment to the sub-account deployed for it.
-        sub_accounts: Map<IdentityCommitment, ContractAddress>,
+        sub_accounts: IterableMap<IdentityCommitment, ContractAddress>,
     }
 
     #[event]
@@ -214,7 +219,7 @@ pub mod SubAccountAnonymizer {
         fn get_sub_account(
             self: @ContractState, identity_commitment: IdentityCommitment,
         ) -> ContractAddress {
-            self.sub_accounts.read(identity_commitment)
+            self.sub_accounts.read(identity_commitment).unwrap_or(Zero::zero())
         }
 
         fn get_privacy_contract(self: @ContractState) -> ContractAddress {
@@ -234,9 +239,8 @@ pub mod SubAccountAnonymizer {
         fn get_or_deploy_sub_account(
             ref self: ContractState, identity_commitment: IdentityCommitment,
         ) -> ISubAccountDispatcher {
-            let existing = self.sub_accounts.read(identity_commitment);
-            if existing.is_non_zero() {
-                return ISubAccountDispatcher { contract_address: existing };
+            if let Some(sub_account_addr) = self.sub_accounts.read(identity_commitment) {
+                return ISubAccountDispatcher { contract_address: sub_account_addr };
             }
             let (sub_account_addr, _) = deploy_syscall(
                 class_hash: self.sub_account_class_hash.read(),
@@ -245,6 +249,8 @@ pub mod SubAccountAnonymizer {
                 deploy_from_zero: false,
             )
                 .unwrap_syscall();
+            // Sanity check: deployed address cannot be zero.
+            assert(sub_account_addr.is_non_zero(), errors::ZERO_ADDRESS);
             self.sub_accounts.write(identity_commitment, sub_account_addr);
             ISubAccountDispatcher { contract_address: sub_account_addr }
         }
