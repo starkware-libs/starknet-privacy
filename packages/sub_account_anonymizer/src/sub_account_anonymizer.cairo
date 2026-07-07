@@ -14,6 +14,17 @@ use starknet::{ClassHash, ContractAddress};
 /// The result of [`privacy_compute`]: an identity commitment that identifies a single sub-account.
 pub type IdentityCommitment = felt252;
 
+/// How much of the sub-account's `token` balance to collect for an open note.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub enum CollectPolicy {
+    /// Collect the sub-account's entire `token` balance.
+    All,
+    /// Collect only the balance gained during this interaction.
+    Diff,
+    /// Collect this exact amount.
+    Exact: u128,
+}
+
 /// An open note to settle after an interaction.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenNote {
@@ -21,6 +32,8 @@ pub struct OpenNote {
     pub note_id: felt252,
     /// The token to deposit.
     pub token: ContractAddress,
+    /// The policy selecting how much of the sub-account's `token` balance to collect for this note.
+    pub collect_policy: CollectPolicy,
 }
 
 #[starknet::interface]
@@ -53,9 +66,9 @@ pub trait ISubAccountAnonymizer<T> {
     /// sub-account; see [`privacy_compute`]. Preimage is off-chain only and unrecoverable from
     /// on-chain data.
     /// - `calls` (`Array<Call>`) - the dapp calls to run as the sub-account.
-    /// - `open_notes` ([`Span<OpenNote>`](OpenNote)) - the notes to settle; for each, the
-    ///   sub-account's entire `token` balance is swept into this anonymizer and recorded as a
-    ///   deposit.
+    /// - `open_notes` ([`Span<OpenNote>`](OpenNote)) - the notes to settle; for each, the amount
+    ///   selected by its [`collect_policy`](CollectPolicy) is collected from the sub-account into
+    ///   this anonymizer and recorded as a deposit.
     ///
     /// #### Returns
     /// - ([`Span<OpenNoteDeposit>`](privacy::objects::OpenNoteDeposit)) - one deposit per open
@@ -67,8 +80,12 @@ pub trait ISubAccountAnonymizer<T> {
     /// #### Reverts
     /// - [`UNAUTHORIZED_CALLER`](errors::UNAUTHORIZED_CALLER): Thrown if the caller is not the
     ///   configured privacy contract.
-    /// - [`ZERO_BALANCE`](errors::ZERO_BALANCE): Thrown if the sub-account holds no balance of an
-    ///   open note's `token` (all open notes must be deposited with amount > 0).
+    /// - [`ZERO_BALANCE`](errors::ZERO_BALANCE): Thrown if the amount collected for an open note is
+    ///   zero (all open notes must be deposited with amount > 0).
+    /// - [`NEGATIVE_DIFF`](errors::NEGATIVE_DIFF): Thrown for a `CollectPolicy::Diff` note
+    ///   if the interaction reduced the sub-account's `token` balance.
+    /// - [`INSUFFICIENT_BALANCE`](errors::INSUFFICIENT_BALANCE): Thrown for a
+    ///   `CollectPolicy::Exact` note if the amount exceeds the sub-account's `token` balance.
     /// - [`AMOUNT_OVERFLOW`](errors::AMOUNT_OVERFLOW): Thrown if the amount
     ///   collected for an open note exceeds `u128`.
     fn privacy_invoke_with_computation(
@@ -106,6 +123,8 @@ pub trait ISubAccountAnonymizer<T> {
 pub mod errors {
     pub const UNAUTHORIZED_CALLER: felt252 = 'UNAUTHORIZED_CALLER';
     pub const ZERO_BALANCE: felt252 = 'ZERO_BALANCE';
+    pub const NEGATIVE_DIFF: felt252 = 'NEGATIVE_DIFF';
+    pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
     pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
     /// Internal error.
     pub const ZERO_ADDRESS: felt252 = 'ZERO_ADDRESS';
@@ -114,7 +133,7 @@ pub mod errors {
 #[starknet::contract]
 pub mod SubAccountAnonymizer {
     use core::hash::HashStateTrait;
-    use core::num::traits::Zero;
+    use core::num::traits::{CheckedSub, Zero};
     use core::poseidon::PoseidonTrait;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -137,7 +156,7 @@ pub mod SubAccountAnonymizer {
     use starkware_utils::storage::iterable_map::{
         IterableMap, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use super::{ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
+    use super::{CollectPolicy, ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
@@ -223,8 +242,12 @@ pub mod SubAccountAnonymizer {
                 get_caller_address() == self.privacy_contract.read(), errors::UNAUTHORIZED_CALLER,
             );
             let sub_account = self.get_or_deploy_sub_account(:identity_commitment);
+            // Pair note with its pre-interaction balance for `CollectPolicy::Diff` notes.
+            let note_balance_snapshots = snapshot_open_notes(
+                sub_account: sub_account.contract_address, :open_notes,
+            );
             sub_account.execute(calls);
-            self.collect_open_notes(:sub_account, :open_notes)
+            self.collect_open_notes(:sub_account, :note_balance_snapshots)
         }
 
         fn get_sub_account(
@@ -267,11 +290,13 @@ pub mod SubAccountAnonymizer {
             ISubAccountDispatcher { contract_address: sub_account }
         }
 
-        /// Settles each note in `open_notes`, returning one [`OpenNoteDeposit`] per note.
-        /// For each note, sweeps the sub-account's entire `token` balance into this anonymizer and
-        /// approves the privacy contract to pull that amount.
+        /// Settles each note, returning one [`OpenNoteDeposit`] per note.
+        /// For each note, collects the amount selected by its [`collect_policy`](CollectPolicy)
+        /// from the sub-account into this anonymizer and approves the privacy contract to pull it.
         fn collect_open_notes(
-            self: @ContractState, sub_account: ISubAccountDispatcher, open_notes: Span<OpenNote>,
+            self: @ContractState,
+            sub_account: ISubAccountDispatcher,
+            note_balance_snapshots: Array<(OpenNote, u256)>,
         ) -> Span<OpenNoteDeposit> {
             let anonymizer = get_contract_address();
             let privacy_contract = self.privacy_contract.read();
@@ -279,22 +304,49 @@ pub mod SubAccountAnonymizer {
             // `sub_account.execute`.
             let mut transfer_calls: Array<Call> = array![];
             let mut deposits: Array<OpenNoteDeposit> = array![];
-            for note in open_notes {
-                let OpenNote { note_id, token } = *note;
+            for (note, pre_balance) in note_balance_snapshots {
+                let OpenNote { note_id, token, collect_policy } = note;
                 let token_contract = IERC20Dispatcher { contract_address: token };
                 let balance = token_contract.balance_of(account: sub_account.contract_address);
-                // All open notes must be deposited with amount > 0.
-                assert(balance.is_non_zero(), errors::ZERO_BALANCE);
+                let collected = match collect_policy {
+                    CollectPolicy::All => balance,
+                    CollectPolicy::Diff => balance
+                        .checked_sub(pre_balance)
+                        .expect(errors::NEGATIVE_DIFF),
+                    CollectPolicy::Exact(exact) => {
+                        assert(balance >= exact.into(), errors::INSUFFICIENT_BALANCE);
+                        exact.into()
+                    },
+                };
+                // Every open note must be deposited with amount > 0.
+                assert(collected.is_non_zero(), errors::ZERO_BALANCE);
 
                 transfer_calls
-                    .append(build_transfer_call(:token, recipient: anonymizer, amount: balance));
-                token_contract.approve(spender: privacy_contract, amount: balance);
-                let amount: u128 = balance.try_into().expect(errors::AMOUNT_OVERFLOW);
+                    .append(build_transfer_call(:token, recipient: anonymizer, amount: collected));
+                token_contract.approve(spender: privacy_contract, amount: collected);
+                let amount: u128 = collected.try_into().expect(errors::AMOUNT_OVERFLOW);
                 deposits.append(OpenNoteDeposit { note_id, token, amount });
             }
             sub_account.execute(transfer_calls);
             deposits.span()
         }
+    }
+
+    /// Pairs `CollectPolicy::Diff` notes with the sub-account's `token` balance before the
+    /// interaction. Other policies are paired with (unused) zero.
+    fn snapshot_open_notes(
+        sub_account: ContractAddress, open_notes: Span<OpenNote>,
+    ) -> Array<(OpenNote, u256)> {
+        let mut note_balance_snapshots: Array<(OpenNote, u256)> = array![];
+        for note in open_notes {
+            let pre_balance = match *note.collect_policy {
+                CollectPolicy::Diff => IERC20Dispatcher { contract_address: *note.token }
+                    .balance_of(account: sub_account),
+                _ => 0,
+            };
+            note_balance_snapshots.append((*note, pre_balance));
+        }
+        note_balance_snapshots
     }
 
     /// Builds a `Call` that transfers `amount` of `token` to `recipient`.
