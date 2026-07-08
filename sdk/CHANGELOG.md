@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3-RC.3
+
 ### Breaking
 
 - Removed pool-mode selection: the screening attestation `Option` suffix is now
