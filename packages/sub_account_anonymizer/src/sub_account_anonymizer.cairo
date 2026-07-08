@@ -7,12 +7,27 @@
 //! pull them into open notes. Driving interactions is restricted to the configured privacy
 //! contract.
 
+use core::hash::HashStateTrait;
+use core::poseidon::PoseidonTrait;
 use privacy::objects::OpenNoteDeposit;
 use starknet::account::Call;
 use starknet::{ClassHash, ContractAddress};
 
 /// The result of [`privacy_compute`]: an identity commitment that identifies a single sub-account.
 pub type IdentityCommitment = felt252;
+
+/// The nonce-independent half of an identity commitment, `hash(identity_key, dapp_name)`.
+pub type PartialCommitment = felt252;
+
+/// A sub-account resolved by [`get_sub_accounts`]: its `nonce`, `address`, and whether it is
+/// deployed. When `is_deployed` is false, `address` is the deterministic address the sub-account
+/// *would* deploy to, computed the same way the deploy syscall derives it.
+#[derive(Serde, Copy, Drop, PartialEq, Debug)]
+pub struct SubAccountInfo {
+    pub nonce: u64,
+    pub address: ContractAddress,
+    pub is_deployed: bool,
+}
 
 /// How much of the sub-account's `token` balance to collect for an open note.
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
@@ -23,6 +38,22 @@ pub enum CollectPolicy {
     Diff,
     /// Collect this exact amount.
     Exact: u128,
+}
+
+/// Upper bound on the nonce range a single [`get_sub_accounts`] call may resolve, so a view call
+/// can never be driven into an unbounded loop by a caller-supplied range.
+pub const MAX_SCAN_RANGE: u64 = 1024;
+
+/// Computes the [`PartialCommitment`](PartialCommitment) `hash(identity_key, dapp_name)`.
+pub fn partial_commitment(identity_key: felt252, dapp_name: felt252) -> PartialCommitment {
+    PoseidonTrait::new().update(identity_key).update(dapp_name).finalize()
+}
+
+/// Computes the full identity commitment `hash(partial_commitment, nonce)`.
+pub fn commitment_from_partial(
+    partial_commitment: PartialCommitment, nonce: felt252,
+) -> IdentityCommitment {
+    PoseidonTrait::new().update(partial_commitment).update(nonce).finalize()
 }
 
 /// An open note to settle after an interaction.
@@ -52,7 +83,9 @@ pub trait ISubAccountAnonymizer<T> {
     ///
     /// #### Returns
     /// - ([`IdentityCommitment`](IdentityCommitment)) - An identity commitment binding to a
-    /// single sub-account.
+    /// single sub-account, computed in two stages as `hash(hash(identity_key, dapp_name), nonce)`.
+    /// The inner `hash(identity_key, dapp_name)` is the [`PartialCommitment`](PartialCommitment),
+    /// which the nonce-scanning views consume so a single off-chain derivation covers every nonce.
     fn privacy_compute(
         self: @T, identity_key: felt252, dapp_name: felt252, nonce: felt252,
     ) -> IdentityCommitment;
@@ -97,7 +130,31 @@ pub trait ISubAccountAnonymizer<T> {
         open_notes: Span<OpenNote>,
     ) -> Span<OpenNoteDeposit>;
 
-    /// Returns the sub-account address bound to `identity_commitment`.
+    /// Resolves the sub-accounts for nonces `[start_nonce, end_nonce)` under `partial_commitment`,
+    /// one [`SubAccountInfo`](SubAccountInfo) per nonce in ascending order. A deployed nonce
+    /// carries its stored address; an undeployed one carries the deterministic address it would
+    /// deploy to (so callers can address a sub-account before it exists). The commitment for each
+    /// nonce is `hash(partial_commitment, nonce)`.
+    ///
+    /// #### Parameters
+    /// - `partial_commitment` ([`PartialCommitment`](PartialCommitment)) - the user+dapp half of
+    /// the commitment, `hash(identity_key, dapp_name)`.
+    /// - `start_nonce` (`u64`) - the first nonce to resolve (inclusive).
+    /// - `end_nonce` (`u64`) - the upper bound (exclusive).
+    ///
+    /// #### Returns
+    /// - ([`Span<SubAccountInfo>`](SubAccountInfo)) - one entry per nonce in `[start_nonce,
+    /// end_nonce)`.
+    ///
+    /// #### Reverts
+    /// - [`INVALID_RANGE`](errors::INVALID_RANGE): Thrown if `end_nonce < start_nonce`.
+    /// - [`RANGE_TOO_LARGE`](errors::RANGE_TOO_LARGE): Thrown if `end_nonce - start_nonce` exceeds
+    ///   [`MAX_SCAN_RANGE`](MAX_SCAN_RANGE).
+    fn get_sub_accounts(
+        self: @T, partial_commitment: PartialCommitment, start_nonce: u64, end_nonce: u64,
+    ) -> Span<SubAccountInfo>;
+
+    /// Returns the deployed sub-account address bound to `identity_commitment`.
     ///
     /// #### Parameters
     /// - `identity_commitment` ([`IdentityCommitment`](IdentityCommitment)) - The identity
@@ -128,18 +185,19 @@ pub mod errors {
     pub const NEGATIVE_DIFF: felt252 = 'NEGATIVE_DIFF';
     pub const INSUFFICIENT_BALANCE: felt252 = 'INSUFFICIENT_BALANCE';
     pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
+    pub const RANGE_TOO_LARGE: felt252 = 'RANGE_TOO_LARGE';
+    pub const INVALID_RANGE: felt252 = 'INVALID_RANGE';
     /// Internal error.
     pub const ZERO_ADDRESS: felt252 = 'ZERO_ADDRESS';
 }
 
 #[starknet::contract]
 pub mod SubAccountAnonymizer {
-    use core::hash::HashStateTrait;
-    use core::num::traits::{CheckedSub, Zero};
-    use core::poseidon::PoseidonTrait;
+    use core::num::traits::{CheckedSub, SaturatingSub, Zero};
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::utils::deployments::calculate_contract_address_from_deploy_syscall;
     use privacy::objects::OpenNoteDeposit;
     use starknet::account::Call;
     use starknet::storage::{
@@ -158,7 +216,10 @@ pub mod SubAccountAnonymizer {
     use starkware_utils::storage::iterable_map::{
         IterableMap, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use super::{CollectPolicy, ISubAccountAnonymizer, IdentityCommitment, OpenNote, errors};
+    use super::{
+        CollectPolicy, ISubAccountAnonymizer, IdentityCommitment, MAX_SCAN_RANGE, OpenNote,
+        PartialCommitment, SubAccountInfo, commitment_from_partial, errors, partial_commitment,
+    };
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
@@ -231,7 +292,7 @@ pub mod SubAccountAnonymizer {
         fn privacy_compute(
             self: @ContractState, identity_key: felt252, dapp_name: felt252, nonce: felt252,
         ) -> IdentityCommitment {
-            PoseidonTrait::new().update(identity_key).update(dapp_name).update(nonce).finalize()
+            commitment_from_partial(partial_commitment(identity_key, dapp_name), nonce)
         }
 
         fn privacy_invoke_with_computation(
@@ -250,6 +311,39 @@ pub mod SubAccountAnonymizer {
             );
             sub_account.execute(calls);
             self.collect_open_notes(:sub_account, :note_balance_snapshots)
+        }
+
+        fn get_sub_accounts(
+            self: @ContractState,
+            partial_commitment: PartialCommitment,
+            start_nonce: u64,
+            end_nonce: u64,
+        ) -> Span<SubAccountInfo> {
+            assert(end_nonce >= start_nonce, errors::INVALID_RANGE);
+            assert(
+                end_nonce.saturating_sub(start_nonce) <= MAX_SCAN_RANGE, errors::RANGE_TOO_LARGE,
+            );
+            let class_hash = self.sub_account_class_hash.read();
+            let deployer_address = get_contract_address();
+            let mut sub_accounts: Array<SubAccountInfo> = array![];
+            for nonce in start_nonce..end_nonce {
+                let commitment = commitment_from_partial(partial_commitment, nonce.into());
+                let stored = self.get_sub_account(commitment);
+                let is_deployed = stored.is_non_zero();
+                // Undeployed sub-accounts resolve to the address the deploy syscall would derive.
+                let address = if is_deployed {
+                    stored
+                } else {
+                    calculate_contract_address_from_deploy_syscall(
+                        salt: commitment,
+                        :class_hash,
+                        constructor_calldata: array![].span(),
+                        :deployer_address,
+                    )
+                };
+                sub_accounts.append(SubAccountInfo { nonce, address, is_deployed });
+            }
+            sub_accounts.span()
         }
 
         fn get_sub_account(
