@@ -30,7 +30,7 @@ pub enum CollectPolicy {
 pub struct OpenNote {
     /// The identifier of the open note to deposit to.
     pub note_id: felt252,
-    /// The token to deposit.
+    /// The token to deposit. Pass at most one note per token.
     pub token: ContractAddress,
     /// The policy selecting how much of the sub-account's `token` balance to collect for this note.
     pub collect_policy: CollectPolicy,
@@ -68,7 +68,9 @@ pub trait ISubAccountAnonymizer<T> {
     /// - `calls` (`Array<Call>`) - the dapp calls to run as the sub-account.
     /// - `open_notes` ([`Span<OpenNote>`](OpenNote)) - the notes to settle; for each, the amount
     ///   selected by its [`collect_policy`](CollectPolicy) is collected from the sub-account into
-    ///   this anonymizer and recorded as a deposit.
+    ///   this anonymizer and recorded as a deposit. Pass at most one note per token; otherwise, the
+    ///   transaction will fail later in the privacy contract because the second approval overwrites
+    ///   the first.
     ///
     /// #### Returns
     /// - ([`Span<OpenNoteDeposit>`](privacy::objects::OpenNoteDeposit)) - one deposit per open
@@ -323,6 +325,9 @@ pub mod SubAccountAnonymizer {
 
                 transfer_calls
                     .append(build_transfer_call(:token, recipient: anonymizer, amount: collected));
+                // TODO: Consider adding an explicit check for duplicate tokens in the open notes
+                // instead of relying on the privacy contract to fail due to the approval being
+                // overwritten.
                 token_contract.approve(spender: privacy_contract, amount: collected);
                 let amount: u128 = collected.try_into().expect(errors::AMOUNT_OVERFLOW);
                 deposits.append(OpenNoteDeposit { note_id, token, amount });
