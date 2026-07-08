@@ -9,6 +9,7 @@ import { CallData, hash, shortString } from "starknet";
 import { Mocknet } from "../../src/testing/mocknet.js";
 import { MockContract } from "../../src/testing/contracts.js";
 import { compute_identity_key } from "../../src/utils/hashes.js";
+import { hash as poseidonHash } from "../../src/utils/crypto.js";
 import { SubAccountAnonymizerABI } from "../../src/internal/anonymizer-abi.js";
 import { toBigInt } from "../../src/utils/index.js";
 import { StarknetAddress } from "../../src/interfaces.js";
@@ -102,5 +103,64 @@ describe("SubAccountsBuilder.invoke", () => {
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey);
     expect(() => transfers.subaccounts("DAPP")).toThrow(/subAccountAnonymizerAddress/);
+  });
+});
+
+describe("SubAccountsBuilder commitments", () => {
+  it("derives partialCommitment = hash(identity_key, dappName) locally", async () => {
+    const mocknet = new Mocknet({ poolAddress: 0x1n });
+    const env = mocknet.initialize();
+    const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
+      subAccountAnonymizerAddress: ANONYMIZER,
+    });
+
+    const identityKey = compute_identity_key(
+      toBigInt(env.alice.address),
+      toBigInt(env.alice.privateKey),
+      toBigInt(ANONYMIZER)
+    );
+    const partialCommitment = poseidonHash(
+      identityKey,
+      toBigInt(shortString.encodeShortString("DAPP"))
+    );
+
+    await expect(transfers.subaccounts("DAPP").partialCommitment()).resolves.toBe(
+      partialCommitment
+    );
+  });
+
+  it("derives commitment = hash(partialCommitment, nonce) locally", async () => {
+    const mocknet = new Mocknet({ poolAddress: 0x1n });
+    const env = mocknet.initialize();
+    const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
+      subAccountAnonymizerAddress: ANONYMIZER,
+    });
+
+    const identityKey = compute_identity_key(
+      toBigInt(env.alice.address),
+      toBigInt(env.alice.privateKey),
+      toBigInt(ANONYMIZER)
+    );
+    const partialCommitment = poseidonHash(
+      identityKey,
+      toBigInt(shortString.encodeShortString("DAPP"))
+    );
+
+    await expect(transfers.subaccounts("DAPP").commitment(7n)).resolves.toBe(
+      poseidonHash(partialCommitment, 7n)
+    );
+  });
+
+  it("uses felt dapp names for local commitment derivation", async () => {
+    const mocknet = new Mocknet({ poolAddress: 0x1n });
+    const env = mocknet.initialize();
+    const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
+      subAccountAnonymizerAddress: ANONYMIZER,
+    });
+
+    const dappFelt = toBigInt(shortString.encodeShortString("DAPP"));
+    await expect(transfers.subaccounts(dappFelt).partialCommitment()).resolves.toBe(
+      await transfers.subaccounts("DAPP").partialCommitment()
+    );
   });
 });
