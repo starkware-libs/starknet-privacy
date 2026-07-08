@@ -514,6 +514,44 @@ export interface PrivateTransfersInterface {
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
+
+  /**
+   * Sub-account operations scoped to a single dapp.
+   *
+   * `dappName` scopes the derived sub-accounts to one dapp (a felt; a plain string is encoded as a
+   * Cairo short string). Requires `subAccountAnonymizerAddress` in the factory config; throws
+   * otherwise.
+   */
+  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
+}
+
+/** A sub-account: its `nonce` for the dapp and the deployed `address`. */
+export type SubAccount = { nonce: number; address: StarknetAddressBigint };
+
+/**
+ * Sub-account operations for one user + dapp, driven through the sub-account anonymizer contract.
+ * Each `nonce` maps to a distinct, deterministic sub-account address.
+ */
+export interface SubAccountsBuilder {
+  /**
+   * The deterministic sub-account address for `nonce` (deployed or not). Resolved through the
+   * anonymizer's on-chain views; see the discovery provider.
+   */
+  identify(nonce: BigNumberish): Promise<StarknetAddressBigint>;
+
+  /**
+   * The sub-accounts already deployed for this dapp, scanning consecutive nonces from `startNonce`
+   * (default 0) and stopping at the first undeployed one or `maxNonce`.
+   */
+  deployed(opts?: { startNonce?: number; maxNonce?: number }): Promise<SubAccount[]>;
+
+  /**
+   * Queue a `computeAndInvoke` against the sub-account for `nonce`: run `calls` through it and
+   * settle the proceeds into the open notes created in the same transaction. Returns the builder so
+   * the caller can add the open-note creation (e.g. `.with(token).transfer({ recipient, amount: Open })`)
+   * and `.execute()`.
+   */
+  invoke(nonce: BigNumberish, options: { calls: Call[] }): PrivateTransfersBuilder;
 }
 
 // ============ Builder Types ============
