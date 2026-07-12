@@ -1,0 +1,64 @@
+name: Client CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  lint:
+    name: Client Lint & Format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          # The client resolves @starkware-libs/starknet-privacy-sdk via file:../sdk, so an
+          # SDK change can break the client's type-check just as a client change can.
+          filters: |
+            client:
+              - 'client/**'
+              - 'sdk/**'
+      - uses: actions/setup-node@v4
+        if: steps.filter.outputs.client == 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            sdk/package-lock.json
+            client/package-lock.json
+      # The SDK's package exports point at ./dist; build it before linting the client so
+      # `tsc --noEmit` can resolve the SDK's types.
+      - if: steps.filter.outputs.client == 'true'
+        run: cd sdk && npm ci && npm run build
+      - if: steps.filter.outputs.client == 'true'
+        run: cd client && npm ci && npm run lint
+
+  check:
+    name: Client Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+          cache-dependency-path: |
+            sdk/package-lock.json
+            client/package-lock.json
+
+      # Build the SDK first: the client depends on it via a file: link and imports its
+      # compiled ./dist entry points.
+      - name: Build SDK
+        run: cd sdk && npm ci && npm run build
+
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Build client
+        run: cd client && npm run build
+
+      - name: Run client tests
+        run: cd client && npm run test
