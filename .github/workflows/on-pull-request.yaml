@@ -8,7 +8,6 @@ on:
 jobs:
   test:
     uses: ./.github/workflows/test.yaml
-    secrets: inherit
 
   check_formatting:
     uses: ./.github/workflows/check_formatting.yaml
