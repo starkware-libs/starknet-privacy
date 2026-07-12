@@ -4,6 +4,8 @@
 
 ### Added
 
+- Exported `SubAccountAnonymizerABI` from the package entry point, so downstream packages can
+  read the anonymizer (e.g. its `get_sub_accounts` view) against a single generated ABI source.
 - Sub-accounts: `transfers.build().subaccounts(dappName)` returns a `SubAccountsBuilder` (hung off the
   builder so a sub-account `invoke` shares the builder's `ExecuteOptions`/context). `invoke(nonce, { calls })`
   queues a `ComputeAndInvoke` against the sub-account anonymizer — `computeAdditionalData = [dappName, nonce]`
