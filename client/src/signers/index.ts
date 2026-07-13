@@ -1,11 +1,17 @@
 export {
-  Eip712CallSetSigner,
+  Eip712HashSigner,
+  Eip712TypedDataSigner,
+  callSetTypedData,
   computeCallSet712Hash,
   secp256k1SignFn,
 } from "./eip712-call-set-signer.js";
 export type {
-  Eip712CallSetSignerOptions,
+  Eip712SignerOptions,
+  Eip712HashSignerOptions,
+  Eip712TypedDataSignerOptions,
   Eip712SignFn,
+  Eip712SignTypedDataFn,
+  CallSetTypedData,
   EthSignatureParts,
 } from "./eip712-call-set-signer.js";
 
