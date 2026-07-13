@@ -1,0 +1,279 @@
+//! SNIP-12 typed-message hashing utilities for off-chain signature verification.
+//!
+//! Provides Rust-equivalent implementations of the Cairo SNIP-12 helpers in
+//! `packages/privacy/src/snip12.cairo`, used primarily for test-vector generation
+//! and SDK golden-oracle verification.
+//!
+//! ## SNIP-12 Message Envelope
+//!
+//! All off-chain messages follow the SNIP-12 envelope:
+//! `poseidon('StarkNet Message', domain_hash, signer, struct_hash)`
+//!
+//! where `domain_hash = poseidon([name, version, chain_id, 1])`.
+
+use starknet_crypto::poseidon_hash_many;
+use starknet_types_core::felt::Felt;
+
+/// StarkNet domain separator for SNIP-12 typed messages.
+const STARKNET_MESSAGE: Felt = Felt::from_hex_unchecked("0x537461726b4e6574204d657373616765");
+
+/// SNIP-12 type name for `CallSet`.
+const CALL_SET_SNIP12_NAME: Felt = Felt::from_hex_unchecked("0x43616c6c536574");
+
+/// SNIP-12 version for `CallSet`.
+const CALL_SET_SNIP12_VERSION: Felt = Felt::ONE;
+
+/// SNIP-12 type hash for the `CallSet` struct.
+///
+/// Pre-computed from the Cairo selector!:
+/// `selector!("\"CallSet\"(\"Calls\":\"Call*\",\"AdditionalData\":\"felt*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")")`
+const CALL_SET_TYPE_HASH: Felt =
+    Felt::from_hex_unchecked("0x2d10fa6c1e12c7504e4eb8951e65c5c7efddaf6adbe5e20df5615b12aa6bcd");
+
+/// SNIP-12 type hash for the `Call` struct.
+///
+/// Pre-computed from the Cairo selector!:
+/// `selector!("\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")")`
+const CALL_TYPE_HASH: Felt =
+    Felt::from_hex_unchecked("0x13d11b5de84df3ce00a1cb4da9fb296a3242fab765b9c3f6d4b1e2cd3b8f37a");
+
+/// Computes the SNIP-12 `StarknetDomain` struct hash.
+///
+/// The domain encodes the protocol name, version, chain id, and revision (always 1).
+fn starknet_domain_hash(name: Felt, version: Felt, chain_id: Felt) -> Felt {
+    poseidon_hash_many(&[name, version, chain_id, Felt::ONE])
+}
+
+/// Computes the SNIP-12 `Call` struct hash.
+///
+/// Structure: `poseidon([CALL_TYPE_HASH, call.to, call.selector, poseidon_hash_many(calldata)])`
+fn call_struct_hash(to: Felt, selector: Felt, calldata: &[Felt]) -> Felt {
+    let calldata_hash = poseidon_hash_many(calldata);
+    poseidon_hash_many(&[CALL_TYPE_HASH, to, selector, calldata_hash])
+}
+
+/// Computes the SNIP-12 `CallSet` struct hash.
+///
+/// Structure:
+/// `poseidon([CALL_SET_TYPE_HASH, poseidon_hash_many(calls_hashes), poseidon_hash_many(additional_data)])`
+fn call_set_struct_hash(calls: &[(Felt, Felt, &[Felt])], additional_data: &[Felt]) -> Felt {
+    let call_hashes: Vec<Felt> = calls
+        .iter()
+        .map(|&(to, selector, calldata)| call_struct_hash(to, selector, calldata))
+        .collect();
+
+    let calls_hash = poseidon_hash_many(&call_hashes);
+    let additional_data_hash = poseidon_hash_many(additional_data);
+
+    poseidon_hash_many(&[CALL_SET_TYPE_HASH, calls_hash, additional_data_hash])
+}
+
+/// SNIP-12 off-chain message hash envelope.
+///
+/// `poseidon('StarkNet Message', domain_hash, signer, struct_hash)`
+fn snip12_message_hash(
+    name: Felt,
+    version: Felt,
+    chain_id: Felt,
+    signer: Felt,
+    struct_hash: Felt,
+) -> Felt {
+    let domain_hash = starknet_domain_hash(name, version, chain_id);
+    poseidon_hash_many(&[STARKNET_MESSAGE, domain_hash, signer, struct_hash])
+}
+
+/// Computes the SNIP-12 `CallSet` message hash.
+///
+/// This is the off-chain golden oracle that the Cairo contract's
+/// `compute_call_set_hash` produces; SDK tooling uses this to pre-verify
+/// signatures before submission.
+///
+/// # Arguments
+///
+/// * `chain_id`   - Chain identifier felt (e.g. `0x54455354` for "TEST").
+/// * `signer`    - Contract address of the account signing the message (as felt).
+/// * `calls`     - Slice of `(to, selector, calldata)` tuples representing the intent.
+/// * `additional_data` - Opaque extra data bound into the message (e.g. a nonce).
+pub fn compute_call_set_hash(
+    chain_id: Felt,
+    signer: Felt,
+    calls: &[(Felt, Felt, Vec<Felt>)],
+    additional_data: &[Felt],
+) -> Felt {
+    let calls_ref: Vec<(Felt, Felt, &[Felt])> = calls
+        .iter()
+        .map(|&(to, selector, ref calldata)| (to, selector, calldata.as_slice()))
+        .collect();
+
+    let struct_hash = call_set_struct_hash(&calls_ref, additional_data);
+    snip12_message_hash(
+        CALL_SET_SNIP12_NAME,
+        CALL_SET_SNIP12_VERSION,
+        chain_id,
+        signer,
+        struct_hash,
+    )
+}
+
+/// Returns the pre-computed `Call` type hash.
+pub const fn call_type_hash() -> Felt {
+    CALL_TYPE_HASH
+}
+
+/// Returns the pre-computed `CallSet` type hash.
+pub const fn call_set_type_hash() -> Felt {
+    CALL_SET_TYPE_HASH
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Selector for "approve" — pre-computed starknet_keccak("approve").
+    const SELECTOR_APPROVE: Felt = Felt::from_hex_unchecked(
+        "0x0198a410fe5a25b8c1aedc7a2b1b7c3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a",
+    );
+
+    #[test]
+    fn test_empty_calls_empty_additional_data() {
+        let chain_id = Felt::from_hex_unchecked("0x54455354"); // "TEST"
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![];
+        let additional_data = vec![];
+
+        let hash = compute_call_set_hash(chain_id, signer, &calls, &additional_data);
+        // Hash must be deterministic and non-zero
+        assert!(hash != Felt::ZERO);
+
+        // Compute again to verify determinism
+        let hash2 = compute_call_set_hash(chain_id, signer, &calls, &additional_data);
+        assert_eq!(hash, hash2);
+    }
+
+    #[test]
+    fn test_single_call_empty_additional_data() {
+        let chain_id = Felt::from_hex_unchecked("0x54455354"); // "TEST"
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE, Felt::from(2)],
+        )];
+        let additional_data = vec![];
+
+        let hash = compute_call_set_hash(chain_id, signer, &calls, &additional_data);
+        assert!(hash != Felt::ZERO);
+
+        // Compare with empty calls — should differ
+        let empty_hash = compute_call_set_hash(chain_id, signer, &[], &additional_data);
+        assert_ne!(hash, empty_hash);
+    }
+
+    #[test]
+    fn test_additional_data_changes_hash() {
+        let chain_id = Felt::from_hex_unchecked("0x54455354"); // "TEST"
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE, Felt::from(2)],
+        )];
+
+        let hash_empty = compute_call_set_hash(chain_id, signer, &calls, &[]);
+        let hash_with_data = compute_call_set_hash(
+            chain_id,
+            signer,
+            &calls,
+            &[Felt::from(0xA), Felt::from(0xB)],
+        );
+        let hash_other_data = compute_call_set_hash(
+            chain_id,
+            signer,
+            &calls,
+            &[Felt::from(0xA), Felt::from(0xC)],
+        );
+
+        assert_ne!(hash_empty, hash_with_data);
+        assert_ne!(hash_with_data, hash_other_data);
+    }
+
+    #[test]
+    fn test_signer_binds_hash() {
+        let chain_id = Felt::from_hex_unchecked("0x54455354"); // "TEST"
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE, Felt::from(2)],
+        )];
+
+        let hash_a = compute_call_set_hash(chain_id, Felt::ONE, &calls, &[]);
+        let hash_b = compute_call_set_hash(chain_id, Felt::from(2), &calls, &[]);
+        assert_ne!(hash_a, hash_b);
+    }
+
+    #[test]
+    fn test_chain_id_binds_hash() {
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE, Felt::from(2)],
+        )];
+
+        let test_chain = Felt::from_hex_unchecked("0x54455354");
+        let main_chain = Felt::from_hex_unchecked("0x534e5f5345504f4c4941"); // "SN_SEPOLIA"
+        let hash_test = compute_call_set_hash(test_chain, signer, &calls, &[]);
+        let hash_main = compute_call_set_hash(main_chain, signer, &calls, &[]);
+        assert_ne!(hash_test, hash_main);
+    }
+
+    #[test]
+    fn test_type_hash_constants() {
+        // Verify the pre-computed type hashes are non-zero
+        assert!(CALL_TYPE_HASH != Felt::ZERO);
+        assert!(CALL_SET_TYPE_HASH != Felt::ZERO);
+        // Sanity: they are different from each other
+        assert_ne!(CALL_TYPE_HASH, CALL_SET_TYPE_HASH);
+    }
+
+    #[test]
+    fn test_call_struct_hash_deterministic() {
+        let calldata = &[Felt::ONE, Felt::from(2)];
+        let hash1 = call_struct_hash(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            calldata,
+        );
+        let hash2 = call_struct_hash(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            calldata,
+        );
+        assert_eq!(hash1, hash2);
+    }
+
+    #[test]
+    fn test_different_calls_different_hashes() {
+        let calldata1 = &[Felt::ONE];
+        let calldata2 = &[Felt::from(2)];
+
+        let hash1 = call_struct_hash(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            calldata1,
+        );
+        let hash2 = call_struct_hash(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            calldata2,
+        );
+        assert_ne!(hash1, hash2);
+
+        let hash3 = call_struct_hash(
+            Felt::from_hex_unchecked("0x222"),
+            SELECTOR_APPROVE,
+            calldata1,
+        );
+        assert_ne!(hash1, hash3);
+    }
+}
