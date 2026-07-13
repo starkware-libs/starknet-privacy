@@ -10,14 +10,20 @@
 //! `poseidon('StarkNet Message', domain_hash, signer, struct_hash)`
 //!
 //! where `domain_hash = poseidon([name, version, chain_id, 1])`.
+//!
+//! ## SNIP-12 Specification
+//!
+//! See <https://github.com/starknet-io/SNIPs/blob/main/SNIPS/snip-12.md>.
 
 use starknet_crypto::poseidon_hash_many;
 use starknet_types_core::felt::Felt;
 
 /// StarkNet domain separator for SNIP-12 typed messages.
+/// Derived from starknet_keccak("StarkNet Message") → 0x537461726b4e6574204d657373616765.
 const STARKNET_MESSAGE: Felt = Felt::from_hex_unchecked("0x537461726b4e6574204d657373616765");
 
 /// SNIP-12 type name for `CallSet`.
+/// ASCII bytes of "CallSet" as a felt252.
 const CALL_SET_SNIP12_NAME: Felt = Felt::from_hex_unchecked("0x43616c6c536574");
 
 /// SNIP-12 version for `CallSet`.
@@ -56,10 +62,12 @@ fn call_struct_hash(to: Felt, selector: Felt, calldata: &[Felt]) -> Felt {
 ///
 /// Structure:
 /// `poseidon([CALL_SET_TYPE_HASH, poseidon_hash_many(calls_hashes), poseidon_hash_many(additional_data)])`
-fn call_set_struct_hash(calls: &[(Felt, Felt, &[Felt])], additional_data: &[Felt]) -> Felt {
+fn call_set_struct_hash<'a, I>(calls: I, additional_data: &[Felt]) -> Felt
+where
+    I: Iterator<Item = (Felt, Felt, &'a [Felt])>,
+{
     let call_hashes: Vec<Felt> = calls
-        .iter()
-        .map(|&(to, selector, calldata)| call_struct_hash(to, selector, calldata))
+        .map(|(to, selector, calldata)| call_struct_hash(to, selector, calldata))
         .collect();
 
     let calls_hash = poseidon_hash_many(&call_hashes);
@@ -92,20 +100,26 @@ fn snip12_message_hash(
 ///
 /// * `chain_id`   - Chain identifier felt (e.g. `0x54455354` for "TEST").
 /// * `signer`    - Contract address of the account signing the message (as felt).
-/// * `calls`     - Slice of `(to, selector, calldata)` tuples representing the intent.
+/// * `calls` - Slice of `(to, selector, calldata)` tuples. Each `calldata`
+///   is a `Vec<Felt>` with no explicit upper bound; field arithmetic
+///   (`Felt`) bounds the practical size (~31 bytes per felt).
 /// * `additional_data` - Opaque extra data bound into the message (e.g. a nonce).
+///   Empty slice (`&[]`) and zero-filled slice are NOT equivalent;
+///   both are valid but produce different hashes.
 pub fn compute_call_set_hash(
     chain_id: Felt,
     signer: Felt,
     calls: &[(Felt, Felt, Vec<Felt>)],
     additional_data: &[Felt],
 ) -> Felt {
-    let calls_ref: Vec<(Felt, Felt, &[Felt])> = calls
-        .iter()
-        .map(|&(to, selector, ref calldata)| (to, selector, calldata.as_slice()))
-        .collect();
-
-    let struct_hash = call_set_struct_hash(&calls_ref, additional_data);
+    // call_set_struct_hash accepts any Iterator, so we pass one directly.
+    // This avoids the intermediate Vec allocation in compute_call_set_hash.
+    let struct_hash = call_set_struct_hash(
+        calls
+            .iter()
+            .map(|(to, selector, calldata)| (*to, *selector, calldata.as_slice())),
+        additional_data,
+    );
     snip12_message_hash(
         CALL_SET_SNIP12_NAME,
         CALL_SET_SNIP12_VERSION,
@@ -275,5 +289,114 @@ mod tests {
             calldata1,
         );
         assert_ne!(hash1, hash3);
+    }
+
+    #[test]
+    fn test_large_calldata() {
+        // SNIP-12: field arithmetic bounds practical calldata size.
+        // 128 felts ≈ 128 * 31 bytes ≈ 4KB — well within felt252 field.
+        let chain_id = Felt::from_hex_unchecked("0x54455354");
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let large_calldata: Vec<Felt> = (0..128).map(Felt::from).collect();
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            large_calldata,
+        )];
+        let hash = compute_call_set_hash(chain_id, signer, &calls, &[]);
+        assert!(hash != Felt::ZERO);
+    }
+
+    #[test]
+    fn test_felt_max_calldata() {
+        // Boundary: max felt value in calldata.
+        let chain_id = Felt::from_hex_unchecked("0x54455354");
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::MAX],
+        )];
+        let hash = compute_call_set_hash(chain_id, signer, &calls, &[]);
+        assert!(hash != Felt::ZERO);
+    }
+
+    #[test]
+    fn test_multiple_calls() {
+        let chain_id = Felt::from_hex_unchecked("0x54455354");
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![
+            (
+                Felt::from_hex_unchecked("0x111"),
+                SELECTOR_APPROVE,
+                vec![Felt::ONE],
+            ),
+            (
+                Felt::from_hex_unchecked("0x222"),
+                Felt::from_hex_unchecked(
+                    "0x01799a410fe5a25b8c1aedc7a2b1b7c3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f",
+                ),
+                vec![Felt::from(2), Felt::from(3)],
+            ),
+        ];
+        let hash = compute_call_set_hash(chain_id, signer, &calls, &[]);
+        assert!(hash != Felt::ZERO);
+
+        // Reversed order should produce different hash
+        let calls_reversed = vec![
+            (
+                Felt::from_hex_unchecked("0x222"),
+                Felt::from_hex_unchecked(
+                    "0x01799a410fe5a25b8c1aedc7a2b1b7c3d5e6f7a8b9c0d1e2f3a4b5c6d7e8f",
+                ),
+                vec![Felt::from(2), Felt::from(3)],
+            ),
+            (
+                Felt::from_hex_unchecked("0x111"),
+                SELECTOR_APPROVE,
+                vec![Felt::ONE],
+            ),
+        ];
+        let hash_reversed = compute_call_set_hash(chain_id, signer, &calls_reversed, &[]);
+        assert_ne!(hash, hash_reversed);
+    }
+
+    #[test]
+    fn test_empty_vs_zero_filled_additional_data() {
+        // Review item 5: empty &[] vs zero-filled [0,0,...] are NOT equivalent.
+        let chain_id = Felt::from_hex_unchecked("0x54455354");
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE],
+        )];
+
+        let hash_empty = compute_call_set_hash(chain_id, signer, &calls, &[]);
+        let hash_zero = compute_call_set_hash(chain_id, signer, &calls, &[Felt::ZERO, Felt::ZERO]);
+        assert_ne!(hash_empty, hash_zero);
+    }
+
+    #[test]
+    fn test_domain_hash_replay_protection() {
+        // Review item 6: domain_hash cannot be replayed across different chain IDs.
+        let signer = Felt::from_hex_unchecked("0x1234");
+        let calls = vec![(
+            Felt::from_hex_unchecked("0x111"),
+            SELECTOR_APPROVE,
+            vec![Felt::ONE],
+        )];
+
+        let testnet = Felt::from_hex_unchecked("0x534e5f54455354"); // "SN_TEST"
+        let mainnet = Felt::from_hex_unchecked("0x534e5f4d41494e"); // "SN_MAIN"
+        let sepolia = Felt::from_hex_unchecked("0x534e5f5345504f4c4941"); // "SN_SEPOLIA"
+
+        let hash_test = compute_call_set_hash(testnet, signer, &calls, &[]);
+        let hash_main = compute_call_set_hash(mainnet, signer, &calls, &[]);
+        let hash_sepolia = compute_call_set_hash(sepolia, signer, &calls, &[]);
+
+        assert_ne!(hash_test, hash_main);
+        assert_ne!(hash_test, hash_sepolia);
+        assert_ne!(hash_main, hash_sepolia);
     }
 }
