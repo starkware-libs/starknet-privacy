@@ -25,7 +25,7 @@
  * where hash(call) = poseidon(CALL_TYPE_HASH, to, selector, poseidon(calldata)).
  */
 
-import { ec, hash, num, shortString } from "starknet";
+import { ec, hash, num, shortString, typedData } from "starknet";
 import type {
   BigNumberish,
   Call,
@@ -127,8 +127,11 @@ export interface Snip12CallSetSignerOptions {
 }
 
 /**
- * Plugs into `createPrivateTransfers({ account: { address, signer } })`. Only `signTransaction` is
- * exercised by the proving pipeline; the other `SignerInterface` methods are unsupported.
+ * Plugs into `createPrivateTransfers({ account: { address, signer } })` and `SdkWallet`.
+ * `signTransaction` authorizes the privacy operation (the SNIP-12 `CallSet`); `signMessage` signs
+ * arbitrary SNIP-12 typed data with the same account key — the paymaster's deposit flow uses it to
+ * authorize the `approve` that rides in the user-signed outside execution. The remaining
+ * `SignerInterface` methods are unsupported.
  */
 export class Snip12CallSetSigner implements SignerInterface {
   constructor(private readonly options: Snip12CallSetSignerOptions) {}
@@ -147,8 +150,13 @@ export class Snip12CallSetSigner implements SignerInterface {
     throw new Error("Snip12CallSetSigner: getPubKey is not supported");
   }
 
-  async signMessage(_typedData: TypedData, _accountAddress: string): Promise<Signature> {
-    throw new Error("Snip12CallSetSigner: signMessage is not supported");
+  /**
+   * Signs a SNIP-12 typed-data message (revision from the message's own domain) with the account key
+   * — the legacy SN wallet's native `signMessage`. The privacy paymaster hands this the outside
+   * execution wrapping a deposit's `approve` for the user to authorize.
+   */
+  async signMessage(message: TypedData, accountAddress: string): Promise<Signature> {
+    return this.options.sign(num.toBigInt(typedData.getMessageHash(message, accountAddress)));
   }
 
   async signDeclareTransaction(_details: DeclareSignerDetails): Promise<Signature> {

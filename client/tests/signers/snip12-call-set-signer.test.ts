@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { ec, num, shortString } from "starknet";
-import type { Call, InvocationsSignerDetails } from "starknet";
+import { ec, num, shortString, typedData } from "starknet";
+import type { Call, InvocationsSignerDetails, TypedData } from "starknet";
 import {
   Snip12CallSetSigner,
   computeCallSetHash,
@@ -17,6 +17,25 @@ const SAMPLE_CALLS: Call[] = [
 // The value Cairo `compute_call_set_hash` asserts for the same vector (empty additional_data)
 // (test_snip12.cairo::test_call_set_hash_matches_sdk_golden_vector).
 const GOLDEN = "0x79d05f5b8993f5a0a18c6f7001e4d573c3eb97f322f6008cc1420f4f611501f";
+
+// A stand-in for the paymaster's approve typed data the deposit flow asks the user to sign.
+const SAMPLE_TYPED_DATA: TypedData = {
+  domain: { name: "Privacy", version: "1", chainId: "TEST", revision: "1" },
+  primaryType: "Approve",
+  types: {
+    StarknetDomain: [
+      { name: "name", type: "shortstring" },
+      { name: "version", type: "shortstring" },
+      { name: "chainId", type: "shortstring" },
+      { name: "revision", type: "shortstring" },
+    ],
+    Approve: [
+      { name: "spender", type: "ContractAddress" },
+      { name: "amount", type: "u128" },
+    ],
+  },
+  message: { spender: "0x111", amount: "0x64" },
+};
 
 describe("Snip12CallSetSigner", () => {
   it("computeCallSetHash matches the Cairo golden vector (L2<->L3)", () => {
@@ -40,6 +59,26 @@ describe("Snip12CallSetSigner", () => {
     // ...and not the empty-calls hash (proves the calls were bound).
     const otherHash = computeCallSetHash(ACCOUNT, [], CHAIN_ID);
     expect(ec.starkCurve.verify(sig as never, num.toHex(otherHash), publicKey)).toBe(false);
+  });
+
+  it("signMessage signs the SNIP-12 typed-data hash with the account key (e.g. the paymaster approve)", async () => {
+    const privateKey = "0x1234567890abcdef";
+    const publicKey = ec.starkCurve.getPublicKey(privateKey);
+    const account = num.toHex(ACCOUNT);
+    const signer = new Snip12CallSetSigner({
+      accountAddress: ACCOUNT,
+      chainId: CHAIN_ID,
+      sign: (h) => ec.starkCurve.sign(num.toHex(h), privateKey),
+    });
+
+    const sig = await signer.signMessage(SAMPLE_TYPED_DATA, account);
+    const expectedHash = typedData.getMessageHash(SAMPLE_TYPED_DATA, account);
+
+    // Signs exactly the message's SNIP-12 hash with the account key.
+    expect(ec.starkCurve.verify(sig as never, expectedHash, publicKey)).toBe(true);
+    // ...bound to the signing account: the same message hashed for another account does not verify.
+    const otherHash = typedData.getMessageHash(SAMPLE_TYPED_DATA, "0x9999");
+    expect(ec.starkCurve.verify(sig as never, otherHash, publicKey)).toBe(false);
   });
 
   it("binds the calls (different call set -> different hash)", () => {
