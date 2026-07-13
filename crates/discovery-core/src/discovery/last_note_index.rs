@@ -95,6 +95,10 @@ pub async fn find_last_note_index<S: IViews>(
     .await?;
     budget.reclaim((max_bisect_steps - bisect_step_count) * COST_NOTE_PROBING);
     cursor.total_n_notes = Some(boundary + 1);
+    // Persist the boundary so the next sync resumes at boundary + 1.
+    // Otherwise the cursor loses the last-scanned position and rescans
+    // already-filtered notes from start_index = 0 on every subsequent call.
+    cursor.last_note_index = Some(boundary);
     Ok((cache, false))
 }
 
@@ -565,6 +569,49 @@ mod tests {
             budget.remaining(),
             remaining_after_first,
             "no budget consumed"
+        );
+    }
+
+    /// Regression test: after `find_last_note_index` completes, the cursor's
+    /// `last_note_index` must be set to the boundary so that the next
+    /// `discover_notes_paginated` call resumes at `boundary + 1` instead of
+    /// rescanning from 0.
+    #[tokio::test]
+    async fn test_find_last_note_index_sets_cursor_last_note_index() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+        )
+        .await
+        .expect("Alice should have at least one channel");
+
+        let token = get_subchannel_token(&backend, &channel_key)
+            .await
+            .expect("Alice's channel should have at least one subchannel");
+
+        let mut cursor = SubchannelCursor::default();
+        let budget = IoBudget::new(500);
+
+        let (cache, has_more) =
+            find_last_note_index(&backend, &channel_key, token, &mut cursor, 30, &budget)
+                .await
+                .unwrap();
+
+        // Boundary finding succeeded.
+        assert!(!has_more);
+        // Cache must contain the boundary hit.
+        assert!(!cache.is_empty());
+        let boundary = *cache.keys().max().expect("cache non-empty");
+
+        // THE FIX: cursor.last_note_index must be set to the boundary.
+        assert_eq!(
+            cursor.last_note_index,
+            Some(boundary),
+            "last_note_index must equal boundary after find_last_note_index"
         );
     }
 }
