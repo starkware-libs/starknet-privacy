@@ -11,7 +11,6 @@
 //! encoding, already covered by `screening-calldata.test.ts`.
 
 use snforge_std::{start_cheat_chain_id, test_address};
-use openzeppelin::utils::cryptography::snip12::{StarknetDomain, StructHash};
 use starknet::account::Call;
 use crate::snip12::compute_call_set_hash;
 
@@ -25,79 +24,6 @@ fn test_call_set_hash_empty_calls_empty_data() {
     let signer: starknet::ContractAddress = 0x1234.try_into().unwrap();
     let hash = compute_call_set_hash(signer, [].span(), [].span());
     assert!(hash != 0);
-}
-
-#[test]
-fn debug_selector() {
-    let call = Call {
-        to: 0x111.try_into().unwrap(),
-        selector: selector!("approve"),
-        calldata: array![].span(),
-    };
-    // assert(false) with selector in error message to reveal value
-    assert(false, call.selector);
-}
-
-#[test]
-fn debug_call_set_hash_empty() {
-    setup_chain_id();
-    let signer: starknet::ContractAddress = 0x1234.try_into().unwrap();
-    let h = compute_call_set_hash(signer, [].span(), [].span());
-    assert(false, h);
-}
-
-#[test]
-fn debug_call_set_hash_single_call() {
-    setup_chain_id();
-    let signer: starknet::ContractAddress = 0x1234.try_into().unwrap();
-    let call: Call = Call {
-        to: 0x111.try_into().unwrap(),
-        selector: 'approve',
-        calldata: array![1, 2].span(),
-    };
-    let h = compute_call_set_hash(signer, array![call].span(), [].span());
-    assert(false, h);
-}
-
-#[test]
-fn debug_call_set_hash_single_call_with_data() {
-    setup_chain_id();
-    let signer: starknet::ContractAddress = 0x1234.try_into().unwrap();
-    let call: Call = Call {
-        to: 0x111.try_into().unwrap(),
-        selector: 'approve',
-        calldata: array![1].span(),
-    };
-    let h = compute_call_set_hash(
-        signer, array![call].span(), array![0xa, 0xb].span(),
-    );
-    assert(false, h);
-}
-
-#[test]
-fn debug_call_set_hash_diff_signer() {
-    setup_chain_id();
-    let signer: starknet::ContractAddress = 0x1235.try_into().unwrap();
-    let call: Call = Call {
-        to: 0x111.try_into().unwrap(),
-        selector: 'approve',
-        calldata: array![1, 2].span(),
-    };
-    let h = compute_call_set_hash(signer, array![call].span(), [].span());
-    assert(false, h);
-}
-
-#[test]
-fn debug_domain_hash() {
-    setup_chain_id();
-    let domain = StarknetDomain {
-        name: 'StarkNet Message',
-        version: 1,
-        chain_id: 'TEST',
-        revision: '1',
-    };
-    let h = domain.hash_struct();
-    assert(false, h);
 }
 
 #[test]

@@ -9,7 +9,7 @@ async-trait = "0.1"
 num-traits = "0.2"
 starknet-core = { package = "starknet-rust-core", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
 starknet-crypto = { package = "starknet-rust-crypto", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
-starknet-types-core = { version = "0.2", features = ["curve", "serde"] }
+starknet-types-core = { version = "0.2", features = ["curve", "serde", "hash"] }
 starknet-providers = { package = "starknet-rust-providers", git = "https://github.com/software-mansion/starknet-rust.git", rev = "7caedfe" }
 tracing = "0.1"
 serde = { version = "1.0", features = ["derive"] }
