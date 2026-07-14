@@ -514,15 +514,6 @@ export interface PrivateTransfersInterface {
 
   /** Create a builder for batching multiple operations */
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
-
-  /**
-   * Sub-account operations scoped to a single dapp.
-   *
-   * `dappName` scopes the derived sub-accounts to one dapp (a felt; a plain string is encoded as a
-   * Cairo short string). Requires `subAccountAnonymizerAddress` in the factory config; throws
-   * otherwise.
-   */
-  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
 }
 
 /** A sub-account: its `nonce` for the dapp and the deployed `address`. */
@@ -713,6 +704,15 @@ export interface PrivateTransfersBuilder {
    * Mutually exclusive with `invoke` — at most one invoke-phase action per transaction.
    */
   computeAndInvoke(callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails): this;
+
+  /**
+   * Sub-account operations scoped to a single dapp.
+   *
+   * `dappName` scopes the derived sub-accounts to one dapp (a felt; a plain string is encoded as a
+   * Cairo short string). Requires `subAccountAnonymizerAddress` in the factory config; throws
+   * otherwise.
+   */
+  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
 
   /**
    * Set the default recipient for any surplus across all tokens.

@@ -29,13 +29,16 @@ import {
   type Amount,
   type InvokeCalldataBuilderArgs,
   type SimulateOptions,
+  type SubAccountsBuilder,
+  type ViewingKey,
   Open,
   PrivateTransfersInterface,
 } from "../interfaces.js";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
 import { isOpenNote } from "../utils/validation.js";
-import type { CallDetails } from "starknet";
+import { SubAccountsBuilderImpl } from "./sub-accounts.js";
+import type { BigNumberish, CallDetails } from "starknet";
 
 // ============ Token Operations Builder ============
 
@@ -173,7 +176,11 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   constructor(
     private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
-    options?: ExecuteOptions
+    options?: ExecuteOptions,
+    private subAccountDeps?: {
+      anonymizerAddress?: StarknetAddress;
+      getViewingKey: () => Promise<ViewingKey>;
+    }
   ) {
     this.buildOptions = options;
   }
@@ -214,6 +221,22 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
         "At most one invoke-phase action (.invoke() / .computeAndInvoke()) per transaction; already set."
       );
     }
+  }
+
+  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder {
+    const deps = this.subAccountDeps;
+    if (deps?.anonymizerAddress === undefined) {
+      throw new Error(
+        "subaccounts(...) requires `subAccountAnonymizerAddress` in the createPrivateTransfers config."
+      );
+    }
+    return new SubAccountsBuilderImpl({
+      builder: this,
+      dappName,
+      subAccountAnonymizerAddress: deps.anonymizerAddress,
+      user: toBigInt(this.userAddress),
+      getViewingKey: deps.getViewingKey,
+    });
   }
 
   surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
