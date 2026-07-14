@@ -42,6 +42,14 @@ const CALL_SET_TYPE_HASH: Felt =
 const CALL_TYPE_HASH: Felt =
     Felt::from_hex_unchecked("0xa92c0c3ffc81a786f1009dc3f790ab357f488ee164d0c04438a97b2a7f5c63b3");
 
+/// SNIP-12 type hash for `StarknetDomain`.
+///
+/// Cairo-computed via `selector!("\"StarknetDomain\"(\"name\":\"shortstring\",\"version\":\"shortstring\",
+///                    \"chainId\":\"shortstring\",\"revision\":\"shortstring\")")` — must match
+/// OpenZeppelin Cairo's `STARKNET_DOMAIN_TYPE_HASH`.
+const STARKNET_DOMAIN_TYPE_HASH: Felt =
+    Felt::from_hex_unchecked("0x1ff2f602e42168014d405a94f75e8a93d640751d71d16311266e140d8b0a210");
+
 /// Computes the SNIP-12 `StarknetDomain` struct hash.
 ///
 /// Matches OpenZeppelin Cairo's `StarknetDomain.hash_struct()` which uses
@@ -53,9 +61,7 @@ fn starknet_domain_hash(name: Felt, version: Felt, chain_id: Felt) -> Felt {
 
     let mut state = [Felt::ZERO, Felt::ZERO, Felt::ZERO];
     // STARKNET_DOMAIN_TYPE_HASH
-    state[0] += Felt::from_hex_unchecked(
-        "0x1ff2f602e42168014d405a94f75e8a93d640751d71d16311266e140d8b0a210",
-    );
+    state[0] += STARKNET_DOMAIN_TYPE_HASH;
     Poseidon::hades_permutation(&mut state);
     // name
     state[0] += name;
