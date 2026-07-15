@@ -88,6 +88,10 @@ jobs:
       - name: Build SDK
         run: cd sdk && npm ci && npm run build
 
+      # Build client (e2e depends on it via file: link; it resolves the built dist/, not source)
+      - name: Build client
+        run: cd client && npm ci && npm run build
+
       # Install e2e deps + run devnet tests
       - name: Install e2e dependencies
         run: cd e2e && npm ci

@@ -73,7 +73,7 @@ describe("E2E OHTTP via relay", () => {
     await devnet.executeOutside(callAndProof);
     await env.indexer.waitForBlock(devnet.url);
 
-    // Create OHTTP-enabled discovery provider routed through the relay
+    // Create OHTTP-enabled discovery node routed through the relay
     const ohttpDiscovery = new IndexerDiscoveryProvider(
       env.indexer.apiUrl,
       de.privacy.address,

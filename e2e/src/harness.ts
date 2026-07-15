@@ -1,7 +1,7 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import { constants, hash, type Account } from "starknet";
-import { repoRoot } from "./utils.js";
+import { nodeOf, repoRoot } from "./utils.js";
 import {
   Devnet,
   type DevnetEnvironment,
@@ -36,7 +36,7 @@ export async function declarePoolClass(adminAccount: Account): Promise<string> {
   const classHash = hash.computeContractClassHash(contractClass);
 
   try {
-    await adminAccount.provider.getClass(classHash);
+    await nodeOf(adminAccount).getClass(classHash);
     console.log("[declare] class already declared:", classHash);
     return classHash;
   } catch (error: unknown) {
@@ -87,7 +87,7 @@ export async function declarePoolClass(adminAccount: Account): Promise<string> {
     }
     throw error;
   }
-  const receipt = await adminAccount.provider.waitForTransaction(
+  const receipt = await nodeOf(adminAccount).waitForTransaction(
     response.transaction_hash,
   );
   if (!receipt.isSuccess()) {
@@ -125,7 +125,7 @@ export async function createE2eTestEnv(
   });
   await indexer.waitUntilReady(devnet.url);
 
-  // The pool screens deposits, so the proving provider signs each deposit's attestation with the
+  // The pool screens deposits, so the proving node signs each deposit's attestation with the
   // screener key the pool was deployed with.
   const transfers = {
     alice: createPrivateTransfers({

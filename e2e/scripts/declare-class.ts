@@ -8,7 +8,8 @@
  * Usage: npm run declare-class   (from e2e/, with .env populated)
  */
 
-import { Account, RpcProvider } from "starknet";
+import { RpcProvider } from "starknet";
+import { accountOn } from "../src/utils.js";
 import { declarePoolClass } from "../src/harness.js";
 
 function requireEnv(name: string): string {
@@ -29,9 +30,8 @@ const allAccounts: AccountEntry[] = JSON.parse(requireEnv("ACCOUNTS"));
 const admin = allAccounts.find((a) => a.admin);
 if (!admin) throw new Error("No admin account (admin: true) found in ACCOUNTS");
 
-const provider = new RpcProvider({ nodeUrl: rpcUrl });
-const adminAccount = new Account({
-  provider,
+const node = new RpcProvider({ nodeUrl: rpcUrl });
+const adminAccount = accountOn(node, {
   address: admin.address,
   signer: admin.privateKey,
   cairoVersion: "1",

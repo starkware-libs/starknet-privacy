@@ -27,7 +27,7 @@ import { deployTestTokens } from "../src/vesu-setup.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const { adminAccount, provider } = setupAdmin();
+const { adminAccount, node } = setupAdmin();
 
 // Reuse existing tokens if provided, otherwise deploy fresh ones
 const existingUsd = process.env.USD_TOKEN_ADDRESS;
@@ -45,7 +45,7 @@ if (hasExistingTokens) {
   console.log(`  BTC: ${btcToken}`);
 } else {
   console.log("\n=== Deploying test tokens ===");
-  ({ usdToken, btcToken } = await deployTestTokens(adminAccount, provider));
+  ({ usdToken, btcToken } = await deployTestTokens(adminAccount, node));
 }
 
 // Pool config: use env overrides where set, fall back to DEVNET_POOL_CONFIG
@@ -80,13 +80,13 @@ const poolConfig: EkuboPoolConfig = {
 console.log("\n=== Deploying Ekubo infrastructure ===");
 const ekubo = await deployEkuboInfra(
   adminAccount,
-  provider,
+  node,
   { usdToken, btcToken },
   poolConfig,
 );
 
 console.log("\n=== Deploying Ekubo executor ===");
-const executorAddress = await deployEkuboExecutor(adminAccount, provider);
+const executorAddress = await deployEkuboExecutor(adminAccount, node);
 
 const ekuboPool = {
   token0: ekubo.poolToken0,
