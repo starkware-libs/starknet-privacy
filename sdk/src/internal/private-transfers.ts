@@ -145,9 +145,9 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
     // Source chainId from the same provider the mock prover calls, so proof
     // facts and signature validation are computed for the chain that actually
     // executes the view call.
-    const chainId = await options.provider.getChainId();
+    const chainId = await options.node.getChainId();
 
-    const mockProvider = new CallMockProofProvider(options.provider, chainId, {
+    const mockProvider = new CallMockProofProvider(options.node, chainId, {
       validateSignature: options.validateSignature ?? false,
     });
 

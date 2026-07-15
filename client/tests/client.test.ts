@@ -9,7 +9,7 @@ import type {
 import { createPrivacyClient } from "../src/index.js";
 import type { PrivacyWallet, Strk20Action } from "../src/index.js";
 
-const provider = { tag: "provider" } as unknown as ProviderInterface;
+const node = { tag: "node" } as unknown as ProviderInterface;
 
 /** Records every seam call so tests can assert which wallet path a submit took. */
 interface Seen {
@@ -51,7 +51,7 @@ function fakeWallet(seen: Seen = {}): PrivacyWallet {
 function client(seen: Seen = {}) {
   return createPrivacyClient({
     wallet: fakeWallet(seen),
-    provider,
+    node,
     subAccountAnonymizerAddress: 0x2n,
   });
 }

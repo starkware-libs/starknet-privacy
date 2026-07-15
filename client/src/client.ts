@@ -9,7 +9,7 @@ import type {
 } from "./interfaces.js";
 
 /**
- * The dapp client. Holds the injected wallet + read context (provider + sub-account anonymizer) and
+ * The dapp client. Holds the injected wallet + read context (node + sub-account anonymizer) and
  * drives the wallet seam. A native get-starknet v6 wallet satisfies {@link PrivacyWallet} directly,
  * so `submit` passes straight through to its strk20 methods; an `SdkWallet` (upstack) makes the same
  * seam calls but proves + submits through the core SDK + paymaster. The operation builder is added

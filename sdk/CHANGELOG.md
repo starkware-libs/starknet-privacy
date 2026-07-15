@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+### Breaking
+
+- Node-provider fields are named `node`, not `provider`: `SimulateOptions.provider` →
+  `SimulateOptions.node` (`builder.simulate({ node })`) and `DevnetEnvironment.provider` →
+  `DevnetEnvironment.node` (`env.node`) on the `/testing` surface. `provider` is reserved for the
+  proving / discovery / viewing-key providers, so a bare `provider` no longer means the node.
+
 ## 0.14.3-RC.4
 
 ### Added
