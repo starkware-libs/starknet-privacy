@@ -223,6 +223,10 @@ export const SubAccountAnonymizerABI = [
             name: "end_nonce",
             type: "core::integer::u64",
           },
+          {
+            name: "until_undeployed",
+            type: "core::bool",
+          },
         ],
         outputs: [
           {

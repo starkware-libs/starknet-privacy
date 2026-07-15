@@ -15,6 +15,9 @@
 
 - Exported `SubAccountAnonymizerABI` from the package entry point, so downstream packages can
   read the anonymizer (e.g. its `get_sub_accounts` view) against a single generated ABI source.
+  `get_sub_accounts` takes a trailing `until_undeployed: bool`: when true the view stops at the
+  first undeployed nonce and returns only the contiguous deployed prefix, when false it resolves
+  every nonce in the range.
 - Sub-accounts: `transfers.build().subaccounts(dappName)` returns a `SubAccountsBuilder` (hung off the
   builder so a sub-account `invoke` shares the builder's `ExecuteOptions`/context). `invoke(nonce, { calls })`
   queues a `ComputeAndInvoke` against the sub-account anonymizer — `computeAdditionalData = [dappName, nonce]`
