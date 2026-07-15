@@ -1,6 +1,8 @@
 import type { Call, EstimateFeeResponseOverhead } from "starknet";
+import { createPrivacyBuilder } from "./builder.js";
 import { toStarknetCall } from "./calls.js";
 import type {
+  PrivacyBuilder,
   PrivacyClient,
   PrivacyClientConfig,
   Strk20Action,
@@ -42,6 +44,10 @@ class PrivacyClientImpl implements PrivacyClient {
     const calls: Call[] = [...preCalls, toStarknetCall(call), ...postCalls];
     // simulate: estimate the assembled invoke on the node (empty proof) for a fee quote/preview.
     return simulate ? wallet.estimateInvokeFee(calls) : wallet.executeWithProof(calls, proof);
+  }
+
+  build(): PrivacyBuilder {
+    return createPrivacyBuilder(this.config.userAddress, this.submit.bind(this));
   }
 }
 

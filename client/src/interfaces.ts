@@ -1,5 +1,7 @@
 import type {
+  BigNumberish,
   Call,
+  CallDetails,
   EstimateFeeResponseOverhead,
   ProviderInterface,
   STRK20_ACTION,
@@ -88,6 +90,8 @@ export interface PrivacyWallet {
 export interface PrivacyClientConfig {
   /** The wallet — signs, proves, and submits privacy operations. */
   wallet: PrivacyWallet;
+  /** The user's Starknet account address — the default recipient for self-directed ops (open notes). */
+  userAddress: StarknetAddress;
   /** Provider for the sub-account anonymizer view call. */
   provider: ProviderInterface;
   /** The sub-account anonymizer contract the client queries for sub-account addresses. */
@@ -132,4 +136,60 @@ export interface PrivacyClient {
     actions: Strk20Action[],
     options: SubmitOptions & { simulate: true }
   ): Promise<EstimateFeeResponseOverhead>;
+  /** Open a fluent operation builder that compiles into one privacy transaction. */
+  build(): PrivacyBuilder;
+}
+
+/** The transaction-time values an invoke call builder may reference, as wallet-resolved placeholders. */
+export interface PrivacyInvokeArgs {
+  /** Placeholder per open note created in this transaction: `openNoteIds[N]` is the Nth open note's id. */
+  openNoteIds: string[];
+  /** Placeholder for the privacy pool address. */
+  poolAddress: string;
+}
+
+/** Builds a plain invoke's target + calldata (which may embed {@link PrivacyInvokeArgs} placeholders). */
+export type PrivacyInvokeCallBuilder = (args: PrivacyInvokeArgs) => CallDetails;
+
+/** The target + compute/invoke calldata a compute-and-invoke produces, for the two-stage invocation. */
+export interface PrivacyComputeInvokeDetails {
+  contractAddress: string;
+  computeCalldata: STRK20_CALLDATA_ITEM[];
+  invokeCalldata: STRK20_CALLDATA_ITEM[];
+}
+
+/** Builds a compute-and-invoke's target + two calldata arrays (may embed placeholders). */
+export type PrivacyComputeInvokeCallBuilder = (
+  args: PrivacyInvokeArgs
+) => PrivacyComputeInvokeDetails;
+
+/** Token-scoped operations, opened by {@link PrivacyBuilder.with}. Each queues an action + chains. */
+export interface PrivacyTokenBuilder {
+  /** Deposit `amount` of the token from the user's public balance into the pool (always to self). */
+  deposit(output: { amount: BigNumberish }): PrivacyBuilder;
+  /** Withdraw `amount` of the token from the pool to `recipient`. */
+  withdraw(output: { amount: BigNumberish; recipient: StarknetAddress }): PrivacyBuilder;
+  /** Privately transfer `amount` of the token to `recipient` inside the pool. */
+  transfer(output: { amount: BigNumberish; recipient: StarknetAddress }): PrivacyBuilder;
+  /** Create an open note for the token owned by the user — its amount is settled later in the same tx. */
+  createOpenNote(): PrivacyBuilder;
+}
+
+/**
+ * A fluent builder for one privacy transaction. Token operations are opened with `with(token)`;
+ * `invoke` / `invokeWithComputation` run a contract after the private operations. Every method queues
+ * an action and returns the builder; `submit` proves + broadcasts the whole set, `simulate` returns a
+ * fee estimate without broadcasting.
+ */
+export interface PrivacyBuilder {
+  /** Open token-scoped operations for `token`. */
+  with(token: StarknetAddress): PrivacyTokenBuilder;
+  /** Queue a contract invocation that runs after the private operations. */
+  invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder;
+  /** Queue a two-stage compute-and-invoke that runs after the private operations. */
+  invokeWithComputation(callBuilder: PrivacyComputeInvokeCallBuilder): PrivacyBuilder;
+  /** Prove and broadcast the queued operations, returning the transaction hash. */
+  submit(): Promise<SubmitResult>;
+  /** Prove the queued operations in simulate mode and return the node fee estimate. */
+  simulate(): Promise<EstimateFeeResponseOverhead>;
 }
