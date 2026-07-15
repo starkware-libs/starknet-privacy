@@ -12,12 +12,23 @@
   a short string. Requires the new `subAccountAnonymizerAddress` field on the `createPrivateTransfers`
   config; calling `subaccounts(...)` without it throws. `identify()` and `deployed()` on the builder
   are declared but not yet implemented.
+- Sub-accounts: `invoke(nonce, { calls, collectPolicy })` now takes an optional `collectPolicy`
+  applied to every open note the invoke settles — `{ type: "all" }`, `{ type: "diff" }`, or
+  `{ type: "exact"; amount }` (the `exact` variant requires an `amount`); defaults to
+  `{ type: "all" }`. Exported the `CollectPolicy` type.
 - `@starkware-libs/starknet-privacy-sdk/signers` subpath export: `Snip12CallSetSigner`
   and `Eip712CallSetSigner` (starknet.js `SignerInterface` implementations for authorizing
   privacy-pool invocations with legacy SN wallets and `Eth712Account` / EVM wallets), plus the
   `computeCallSetHash` / `computeCallSet712Hash` golden-vector oracles. Both signers accept an
   optional `additionalData` bound into the signed `CallSet` message (empty by default, matching
   the pool). SDK core stays signer-agnostic.
+
+### Fixed
+
+- Sub-accounts: `invoke` now encodes the anonymizer `OpenNote.collect_policy` field. It was omitted
+  before — which only compiled because the committed `SubAccountAnonymizerABI` was stale (missing
+  `collect_policy`), and would have produced calldata the anonymizer rejects. The ABI is regenerated
+  to include `collect_policy`.
 
 ## 0.14.3-RC.3
 

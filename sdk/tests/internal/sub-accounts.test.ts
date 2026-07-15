@@ -12,7 +12,7 @@ import { compute_identity_key } from "../../src/utils/hashes.js";
 import { hash as poseidonHash } from "../../src/utils/crypto.js";
 import { SubAccountAnonymizerABI } from "../../src/internal/anonymizer-abi.js";
 import { toBigInt } from "../../src/utils/index.js";
-import { StarknetAddress } from "../../src/interfaces.js";
+import { Open, StarknetAddress, type CollectPolicy } from "../../src/interfaces.js";
 
 const COMPUTED_MARKER = 0xc0ffeen;
 const ANONYMIZER = "0xab0a";
@@ -78,6 +78,61 @@ describe("SubAccountsBuilder.invoke", () => {
       .slice(1)
       .map(toBigInt);
     expect(anonymizer.invokeCalls).toEqual([[COMPUTED_MARKER, ...expectedInvokeData]]);
+  });
+
+  it("encodes each settled open note's collect_policy (all / diff / exact), defaulting to all", async () => {
+    const dappName = "DAPP";
+    const calls = [{ contractAddress: "0xda99", entrypoint: "pay_out", calldata: [0x1234n, 0n] }];
+    const EXACT_AMOUNT = 0x9999n;
+    const options = {
+      autoRegister: true,
+      autoDiscover: { channels: "refresh" as const, notes: "refresh" as const },
+      autoSetup: true,
+    };
+
+    // Fresh net per run: the single settled open note lands at the same index (so the same note_id)
+    // every time, leaving `collect_policy` as the only thing that varies between runs.
+    async function invokeWithOpenNote(collectPolicy?: CollectPolicy): Promise<bigint[]> {
+      const mocknet = new Mocknet({ poolAddress: 0x1n });
+      const env = mocknet.initialize();
+      const anonymizer = new MockComputeContract(ANONYMIZER);
+      mocknet.contracts.register(anonymizer);
+      const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
+        subAccountAnonymizerAddress: ANONYMIZER,
+      });
+      const token = toBigInt(env.ace);
+
+      mocknet.executeOutside(await transfers.build(options).register().execute());
+      mocknet.executeOutside(
+        await transfers
+          .build(options)
+          .with(token)
+          .transfer({ recipient: env.alice.address, amount: Open })
+          .done()
+          .subaccounts(dappName)
+          .invoke(1n, { calls, collectPolicy })
+          .execute()
+      );
+      const invoke = anonymizer.invokeCalls[0];
+      if (!invoke) throw new Error("expected one invoke call");
+      return invoke;
+    }
+
+    const all = await invokeWithOpenNote({ type: "all" });
+    const diff = await invokeWithOpenNote({ type: "diff" });
+    const exact = await invokeWithOpenNote({ type: "exact", amount: EXACT_AMOUNT });
+    const byDefault = await invokeWithOpenNote();
+
+    // Each policy encodes differently on the (identically-derived) open note.
+    expect(all).not.toEqual(diff);
+    expect(all).not.toEqual(exact);
+    expect(diff).not.toEqual(exact);
+    // Only the `exact` variant carries its amount into the calldata.
+    expect(exact).toContain(EXACT_AMOUNT);
+    expect(all).not.toContain(EXACT_AMOUNT);
+    expect(diff).not.toContain(EXACT_AMOUNT);
+    // Omitting collectPolicy is equivalent to `{ type: "all" }`.
+    expect(byDefault).toEqual(all);
   });
 
   it("encodes a felt dapp name equivalently to its short-string form", async () => {
