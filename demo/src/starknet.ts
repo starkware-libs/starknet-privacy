@@ -1,5 +1,6 @@
 import {
   Account,
+  BlockTag,
   RpcProvider,
   TransactionFinalityStatus,
   type waitForTransactionOptions,
@@ -51,7 +52,10 @@ export function createDiscoveryProvider(
 }
 
 export function createProvider(rpcUrl: string): RpcProvider {
-  return new RpcProvider({ nodeUrl: rpcUrl, batch: 50 });
+  // Nonce reads and fee estimates must use the block tag the flow waits for
+  // (WAIT_OPTIONS → PRE_CONFIRMED); the default `latest` omits pre-confirmed
+  // txs, so a dependent follow-up tx would build on a stale nonce.
+  return new RpcProvider({ nodeUrl: rpcUrl, batch: 50, blockIdentifier: BlockTag.PRE_CONFIRMED });
 }
 
 export function createAccount(provider: RpcProvider, address: string, privateKey: string): Account {
