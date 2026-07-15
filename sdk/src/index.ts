@@ -1,6 +1,24 @@
 export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
+export {
+  Snip12CallSetSigner,
+  computeCallSetHash,
+} from "./signers/snip12-call-set-signer.js";
+export type {
+  Snip12CallSetSignerOptions,
+  CallSetSignFn,
+} from "./signers/snip12-call-set-signer.js";
+export {
+  Eip712CallSetSigner,
+  computeCallSet712Hash,
+  secp256k1SignFn,
+} from "./signers/eip712-call-set-signer.js";
+export type {
+  Eip712CallSetSignerOptions,
+  Eip712SignFn,
+  EthSignatureParts,
+} from "./signers/eip712-call-set-signer.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
 export {
   ProvingService,
