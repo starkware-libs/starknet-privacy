@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Capture the operations the prover replays onto the core builder by faking createPrivateTransfers.
 const h = vi.hoisted(() => {
   const coreCallAndProof = {
-    call: { contractAddress: "0xpool", entrypoint: "apply", calldata: ["0x1"] },
+    call: { contractAddress: "0xf001", entrypoint: "apply", calldata: ["0x1"] },
     proof: { data: "0xdata", output: ["0x2"], proofFacts: ["0x3"] },
   };
   const state: {
@@ -77,8 +77,8 @@ function makeProver() {
     node: {} as never,
     discovery: {} as never,
     prover: {} as never,
-    poolContractAddress: "0xpool",
-    subAccountAnonymizerAddress: "0xanon",
+    poolContractAddress: "0xf001",
+    subAccountAnonymizerAddress: "0xa11",
     storage: {
       loadRegistry: async () => loadedRegistry as never,
       saveRegistry: async (registry) => {
@@ -116,7 +116,7 @@ describe("CorePrivateTransfersProver", () => {
     ]);
     // core CallAndProof (camelCase) → strk20 RPC shape (snake_case, proof_facts).
     expect(result).toEqual({
-      call: { contract_address: "0xpool", entry_point: "apply", calldata: ["0x1"] },
+      call: { contract_address: "0xf001", entry_point: "apply", calldata: ["0x1"] },
       proof: { data: "0xdata", output: ["0x2"], proof_facts: ["0x3"] },
     });
   });
@@ -139,7 +139,7 @@ describe("CorePrivateTransfersProver", () => {
     );
     expect(h.state.simulateArg).toBeDefined();
     expect(saved).toBeUndefined();
-    expect(estimate.call.contract_address).toBe("0xpool");
+    expect(estimate.call.contract_address).toBe("0xf001");
   });
 
   it("resolves invoke placeholders against the compiled transaction's open notes and pool", async () => {

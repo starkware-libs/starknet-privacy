@@ -3,6 +3,8 @@
 // Resolves sub-accounts, bridges Starknet/EVM wallet signing, and builds privacy operations
 // over @starkware-libs/starknet-privacy-sdk. More of the public API is added in later changesets.
 export { createPrivacyClient } from "./client.js";
+export { resolveSubAccounts, DEFAULT_ADDRESS_RANGE_END } from "./sub-accounts.js";
+export type { ResolveSubAccountsParams, SubAccountAnonymizerContract } from "./sub-accounts.js";
 export { SdkWallet } from "./sdk-wallet.js";
 export type { SdkWalletConfig } from "./sdk-wallet.js";
 export { CorePrivateTransfersProver } from "./strk20-prover.js";
@@ -20,6 +22,7 @@ export type {
   PaymasterQuote,
 } from "./paymaster.js";
 export type {
+  AddressRange,
   PrivacyBuilder,
   PrivacyClient,
   PrivacyClientConfig,
@@ -33,6 +36,8 @@ export type {
   STRK20_COMPUTE_AND_INVOKE_ACTION,
   Strk20Action,
   Strk20Prover,
+  SubAccountInfo,
+  SubAccountsBuilder,
   SubmitOptions,
   SubmitResult,
 } from "./interfaces.js";
