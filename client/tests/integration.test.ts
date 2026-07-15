@@ -68,7 +68,7 @@ function harness() {
     wallet,
     userAddress: USER,
     provider,
-    subAccountAnonymizerAddress: "0xanon",
+    subAccountAnonymizerAddress: "0xa11",
   });
   return { client, prover, paymaster, signed };
 }
@@ -157,5 +157,44 @@ describe("integration: build → submit", () => {
     await expect(
       client.build().with(TOKEN).withdraw({ amount: 5n, recipient: "0x9" }).simulate()
     ).rejects.toThrow(/not yet implemented/);
+  });
+
+  it("subaccounts(dappName).addresses resolves via the anonymizer keyed by the wallet's partial commitment", async () => {
+    const seenDapp: string[] = [];
+    const viewCalldata: string[][] = [];
+    // provider answers the anonymizer get_sub_accounts view: [len, (nonce, address, is_deployed)…]
+    const anonymizerProvider = {
+      callContract: async (call: { calldata: string[] }) => {
+        viewCalldata.push(call.calldata);
+        return ["0x1", "0x0", num.toHex(0x1000n), "0x1"];
+      },
+    } as unknown as ProviderInterface;
+    const wallet = new SdkWallet({
+      prover: {
+        partialCommitment: async (dappName) => {
+          seenDapp.push(dappName);
+          return 0x7n;
+        },
+        prove: async () => PROVEN,
+      },
+      paymaster: fakePaymaster({}),
+      poolContractAddress: POOL,
+      userAddress: USER,
+      signer: {} as never,
+    });
+    const client = createPrivacyClient({
+      wallet,
+      userAddress: USER,
+      provider: anonymizerProvider,
+      subAccountAnonymizerAddress: "0xa11",
+    });
+
+    const infos = await client.build().subaccounts("my-dapp").addresses({ end: 1 });
+
+    expect(seenDapp).toEqual(["my-dapp"]);
+    expect(infos).toEqual([{ nonce: 0n, address: 0x1000n, is_deployed: true }]);
+    // partial commitment (0x7) is the view's first arg; until_undeployed defaults to false
+    expect(num.toBigInt(viewCalldata[0][0])).toBe(0x7n);
+    expect(num.toBigInt(viewCalldata[0][3])).toBe(0n);
   });
 });
