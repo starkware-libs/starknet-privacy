@@ -55,10 +55,7 @@ describe("Payment Service Discovery", () => {
       createPrivateTransfers({
         account,
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new ScreeningCallMockProofProvider(
-          de.provider,
-          chainId,
-        ),
+        provingProvider: new ScreeningCallMockProofProvider(de.node, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
       }),
@@ -230,7 +227,7 @@ describe("Payment Service Discovery", () => {
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
-      provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(de.node, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
     });
@@ -259,7 +256,7 @@ describe("Payment Service Discovery", () => {
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => ALICE_KEY },
-      provingProvider: new ScreeningCallMockProofProvider(de.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(de.node, chainId),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
     });
@@ -287,10 +284,7 @@ describe("Payment Service Discovery", () => {
       const userDiscover = createPrivateTransfers({
         account: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new ScreeningCallMockProofProvider(
-          de.provider,
-          chainId,
-        ),
+        provingProvider: new ScreeningCallMockProofProvider(de.node, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
       });
@@ -317,10 +311,7 @@ describe("Payment Service Discovery", () => {
       const userDiscover = createPrivateTransfers({
         account: users[i],
         viewingKeyProvider: { getViewingKey: async () => userKey(i) },
-        provingProvider: new ScreeningCallMockProofProvider(
-          de.provider,
-          chainId,
-        ),
+        provingProvider: new ScreeningCallMockProofProvider(de.node, chainId),
         discoveryProvider: indexerDiscovery,
         poolContractAddress: de.privacy.address,
       });

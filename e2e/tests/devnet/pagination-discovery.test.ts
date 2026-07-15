@@ -71,7 +71,7 @@ describe("Discovery pagination with small budget", () => {
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new ScreeningCallMockProofProvider(
-        de.provider,
+        de.node,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,
@@ -105,7 +105,7 @@ describe("Discovery pagination with small budget", () => {
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new ScreeningCallMockProofProvider(
-        de.provider,
+        de.node,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,
@@ -122,7 +122,7 @@ describe("Discovery pagination with small budget", () => {
       account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new ScreeningCallMockProofProvider(
-        de.provider,
+        de.node,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: discovery,

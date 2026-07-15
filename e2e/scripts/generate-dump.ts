@@ -48,14 +48,14 @@ const transfers = {
   alice: createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => ALICE_VIEWING_KEY },
-    provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   }),
   bob: createPrivateTransfers({
     account: env.bob,
     viewingKeyProvider: { getViewingKey: async () => BOB_VIEWING_KEY },
-    provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   }),
@@ -149,11 +149,11 @@ async function dumpContractState(
   env: DevnetEnvironment,
   outputPath: string,
 ): Promise<void> {
-  const latestBlock = await env.provider.getBlockNumber();
+  const latestBlock = await env.node.getBlockNumber();
   const storageState: Record<string, string> = {};
 
   for (let blockNum = 0; blockNum <= latestBlock; blockNum++) {
-    const stateUpdate = await env.provider.getStateUpdate(blockNum);
+    const stateUpdate = await env.node.getStateUpdate(blockNum);
     for (const diff of stateUpdate.state_diff.storage_diffs) {
       if (diff.address.toLowerCase() === env.privacy.address.toLowerCase()) {
         for (const entry of diff.storage_entries) {

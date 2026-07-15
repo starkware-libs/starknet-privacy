@@ -131,10 +131,7 @@ export async function createE2eTestEnv(
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new ScreeningCallMockProofProvider(
-        env.provider,
-        chainId,
-      ),
+      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,
@@ -144,10 +141,7 @@ export async function createE2eTestEnv(
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new ScreeningCallMockProofProvider(
-        env.provider,
-        chainId,
-      ),
+      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,

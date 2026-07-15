@@ -15,6 +15,7 @@
 
 import { hash, num, stark } from "starknet";
 import type { BigNumberish, Call, Signature, TypedData } from "starknet";
+import { safeStringify } from "./json.js";
 
 /** Fee-payment mode. `sponsored_private` funds the fee from the pool via a fee-token withdrawal. */
 export type PaymasterFeeMode = {
@@ -185,7 +186,7 @@ export class AvnuPaymaster implements Paymaster {
       if (typeof data === "string") detail = `: ${data}`;
       else if (data && typeof data === "object") {
         const execError = (data as { execution_error?: string }).execution_error;
-        detail = `: ${execError ?? JSON.stringify(data)}`;
+        detail = `: ${execError ?? safeStringify(data)}`;
       }
       throw new Error(
         `Paymaster ${method}: ${json.error.message} (code: ${json.error.code})${detail}`

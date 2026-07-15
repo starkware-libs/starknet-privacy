@@ -22,13 +22,9 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
       indexer: { logFile: "sub-account-compute-invoke-indexer.log" },
     });
 
-    const { admin, provider, privacy } = env.env;
-    tokens = await deployTestTokens(admin, provider);
-    subAccount = await deploySubAccountAnonymizer(
-      admin,
-      provider,
-      privacy.address,
-    );
+    const { admin, node, privacy } = env.env;
+    tokens = await deployTestTokens(admin, node);
+    subAccount = await deploySubAccountAnonymizer(admin, node, privacy.address);
   });
 
   afterAll(async () => {
@@ -42,7 +38,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
     const payoutAmount = 100n * ONE_TOKEN;
 
     const balanceOf = async (owner: string): Promise<bigint> => {
-      const result = await de.provider.callContract({
+      const result = await de.node.callContract({
         contractAddress: tokens.usdToken,
         entrypoint: "balance_of",
         calldata: [owner],
@@ -56,7 +52,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
       entrypoint: "mint",
       calldata: [subAccount.mockDapp, ...u256Calldata(payoutAmount)],
     });
-    await de.provider.waitForTransaction(mintTx.transaction_hash);
+    await de.node.waitForTransaction(mintTx.transaction_hash);
 
     // `compute_data` feeds privacy_compute(identity_key, dapp_name, nonce); the pool prepends
     // the derived identity key. The commitment it returns selects the per-commitment sub-account.

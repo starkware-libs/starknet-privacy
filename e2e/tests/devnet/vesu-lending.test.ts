@@ -24,10 +24,10 @@ describe("Vesu lending on devnet", () => {
       indexer: { logFile: "vesu-lending-indexer.log" },
     });
 
-    const { admin, provider } = env.env;
-    tokens = await deployTestTokens(admin, provider);
-    vesu = await deployVesuInfra(admin, provider, tokens);
-    anonymizerAddress = await deployVesuAnonymizer(admin, provider);
+    const { admin, node } = env.env;
+    tokens = await deployTestTokens(admin, node);
+    vesu = await deployVesuInfra(admin, node, tokens);
+    anonymizerAddress = await deployVesuAnonymizer(admin, node);
   });
 
   afterAll(async () => {
@@ -47,14 +47,14 @@ describe("Vesu lending on devnet", () => {
       entrypoint: "mint",
       calldata: [de.alice.address, ...u256Calldata(depositAmount)],
     });
-    await de.provider.waitForTransaction(mintTx.transaction_hash);
+    await de.node.waitForTransaction(mintTx.transaction_hash);
 
     const approveTx = await de.alice.execute({
       contractAddress: tokens.usdToken,
       entrypoint: "approve",
       calldata: [de.privacy.address, depositAmount, 0n],
     });
-    await de.provider.waitForTransaction(approveTx.transaction_hash);
+    await de.node.waitForTransaction(approveTx.transaction_hash);
 
     // Phase 1: Deposit USD into privacy pool
     const { callAndProof: depositCall } = await transfers.alice
