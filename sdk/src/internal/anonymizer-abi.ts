@@ -40,6 +40,24 @@ export const SubAccountAnonymizerABI = [
     ],
   },
   {
+    type: "enum",
+    name: "sub_account_anonymizer::sub_account_anonymizer::CollectPolicy",
+    variants: [
+      {
+        name: "All",
+        type: "()",
+      },
+      {
+        name: "Diff",
+        type: "()",
+      },
+      {
+        name: "Exact",
+        type: "core::integer::u128",
+      },
+    ],
+  },
+  {
     type: "struct",
     name: "sub_account_anonymizer::sub_account_anonymizer::OpenNote",
     members: [
@@ -50,6 +68,10 @@ export const SubAccountAnonymizerABI = [
       {
         name: "token",
         type: "core::starknet::contract_address::ContractAddress",
+      },
+      {
+        name: "collect_policy",
+        type: "sub_account_anonymizer::sub_account_anonymizer::CollectPolicy",
       },
     ],
   },
@@ -205,6 +227,22 @@ export const SubAccountAnonymizerABI = [
         outputs: [
           {
             type: "core::array::Span::<sub_account_anonymizer::sub_account_anonymizer::SubAccountInfo>",
+          },
+        ],
+        state_mutability: "view",
+      },
+      {
+        type: "function",
+        name: "get_sub_account",
+        inputs: [
+          {
+            name: "identity_commitment",
+            type: "core::felt252",
+          },
+        ],
+        outputs: [
+          {
+            type: "core::starknet::contract_address::ContractAddress",
           },
         ],
         state_mutability: "view",
@@ -761,6 +799,23 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "event",
+    name: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed",
+    kind: "struct",
+    members: [
+      {
+        name: "identity_commitment",
+        type: "core::felt252",
+        kind: "key",
+      },
+      {
+        name: "sub_account",
+        type: "core::starknet::contract_address::ContractAddress",
+        kind: "key",
+      },
+    ],
+  },
+  {
+    type: "event",
     name: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::Event",
     kind: "enum",
     variants: [
@@ -783,6 +838,11 @@ export const SubAccountAnonymizerABI = [
         name: "SRC5Event",
         type: "openzeppelin_introspection::src5::SRC5Component::Event",
         kind: "flat",
+      },
+      {
+        name: "SubAccountDeployed",
+        type: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed",
+        kind: "nested",
       },
     ],
   },
