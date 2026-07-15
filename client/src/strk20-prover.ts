@@ -10,7 +10,7 @@ import type {
   ProofProviderInterface,
   StarknetAddress,
 } from "@starkware-libs/starknet-privacy-sdk";
-import { toStrk20Call } from "./calls.js";
+import { toStarknetCall, toStrk20Call } from "./calls.js";
 import { passphraseViewingKeyProvider } from "./viewing-key.js";
 import type { PrivacyStorage, Strk20Action, Strk20Prover } from "./interfaces.js";
 
@@ -120,6 +120,17 @@ function translate(builder: PrivateTransfersBuilder, actions: Strk20Action[]): v
           computeAdditionalData: action.compute_calldata.map((item) => substitute(item, args)),
           invokeAdditionalData: action.invoke_calldata.map((item) => substitute(item, args)),
         }));
+        break;
+      case "subaccount_invoke":
+        // Core encodes the anonymizer compute/invoke data (computeAdditionalData = [dappName, nonce],
+        // invokeAdditionalData = calls via the anonymizer ABI); we hand it the calls + collect policy.
+        builder.subaccounts(action.dapp_name).invoke(action.nonce, {
+          calls: action.calls.map(toStarknetCall),
+          collectPolicy:
+            action.collect_policy.type === "exact"
+              ? { type: "exact", amount: num.toBigInt(action.collect_policy.amount) }
+              : action.collect_policy,
+        });
         break;
     }
   }
