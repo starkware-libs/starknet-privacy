@@ -163,6 +163,39 @@ export type PrivacyComputeInvokeCallBuilder = (
   args: PrivacyInvokeArgs
 ) => PrivacyComputeInvokeDetails;
 
+/**
+ * A sub-account as resolved by the anonymizer's `get_sub_accounts` view — the decoded Cairo struct in
+ * the contract's field names (no camelCase copy). `is_deployed` is false when the account is not yet
+ * deployed, in which case `address` is the deterministic address it would deploy to.
+ */
+export interface SubAccountInfo {
+  nonce: bigint;
+  address: bigint;
+  is_deployed: boolean;
+}
+
+/**
+ * The nonce window for {@link SubAccountsBuilder.addresses}, resolved as `[start, end)`. `start`
+ * defaults to 0 and `end` to `start + DEFAULT_ADDRESS_RANGE_END`. `untilUndeployed` (default false)
+ * returns every nonce in the window; `untilUndeployed: true` stops at the first undeployed nonce and
+ * returns only the contiguous deployed prefix (the view's `until_undeployed` flag).
+ */
+export interface AddressRange {
+  start?: number;
+  end?: number;
+  untilUndeployed?: boolean;
+}
+
+/**
+ * The sub-account namespace for one user + dapp, opened by {@link PrivacyBuilder.subaccounts}.
+ * `addresses` is a read (resolved immediately via the anonymizer view). The `invoke` that operates a
+ * sub-account — delegating to the builder's bare `invoke` with the anonymizer parameters — is added
+ * with the roundtrip work.
+ */
+export interface SubAccountsBuilder {
+  addresses(range?: AddressRange): Promise<SubAccountInfo[]>;
+}
+
 /** Token-scoped operations, opened by {@link PrivacyBuilder.with}. Each queues an action + chains. */
 export interface PrivacyTokenBuilder {
   /** Deposit `amount` of the token from the user's public balance into the pool (always to self). */
@@ -184,6 +217,8 @@ export interface PrivacyTokenBuilder {
 export interface PrivacyBuilder {
   /** Open token-scoped operations for `token`. */
   with(token: StarknetAddress): PrivacyTokenBuilder;
+  /** Open the sub-account namespace for `dappName` (currently `addresses`, a read). */
+  subaccounts(dappName: string): SubAccountsBuilder;
   /** Queue a contract invocation that runs after the private operations. */
   invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder;
   /** Queue a two-stage compute-and-invoke that runs after the private operations. */

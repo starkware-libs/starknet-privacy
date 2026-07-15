@@ -2,6 +2,7 @@ import { num } from "starknet";
 import type { BigNumberish, EstimateFeeResponseOverhead, STRK20_CALLDATA_ITEM } from "starknet";
 import type { StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
 import type {
+  AddressRange,
   PrivacyBuilder,
   PrivacyClient,
   PrivacyComputeInvokeCallBuilder,
@@ -9,8 +10,16 @@ import type {
   PrivacyInvokeCallBuilder,
   PrivacyTokenBuilder,
   Strk20Action,
+  SubAccountInfo,
+  SubAccountsBuilder,
   SubmitResult,
 } from "./interfaces.js";
+
+/** Resolves a dapp's sub-account addresses — supplied by the client (anonymizer view + partial commitment). */
+export type ResolveAddresses = (
+  dappName: string,
+  range?: AddressRange
+) => Promise<SubAccountInfo[]>;
 
 const toFelt = (value: BigNumberish): string => num.toHex(num.toBigInt(value));
 
@@ -30,11 +39,16 @@ class PrivacyBuilderImpl implements PrivacyBuilder {
 
   constructor(
     private readonly userAddress: StarknetAddress,
-    private readonly submitActions: PrivacyClient["submit"]
+    private readonly submitActions: PrivacyClient["submit"],
+    private readonly resolveAddresses: ResolveAddresses
   ) {}
 
   with(token: StarknetAddress): PrivacyTokenBuilder {
     return new PrivacyTokenBuilderImpl(this, toFelt(token));
+  }
+
+  subaccounts(dappName: string): SubAccountsBuilder {
+    return new SubAccountsBuilderImpl(dappName, this.resolveAddresses);
   }
 
   invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder {
@@ -136,10 +150,23 @@ class PrivacyTokenBuilderImpl implements PrivacyTokenBuilder {
   }
 }
 
+/** The sub-account namespace for one dapp, opened by {@link PrivacyBuilderImpl.subaccounts}. */
+class SubAccountsBuilderImpl implements SubAccountsBuilder {
+  constructor(
+    private readonly dappName: string,
+    private readonly resolveAddresses: ResolveAddresses
+  ) {}
+
+  addresses(range?: AddressRange): Promise<SubAccountInfo[]> {
+    return this.resolveAddresses(this.dappName, range);
+  }
+}
+
 /** Create the fluent operation builder for {@link PrivacyClient.build}. */
 export function createPrivacyBuilder(
   userAddress: StarknetAddress,
-  submit: PrivacyClient["submit"]
+  submit: PrivacyClient["submit"],
+  resolveAddresses: ResolveAddresses
 ): PrivacyBuilder {
-  return new PrivacyBuilderImpl(userAddress, submit);
+  return new PrivacyBuilderImpl(userAddress, submit, resolveAddresses);
 }

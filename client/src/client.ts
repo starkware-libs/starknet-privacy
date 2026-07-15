@@ -1,6 +1,10 @@
+import { Contract, num } from "starknet";
 import type { Call, EstimateFeeResponseOverhead } from "starknet";
+import { SubAccountAnonymizerABI } from "@starkware-libs/starknet-privacy-sdk";
 import { createPrivacyBuilder } from "./builder.js";
 import { toStarknetCall } from "./calls.js";
+import { resolveSubAccounts } from "./sub-accounts.js";
+import type { SubAccountAnonymizerContract } from "./sub-accounts.js";
 import type {
   PrivacyBuilder,
   PrivacyClient,
@@ -18,7 +22,15 @@ import type {
  * upstack over this low-level entry point.
  */
 class PrivacyClientImpl implements PrivacyClient {
-  constructor(private readonly config: PrivacyClientConfig) {}
+  private readonly anonymizer: SubAccountAnonymizerContract;
+
+  constructor(private readonly config: PrivacyClientConfig) {
+    this.anonymizer = new Contract({
+      abi: SubAccountAnonymizerABI,
+      address: num.toHex(config.subAccountAnonymizerAddress),
+      providerOrAccount: config.provider,
+    }).typedv2(SubAccountAnonymizerABI);
+  }
 
   submit(
     actions: Strk20Action[],
@@ -47,7 +59,19 @@ class PrivacyClientImpl implements PrivacyClient {
   }
 
   build(): PrivacyBuilder {
-    return createPrivacyBuilder(this.config.userAddress, this.submit.bind(this));
+    return createPrivacyBuilder(
+      this.config.userAddress,
+      this.submit.bind(this),
+      (dappName, range) => this.resolveSubAccounts(dappName, range)
+    );
+  }
+
+  private async resolveSubAccounts(dappName: string, range = {}) {
+    return resolveSubAccounts({
+      anonymizer: this.anonymizer,
+      partialCommitment: await this.config.wallet.partialCommitment(dappName),
+      range,
+    });
   }
 }
 
