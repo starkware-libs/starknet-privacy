@@ -26,8 +26,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "starknet": "10.0.0-beta.6",
-    "@starkware-libs/starknet-privacy-sdk": "file:../sdk"
+    "@starkware-libs/starknet-privacy-client": "file:../client",
+    "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
+    "starknet": "10.5.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",

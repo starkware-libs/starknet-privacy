@@ -41,6 +41,7 @@ import {
   type CallAndProof,
   type TokenOperationsBuilder,
 } from "@starkware-libs/starknet-privacy-sdk";
+import { accountOn } from "../src/utils.js";
 interface AccountEntry {
   name: string;
   address: string;
@@ -136,22 +137,22 @@ const POOL_RESOURCE_BOUNDS = {
 const PROVING_BLOCK_OFFSET = 10;
 
 async function waitForProvingBlock(
-  provider: RpcProvider,
+  node: RpcProvider,
   minProvingBlock: number,
 ): Promise<number> {
-  let latestBlockNumber = await provider.getBlockNumber();
+  let latestBlockNumber = await node.getBlockNumber();
   while (latestBlockNumber - PROVING_BLOCK_OFFSET < minProvingBlock) {
     const blocksToWait =
       minProvingBlock - (latestBlockNumber - PROVING_BLOCK_OFFSET);
     process.stdout.write(`  waiting for ${blocksToWait} more blocks...\r`);
     await new Promise((resolve) => setTimeout(resolve, 10_000));
-    latestBlockNumber = await provider.getBlockNumber();
+    latestBlockNumber = await node.getBlockNumber();
   }
   return latestBlockNumber - PROVING_BLOCK_OFFSET;
 }
 
 async function submitOutsideExecution(
-  provider: RpcProvider,
+  node: RpcProvider,
   aliceAccount: Account,
   adminAccount: Account,
   callAndProof: CallAndProof,
@@ -173,7 +174,7 @@ async function submitOutsideExecution(
     proofFacts: callAndProof.proof.proofFacts,
     proof: callAndProof.proof.data,
   });
-  const receipt = await provider.waitForTransaction(executeTx.transaction_hash);
+  const receipt = await node.waitForTransaction(executeTx.transaction_hash);
   if (!receipt.isSuccess()) {
     console.error("  REVERTED:", JSON.stringify(receipt, null, 2));
     process.exit(1);
@@ -214,16 +215,14 @@ async function runDeposit() {
   console.log(`Pool: ${POOL_ADDRESS}`);
   console.log(`Token: ${TOKEN}`);
 
-  const provider = new RpcProvider({ nodeUrl: RPC });
-  const adminAccount = new Account({
-    provider,
-    address: admin.address,
+  const node = new RpcProvider({ nodeUrl: RPC });
+  const adminAccount = accountOn(node, {
+        address: admin.address,
     signer: admin.privateKey,
     cairoVersion: "1",
   });
-  const aliceAccount = new Account({
-    provider,
-    address: alice.address,
+  const aliceAccount = accountOn(node, {
+        address: alice.address,
     signer: alice.privateKey,
     cairoVersion: "1",
   });
@@ -239,7 +238,7 @@ async function runDeposit() {
     },
     { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
   );
-  const mintReceipt = await provider.waitForTransaction(
+  const mintReceipt = await node.waitForTransaction(
     mintTx.transaction_hash,
   );
   if (!mintReceipt.isSuccess()) {
@@ -257,7 +256,7 @@ async function runDeposit() {
     },
     { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
   );
-  const approveReceipt = await provider.waitForTransaction(
+  const approveReceipt = await node.waitForTransaction(
     approveTx.transaction_hash,
   );
   if (!approveReceipt.isSuccess()) {
@@ -295,7 +294,7 @@ async function runDeposit() {
     console.log(
       `\n[${iteration + 1}/${numIterations}] Depositing ${depositsThisChunk} notes...`,
     );
-    const provingBlockId = await waitForProvingBlock(provider, minProvingBlock);
+    const provingBlockId = await waitForProvingBlock(node, minProvingBlock);
 
     const { callAndProof } = await transfers
       .build({
@@ -309,7 +308,7 @@ async function runDeposit() {
       .execute({ provingBlockId });
 
     const result = await submitOutsideExecution(
-      provider,
+      node,
       aliceAccount,
       adminAccount,
       callAndProof,
@@ -342,16 +341,14 @@ async function runTransfer() {
   console.log(`Pool: ${POOL_ADDRESS}`);
   console.log(`Token: ${TOKEN}`);
 
-  const provider = new RpcProvider({ nodeUrl: RPC });
-  const adminAccount = new Account({
-    provider,
-    address: admin.address,
+  const node = new RpcProvider({ nodeUrl: RPC });
+  const adminAccount = accountOn(node, {
+        address: admin.address,
     signer: admin.privateKey,
     cairoVersion: "1",
   });
-  const aliceAccount = new Account({
-    provider,
-    address: alice.address,
+  const aliceAccount = accountOn(node, {
+        address: alice.address,
     signer: alice.privateKey,
     cairoVersion: "1",
   });
@@ -422,7 +419,7 @@ async function runTransfer() {
     console.log(
       `\n[${iteration + 1}/${numIterations}] Transferring ${transfersThisChunk} notes to ${recipient.name}...`,
     );
-    const provingBlockId = await waitForProvingBlock(provider, minProvingBlock);
+    const provingBlockId = await waitForProvingBlock(node, minProvingBlock);
 
     const { callAndProof } = await transfers
       .build({
@@ -438,7 +435,7 @@ async function runTransfer() {
       .execute({ provingBlockId });
 
     const result = await submitOutsideExecution(
-      provider,
+      node,
       aliceAccount,
       adminAccount,
       callAndProof,

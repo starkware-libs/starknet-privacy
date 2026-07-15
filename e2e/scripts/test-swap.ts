@@ -7,7 +7,7 @@
 
 import { setupAdmin, requireEnv, u256Calldata } from "../src/utils.js";
 
-const { adminAccount: account, provider } = setupAdmin();
+const { adminAccount: account, node } = setupAdmin();
 
 const ROUTER = requireEnv("EKUBO_ROUTER_ADDRESS");
 const TOKEN0 = requireEnv("EKUBO_POOL_TOKEN0");
@@ -21,7 +21,7 @@ const fmt = (raw: bigint) =>
   `${raw / ONE_TOKEN}.${(raw % ONE_TOKEN).toString().padStart(18, "0").slice(0, 4)}`;
 
 async function getBalance(token: string): Promise<bigint> {
-  const result = await provider.callContract({
+  const result = await node.callContract({
     contractAddress: token,
     entrypoint: "balance_of",
     calldata: [account.address],
@@ -37,7 +37,7 @@ const mintTx = await account.execute({
   entrypoint: "mint",
   calldata: [account.address, ...u256Calldata(mintAmount)],
 });
-await provider.waitForTransaction(mintTx.transaction_hash);
+await node.waitForTransaction(mintTx.transaction_hash);
 
 const balBtcBefore = await getBalance(TOKEN0);
 const balUsdBefore = await getBalance(TOKEN1);
@@ -78,7 +78,7 @@ const swapTx = await account.execute([
     calldata: [TOKEN1], // clear USD to caller
   },
 ]);
-const receipt = await provider.waitForTransaction(swapTx.transaction_hash);
+const receipt = await node.waitForTransaction(swapTx.transaction_hash);
 console.log(
   `Swap tx: ${swapTx.transaction_hash}, success: ${receipt.isSuccess()}`,
 );
