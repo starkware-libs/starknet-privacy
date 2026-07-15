@@ -1,6 +1,12 @@
 import { num } from "starknet";
-import type { BigNumberish, EstimateFeeResponseOverhead, STRK20_CALLDATA_ITEM } from "starknet";
+import type {
+  BigNumberish,
+  Call,
+  EstimateFeeResponseOverhead,
+  STRK20_CALLDATA_ITEM,
+} from "starknet";
 import type { StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
+import { toStrk20Call } from "./calls.js";
 import type {
   AddressRange,
   PrivacyBuilder,
@@ -10,6 +16,7 @@ import type {
   PrivacyInvokeCallBuilder,
   PrivacyTokenBuilder,
   Strk20Action,
+  Strk20CollectPolicy,
   SubAccountInfo,
   SubAccountsBuilder,
   SubmitResult,
@@ -29,8 +36,8 @@ const toFelt = (value: BigNumberish): string => num.toHex(num.toBigInt(value));
  *
  * Invoke call builders receive `${openNoteIds[N]}` / `${poolAddress}` placeholders the wallet
  * substitutes at proving time. `openNoteIds` is sized to the open notes created *so far*, so open
- * notes must be created before the `invoke` / `invokeWithComputation` that references them —
- * `createOpenNote` after an invoke throws.
+ * notes must be created before the `invoke` / `invokeWithComputation` / sub-account `invoke` that
+ * references them — `createOpenNote` after an invoke throws.
  */
 class PrivacyBuilderImpl implements PrivacyBuilder {
   private readonly actions: Strk20Action[] = [];
@@ -48,7 +55,7 @@ class PrivacyBuilderImpl implements PrivacyBuilder {
   }
 
   subaccounts(dappName: string): SubAccountsBuilder {
-    return new SubAccountsBuilderImpl(dappName, this.resolveAddresses);
+    return new SubAccountsBuilderImpl(this, dappName, this.resolveAddresses);
   }
 
   invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder {
@@ -103,6 +110,12 @@ class PrivacyBuilderImpl implements PrivacyBuilder {
     });
   }
 
+  /** Append an invoke-phase action (its proceeds settle into the tx's open notes). */
+  appendInvokePhase(action: Strk20Action): PrivacyBuilder {
+    this.invoked = true;
+    return this.append(action);
+  }
+
   private invokeArgs(): PrivacyInvokeArgs {
     return {
       openNoteIds: Array.from(
@@ -153,12 +166,26 @@ class PrivacyTokenBuilderImpl implements PrivacyTokenBuilder {
 /** The sub-account namespace for one dapp, opened by {@link PrivacyBuilderImpl.subaccounts}. */
 class SubAccountsBuilderImpl implements SubAccountsBuilder {
   constructor(
+    private readonly builder: PrivacyBuilderImpl,
     private readonly dappName: string,
     private readonly resolveAddresses: ResolveAddresses
   ) {}
 
   addresses(range?: AddressRange): Promise<SubAccountInfo[]> {
     return this.resolveAddresses(this.dappName, range);
+  }
+
+  invoke(
+    nonce: BigNumberish,
+    { calls, collectPolicy }: { calls: Call[]; collectPolicy?: Strk20CollectPolicy }
+  ): PrivacyBuilder {
+    return this.builder.appendInvokePhase({
+      type: "subaccount_invoke",
+      dapp_name: this.dappName,
+      nonce: num.toHex(nonce),
+      calls: calls.map(toStrk20Call),
+      collect_policy: collectPolicy ?? { type: "all" },
+    });
   }
 }
 

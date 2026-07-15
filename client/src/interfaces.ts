@@ -25,14 +25,52 @@ export interface STRK20_COMPUTE_AND_INVOKE_ACTION {
   invoke_calldata: STRK20_CALLDATA_ITEM[];
 }
 
+/** A Starknet call in the strk20 wire shape (the wallet-api `INVOKE_CALL`: snake_case, full call). */
+export interface Strk20Call {
+  contract_address: string;
+  entry_point: string;
+  calldata: STRK20_CALLDATA_ITEM[];
+}
+
+/**
+ * LOCAL SHIM for the wallet-api `CollectPolicy` (not yet in `@starknet-io/starknet-types`; TODO:
+ * remove when starknet.js ships it). How much of the sub-account's balance a settled open note
+ * collects: `all` — its full token balance; `diff` — only the balance gained this interaction;
+ * `exact` — the given amount.
+ */
+export type Strk20CollectPolicy =
+  { type: "all" } | { type: "diff" } | { type: "exact"; amount: string };
+
+/**
+ * LOCAL SHIM mirroring the wallet-api `STRK20_SUBACCOUNT_INVOKE_ACTION` (not yet in
+ * `@starknet-io/starknet-types`; vendor-then-reconcile, like {@link STRK20_COMPUTE_AND_INVOKE_ACTION}).
+ * Runs `calls` through the user's sub-account selected by `(dapp_name, nonce)`, routed via the
+ * anonymizer. `nonce` is a FELT and `calls` is a non-empty `INVOKE_CALL[]`. The calls' proceeds settle
+ * into the open notes created by `transfer` actions with amount `"OPEN"` in the same transaction, so
+ * the number of open notes filled here must match the number created in the transaction.
+ *
+ * The SDK adapter maps it to core's `build().subaccounts(dappName).invoke(nonce, { calls })` (a
+ * `ComputeAndInvoke` against the anonymizer).
+ */
+export interface STRK20_SUBACCOUNT_INVOKE_ACTION {
+  type: "subaccount_invoke";
+  dapp_name: string;
+  nonce: string;
+  calls: Strk20Call[];
+  /** One policy applied to every open note the invoke settles. */
+  collect_policy: Strk20CollectPolicy;
+}
+
 /**
  * The privacy-action currency at the wallet seam: the starknet.js wallet-api `STRK20_ACTION` union
- * widened with the {@link STRK20_COMPUTE_AND_INVOKE_ACTION} shim. Both invoke variants carry
- * placeholder-capable calldata (`STRK20_CALLDATA_ITEM = FELT | placeholder string`), so the builder
- * emits `${openNoteIds[N]}` / `${poolAddress}` placeholders for every wallet, and whoever proves +
- * submits substitutes them (the native wallet at assembly; the SDK adapter before proving).
+ * widened with the {@link STRK20_COMPUTE_AND_INVOKE_ACTION} and {@link STRK20_SUBACCOUNT_INVOKE_ACTION}
+ * shims. The invoke variants carry placeholder-capable calldata (`STRK20_CALLDATA_ITEM = FELT |
+ * placeholder string`), so the builder emits `${openNoteIds[N]}` / `${poolAddress}` placeholders for
+ * every wallet, and whoever proves + submits substitutes them (the native wallet at assembly; the SDK
+ * adapter before proving).
  */
-export type Strk20Action = STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION;
+export type Strk20Action =
+  STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION | STRK20_SUBACCOUNT_INVOKE_ACTION;
 
 /**
  * Proves {@link Strk20Action}s into a submittable `{ call, proof }` and resolves the user's partial
@@ -188,12 +226,21 @@ export interface AddressRange {
 
 /**
  * The sub-account namespace for one user + dapp, opened by {@link PrivacyBuilder.subaccounts}.
- * `addresses` is a read (resolved immediately via the anonymizer view). The `invoke` that operates a
- * sub-account — delegating to the builder's bare `invoke` with the anonymizer parameters — is added
- * with the roundtrip work.
+ * `addresses` is a read (resolved immediately via the anonymizer view). `invoke` queues running
+ * `calls` through the sub-account `nonce` — it may deposit into the pool, nothing, or several things;
+ * pair it with `createOpenNote` only if the interaction settles proceeds into a note.
  */
 export interface SubAccountsBuilder {
   addresses(range?: AddressRange): Promise<SubAccountInfo[]>;
+  /**
+   * Queue running `calls` through the sub-account `nonce` (a compute-and-invoke against the
+   * anonymizer). `collectPolicy` (one policy for all of the transaction's open notes; default
+   * `{ type: "all" }`) selects how much of the sub-account's balance each note collects.
+   */
+  invoke(
+    nonce: BigNumberish,
+    options: { calls: Call[]; collectPolicy?: Strk20CollectPolicy }
+  ): PrivacyBuilder;
 }
 
 /** Token-scoped operations, opened by {@link PrivacyBuilder.with}. Each queues an action + chains. */
