@@ -9,6 +9,13 @@
   `DevnetEnvironment.node` (`env.node`) on the `/testing` surface. `provider` is reserved for the
   proving / discovery / viewing-key providers, so a bare `provider` no longer means the node.
 
+### Changed
+
+- `starknet` dependency pinned to 10.5.0 (was `^10.0.0-beta.6`), matching the version the client
+  package needs for its `STRK20_*` wallet-api types. With one version across sdk/client/e2e their
+  `ProviderInterface` declarations line up, so a node can be passed between the packages without a
+  cast.
+
 ## 0.14.3-RC.4
 
 ### Added
@@ -154,7 +161,7 @@
   original rather than mislabeling a transient fault as terminal.
 - Screening v2: `apply_actions` calldata carries the screening attestation as a
   trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
-  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
   Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
   optional `additionalData` relaying the prove response's `additional_data`.
   Emitted **only against a screening-capable pool**, identified with zero RPC

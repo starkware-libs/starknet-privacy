@@ -138,7 +138,7 @@ export class IndexerClient {
    */
   async waitForBlock(
     rpcUrl: string,
-    timeoutMs = E2E_TIMEOUTS.indexerLog,
+    timeoutMs: number = E2E_TIMEOUTS.indexerLog,
   ): Promise<string> {
     const logPromise = this.waitForNewLog("New block #", timeoutMs);
     await fetch(rpcUrl, {

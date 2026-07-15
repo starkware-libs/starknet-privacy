@@ -32,7 +32,7 @@ export interface SubAccountAddresses {
  */
 async function declareTestBuildContract(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   contractName: string,
 ): Promise<string> {
   const sierraPath = join(
@@ -50,7 +50,7 @@ async function declareTestBuildContract(
     "--output-path",
     casmPath,
   ]);
-  return declareClass(admin, provider, sierraPath, casmPath);
+  return declareClass(admin, node, sierraPath, casmPath);
 }
 
 /**
@@ -64,12 +64,12 @@ async function declareTestBuildContract(
  */
 export async function deploySubAccountAnonymizer(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   privacyAddress: string,
 ): Promise<SubAccountAddresses> {
   const subAccountClassHash = await declareTestBuildContract(
     admin,
-    provider,
+    node,
     "SubAccount",
   );
 
@@ -80,7 +80,7 @@ export async function deploySubAccountAnonymizer(
   );
   const anonymizerClassHash = await declareClass(
     admin,
-    provider,
+    node,
     anonymizerArtifact.classPath,
     anonymizerArtifact.compiledPath,
   );
@@ -90,7 +90,7 @@ export async function deploySubAccountAnonymizer(
   // constructor(privacy_contract, sub_account_class_hash, governance_admin)
   const anonymizer = await deployContract(
     admin,
-    provider,
+    node,
     anonymizerClassHash,
     [privacyAddress, subAccountClassHash, admin.address],
     "0x900",
@@ -98,12 +98,12 @@ export async function deploySubAccountAnonymizer(
 
   const mockDappClassHash = await declareTestBuildContract(
     admin,
-    provider,
+    node,
     "MockDapp",
   );
   const mockDapp = await deployContract(
     admin,
-    provider,
+    node,
     mockDappClassHash,
     [],
     "0x901",

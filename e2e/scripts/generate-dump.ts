@@ -42,7 +42,7 @@ const devnet = new Devnet();
 const env = await devnet.initialize();
 const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
-// The pool screens deposits, so the proving provider signs each deposit's attestation with the
+// The pool screens deposits, so the proving node signs each deposit's attestation with the
 // screener key the pool was deployed with.
 const transfers = {
   alice: createPrivateTransfers({
