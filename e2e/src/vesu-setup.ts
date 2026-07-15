@@ -68,7 +68,7 @@ function filterEvents(
  */
 export async function deployTestTokens(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
 ): Promise<TokenAddresses> {
   const tokenArtifact = artifactPair(
     join(repoRoot(), "e2e/contracts/test-token/target/dev"),
@@ -78,7 +78,7 @@ export async function deployTestTokens(
 
   const tokenClassHash = await declareClass(
     admin,
-    provider,
+    node,
     tokenArtifact.classPath,
     tokenArtifact.compiledPath,
   );
@@ -86,7 +86,7 @@ export async function deployTestTokens(
   // TestToken constructor: (name: ByteArray, symbol: ByteArray)
   const usdToken = await deployContract(
     admin,
-    provider,
+    node,
     tokenClassHash,
     [...serializeByteArray("TestUSD"), ...serializeByteArray("USD")] as Array<
       string | bigint
@@ -96,7 +96,7 @@ export async function deployTestTokens(
 
   const btcToken = await deployContract(
     admin,
-    provider,
+    node,
     tokenClassHash,
     [...serializeByteArray("TestBTC"), ...serializeByteArray("BTC")] as Array<
       string | bigint
@@ -115,7 +115,7 @@ export async function deployTestTokens(
  */
 export async function deployVesuInfra(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   tokens: TokenAddresses,
 ): Promise<VesuAddresses> {
   const { usdToken, btcToken } = tokens;
@@ -130,7 +130,7 @@ export async function deployVesuInfra(
   // Declare all Vesu classes
   const declareVesu = async (name: string) => {
     const { classPath, compiledPath } = vesuArtifact(name);
-    return declareClass(admin, provider, classPath, compiledPath);
+    return declareClass(admin, node, classPath, compiledPath);
   };
 
   const poolClassHash = await declareVesu("Pool");
@@ -143,7 +143,7 @@ export async function deployVesuInfra(
   // Deploy PoolFactory
   const factoryAddress = await deployContract(
     admin,
-    provider,
+    node,
     factoryClassHash,
     [admin.address, poolClassHash, vtokenClassHash, oracleClassHash],
     "0x600",
@@ -152,14 +152,14 @@ export async function deployVesuInfra(
   // Deploy mock oracle contracts
   const pragmaOracleAddress = await deployContract(
     admin,
-    provider,
+    node,
     mockPragmaClassHash,
     [],
     "0x601",
   );
   const pragmaSummaryAddress = await deployContract(
     admin,
-    provider,
+    node,
     mockSummaryClassHash,
     [],
     "0x602",
@@ -167,7 +167,7 @@ export async function deployVesuInfra(
 
   // Create Oracle via PoolFactory
   const createOracleSelector = hash.getSelectorFromName("CreateOracle");
-  const oracleReceipt = await executeAndWait(admin, provider, {
+  const oracleReceipt = await executeAndWait(admin, node, {
     contractAddress: factoryAddress,
     entrypoint: "create_oracle",
     calldata: [admin.address, pragmaOracleAddress, pragmaSummaryAddress],
@@ -175,12 +175,12 @@ export async function deployVesuInfra(
   const oracleAddress = findEventKey(oracleReceipt, createOracleSelector, 1);
 
   // Set mock prices (1:1 = 1e18)
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: pragmaOracleAddress,
     entrypoint: "set_price",
     calldata: [USD_PRAGMA_KEY, SCALE],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: pragmaOracleAddress,
     entrypoint: "set_price",
     calldata: [BTC_PRAGMA_KEY, SCALE],
@@ -188,12 +188,12 @@ export async function deployVesuInfra(
 
   // Register assets in Oracle
   // OracleConfig: pragma_key, timeout, number_of_sources, start_time_offset, time_window, aggregation_mode
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: oracleAddress,
     entrypoint: "add_asset",
     calldata: [usdToken, USD_PRAGMA_KEY, 0, 2, 0, 0, 0],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: oracleAddress,
     entrypoint: "add_asset",
     calldata: [btcToken, BTC_PRAGMA_KEY, 0, 2, 0, 0, 0],
@@ -201,22 +201,22 @@ export async function deployVesuInfra(
 
   // Mint inflation fee tokens and approve factory (required for pool creation)
   const inflationAmount = 4000n;
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: usdToken,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(inflationAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: btcToken,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(inflationAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: usdToken,
     entrypoint: "approve",
     calldata: [factoryAddress, ...u256Calldata(inflationAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: btcToken,
     entrypoint: "approve",
     calldata: [factoryAddress, ...u256Calldata(inflationAmount)],
@@ -278,7 +278,7 @@ export async function deployVesuInfra(
 
   const createPoolSelector = hash.getSelectorFromName("CreatePool");
   const createVTokenSelector = hash.getSelectorFromName("CreateVToken");
-  const poolReceipt = await executeAndWait(admin, provider, {
+  const poolReceipt = await executeAndWait(admin, node, {
     contractAddress: factoryAddress,
     entrypoint: "create_pool",
     calldata: createPoolCalldata.map(String),
@@ -303,22 +303,22 @@ export async function deployVesuInfra(
   // Supply initial liquidity (1000 tokens each side)
   const liquidityAmount = 1000n * 10n ** 18n;
 
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: usdToken,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(liquidityAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: btcToken,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(liquidityAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: usdToken,
     entrypoint: "approve",
     calldata: [poolAddress, ...u256Calldata(liquidityAmount)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: btcToken,
     entrypoint: "approve",
     calldata: [poolAddress, ...u256Calldata(liquidityAmount)],
@@ -326,7 +326,7 @@ export async function deployVesuInfra(
 
   // modify_position: supply as collateral (no borrowing)
   // Amount: denomination (Assets=1), value (i257: abs_low, abs_high, is_negative)
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolAddress,
     entrypoint: "modify_position",
     calldata: [
@@ -341,7 +341,7 @@ export async function deployVesuInfra(
       0,
     ].map(String),
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolAddress,
     entrypoint: "modify_position",
     calldata: [
@@ -366,7 +366,7 @@ export async function deployVesuInfra(
  */
 export async function deployVesuAnonymizer(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
 ): Promise<string> {
   const anonymizerArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
@@ -376,10 +376,10 @@ export async function deployVesuAnonymizer(
 
   const anonymizerClassHash = await declareClass(
     admin,
-    provider,
+    node,
     anonymizerArtifact.classPath,
     anonymizerArtifact.compiledPath,
   );
 
-  return deployContract(admin, provider, anonymizerClassHash, [], "0x700");
+  return deployContract(admin, node, anonymizerClassHash, [], "0x700");
 }

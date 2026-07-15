@@ -18,7 +18,8 @@
  * Usage: npm run deploy-accounts   (from e2e/, with .env populated)
  */
 
-import { Account, RpcProvider, ec, hash } from "starknet";
+import { RpcProvider, ec, hash, type Account } from "starknet";
+import { accountOn } from "../src/utils.js";
 
 interface AccountEntry {
   name: string;
@@ -74,11 +75,11 @@ const userAccounts = allAccounts.filter((a) => !a.admin);
 const cliArgs = process.argv.slice(2);
 const fundAmount = BigInt(parseIntArg(cliArgs, "--fund", 1)) * 10n ** 18n;
 
-const provider = new RpcProvider({ nodeUrl: rpcUrl });
+const node = new RpcProvider({ nodeUrl: rpcUrl });
 
 async function isDeployed(address: string): Promise<boolean> {
   try {
-    const classHash = await provider.getClassHashAt(address);
+    const classHash = await node.getClassHashAt(address);
     console.log(`  Already deployed (class: ${classHash}) — skipping`);
     return true;
   } catch {
@@ -101,8 +102,7 @@ async function deployAccount(
   addressSalt: string,
   name: string,
 ): Promise<void> {
-  const account = new Account({
-    provider,
+  const account = accountOn(node, {
     address,
     signer: privateKey,
     cairoVersion: "1",
@@ -114,9 +114,7 @@ async function deployAccount(
     constructorCalldata: [publicKey],
     addressSalt,
   });
-  const receipt = await provider.waitForTransaction(
-    deployResult.transaction_hash,
-  );
+  const receipt = await node.waitForTransaction(deployResult.transaction_hash);
   if (!receipt.isSuccess()) {
     console.error(`  Deploy ${name} FAILED:`, JSON.stringify(receipt, null, 2));
     process.exit(1);
@@ -141,9 +139,7 @@ async function fundAccount(
   const transferTx = await adminAccount.execute(transferCall, {
     resourceBounds: fee.resourceBounds,
   });
-  const receipt = await provider.waitForTransaction(
-    transferTx.transaction_hash,
-  );
+  const receipt = await node.waitForTransaction(transferTx.transaction_hash);
   if (!receipt.isSuccess()) {
     console.error(`  Fund ${name} FAILED:`, JSON.stringify(receipt, null, 2));
     process.exit(1);
@@ -185,8 +181,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const adminAccount = new Account({
-    provider,
+  const adminAccount = accountOn(node, {
     address: adminEntry.address,
     signer: adminEntry.privateKey,
     cairoVersion: "1",

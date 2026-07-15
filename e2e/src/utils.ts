@@ -7,8 +7,10 @@ import {
   byteArray,
   ec,
   hash,
+  type AccountOptions,
   type Call,
   type GetTransactionReceiptResponse,
+  type ProviderInterface,
 } from "starknet";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -59,11 +61,11 @@ export async function declareFromArtifacts(
  */
 export async function executeAndWait(
   account: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   calls: Call | Call[],
 ): Promise<GetTransactionReceiptResponse> {
   const tx = await account.execute(calls);
-  const receipt = await provider.waitForTransaction(tx.transaction_hash);
+  const receipt = await node.waitForTransaction(tx.transaction_hash);
   if (!receipt.isSuccess()) {
     throw new Error(`Transaction failed: ${tx.transaction_hash}`);
   }
@@ -101,8 +103,24 @@ export function requireEnv(name: string): string {
   return value;
 }
 
+/**
+ * starknet.js names the account's node `provider` (`AccountOptions.provider`, `Account.provider`).
+ * These two wrappers are the only place e2e spells it that way — everywhere else a node is `node`.
+ */
+export function accountOn(
+  node: ProviderInterface,
+  options: Omit<AccountOptions, "provider">,
+): Account {
+  return new Account({ provider: node, ...options });
+}
+
+/** The node an account talks to. */
+export function nodeOf(account: Account): ProviderInterface {
+  return account.provider;
+}
+
 export function setupAdmin(): {
-  provider: RpcProvider;
+  node: RpcProvider;
   adminAccount: Account;
   admin: AccountEntry;
 } {
@@ -111,14 +129,13 @@ export function setupAdmin(): {
   const admin = accounts.find((entry) => entry.name.toLowerCase() === "admin");
   if (!admin) throw new Error('No "admin" entry found in ACCOUNTS env var');
 
-  const provider = new RpcProvider({ nodeUrl: rpcUrl });
-  const adminAccount = new Account({
-    provider,
+  const node = new RpcProvider({ nodeUrl: rpcUrl });
+  const adminAccount = accountOn(node, {
     address: admin.address,
     signer: admin.privateKey,
     cairoVersion: "1",
   });
-  return { provider, adminAccount, admin };
+  return { node, adminAccount, admin };
 }
 
 /**
@@ -127,7 +144,7 @@ export function setupAdmin(): {
  */
 export async function declareClass(
   account: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   classPath: string,
   compiledPath: string,
 ): Promise<string> {
@@ -136,7 +153,7 @@ export async function declareClass(
 
   const classHash = hash.computeContractClassHash(contractClass);
   try {
-    await provider.getClass(classHash);
+    await node.getClass(classHash);
     console.log(`  Already declared: ${classHash}`);
     return classHash;
   } catch {
@@ -165,9 +182,7 @@ export async function declareClass(
       tip: 0n,
       resourceBounds: declareResourceBounds,
     });
-    const receipt = await provider.waitForTransaction(
-      declaration.transaction_hash,
-    );
+    const receipt = await node.waitForTransaction(declaration.transaction_hash);
     if (!receipt.isSuccess()) {
       throw new Error(`Declare failed: ${declaration.transaction_hash}`);
     }
@@ -211,7 +226,7 @@ export async function declareClass(
  */
 export async function deployContract(
   account: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   classHash: string,
   constructorCalldata: Array<string | bigint>,
   salt: string,
@@ -222,7 +237,7 @@ export async function deployContract(
     constructorCalldata,
     salt: ec.starkCurve.pedersen(seed, salt),
   });
-  const receipt = await provider.waitForTransaction(
+  const receipt = await node.waitForTransaction(
     deployResponse.transaction_hash,
   );
   if (!receipt.isSuccess()) {

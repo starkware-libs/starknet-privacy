@@ -69,7 +69,7 @@ describe("E2E OHTTP", () => {
     await devnet.executeOutside(callAndProof);
     await env.indexer.waitForBlock(devnet.url);
 
-    // Create OHTTP-enabled discovery provider
+    // Create OHTTP-enabled discovery node
     const ohttpDiscovery = new IndexerDiscoveryProvider(
       env.indexer.apiUrl,
       de.privacy.address,
