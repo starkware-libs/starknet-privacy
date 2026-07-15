@@ -45,6 +45,10 @@ const h = vi.hoisted(() => {
     // subaccounts now hangs off the builder (core #905: transfers.build().subaccounts(...)).
     subaccounts: (dappName: string) => ({
       partialCommitment: async () => (dappName === "my-dapp" ? 0xc0ffeen : 0n),
+      invoke: (nonce: unknown, options: unknown) => {
+        state.ops.push({ op: "subaccountInvoke", dappName, nonce, options });
+        return builder;
+      },
     }),
   };
   const transfers = {
@@ -185,6 +189,25 @@ describe("CorePrivateTransfersProver", () => {
       contractAddress: "0xdapp",
       computeAdditionalData: ["0xdead"],
       invokeAdditionalData: ["0x7"],
+    });
+  });
+
+  it("maps subaccount_invoke to core build().subaccounts(dappName).invoke with camelCase calls", async () => {
+    await makeProver().prove([
+      {
+        type: "subaccount_invoke",
+        dapp_name: "ekubo",
+        nonce: "0x3",
+        calls: [{ contract_address: "0xswap", entry_point: "swap", calldata: ["0x1"] }],
+        collect_policy: { type: "exact", amount: "0x64" },
+      },
+    ]);
+    const op = h.state.ops.find((entry) => entry.op === "subaccountInvoke")!;
+    expect(op.dappName).toBe("ekubo");
+    expect(op.nonce).toBe("0x3");
+    expect(op.options).toEqual({
+      calls: [{ contractAddress: "0xswap", entrypoint: "swap", calldata: ["0x1"] }],
+      collectPolicy: { type: "exact", amount: 0x64n },
     });
   });
 });
