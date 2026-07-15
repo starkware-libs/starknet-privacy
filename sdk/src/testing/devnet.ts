@@ -85,12 +85,12 @@ export interface DevnetEnvironment {
   strk: string;
   eth: string;
   privacy: PrivacyPoolContract;
-  provider: RpcProvider;
+  node: RpcProvider;
 }
 
 export class Devnet {
   private devnet?: StarknetDevnet;
-  private provider?: RpcProvider;
+  private node?: RpcProvider;
   public setup?: DevnetEnvironment;
   private accountNonces = new AddressMap<number>(() => 0);
   private config: Required<DevnetConfig>;
@@ -163,7 +163,7 @@ export class Devnet {
     console.log(`Devnet running at: ${this.devnet.provider.url}`);
 
     // Create a TracingRpcProvider for enhanced error debugging
-    this.provider = new TracingRpcProvider({
+    this.node = new TracingRpcProvider({
       nodeUrl: this.devnet.provider.url,
       transactionRetryIntervalFallback: 50,
       batch: 0,
@@ -198,7 +198,7 @@ export class Devnet {
           .map((byte) => parseInt(byte, 16))
       );
       userAccounts.push(
-        new Account({ provider: this.provider, address: raw.address, signer: keyBytes })
+        new Account({ provider: this.node, address: raw.address, signer: keyBytes })
       );
     }
     const [alice, bob] = userAccounts;
@@ -213,7 +213,7 @@ export class Devnet {
     );
     const admin = this.wrapAccount(
       new Account({
-        provider: this.provider,
+        provider: this.node,
         address: adminRaw.address,
         signer: adminKeyBytes,
         cairoVersion: "1",
@@ -249,7 +249,7 @@ export class Devnet {
       strk,
       eth,
       privacy,
-      provider: this.provider,
+      node: this.node,
     };
 
     debugLog("devnet", "initialize", () =>
@@ -405,7 +405,7 @@ export class Devnet {
       proofFacts: callAndProof.proof.proofFacts,
       proof: callAndProof.proof.data,
     });
-    const receipt = await this.provider!.waitForTransaction(response.transaction_hash);
+    const receipt = await this.node!.waitForTransaction(response.transaction_hash);
     if (!receipt.isSuccess()) {
       const reason = (receipt as { revert_reason?: string }).revert_reason ?? "unknown";
       throw new Error(`executeOutside reverted: ${reason}`);
@@ -496,14 +496,14 @@ export async function createDevnetTestEnv(
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
-      provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => toBigInt("0xB0B") },
-      provingProvider: new ScreeningCallMockProofProvider(env.provider, chainId),
+      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
       discoveryProvider: new ContractDiscoveryProvider(env.privacy, config?.discoveryOptions),
       poolContractAddress: env.privacy.address,
     }),
@@ -523,7 +523,7 @@ export function createUnattestedAliceTransfers(env: DevnetEnvironment): PrivateT
   return createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
-    provingProvider: new CallMockProofProvider(env.provider, constants.StarknetChainId.SN_SEPOLIA),
+    provingProvider: new CallMockProofProvider(env.node, constants.StarknetChainId.SN_SEPOLIA),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   });

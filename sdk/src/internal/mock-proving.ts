@@ -23,7 +23,7 @@ const VALIDATED = encode.utf8ToBigInt("VALID");
  */
 export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
-    protected readonly provider: ProviderInterface,
+    protected readonly node: ProviderInterface,
     protected readonly chainId: constants.StarknetChainId,
     private readonly options?: { validateSignature?: boolean }
   ) {}
@@ -43,7 +43,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // Layout: [1, to, selector, inner_len, ...inner_calldata]
     const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
 
-    const result = await this.provider.callContract(
+    const result = await this.node.callContract(
       {
         contractAddress: invocation.sender_address,
         entrypoint: "compile_actions",
@@ -52,7 +52,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
       blockIdentifier
     );
 
-    const poolClassHash = await this.provider.getClassHashAt(
+    const poolClassHash = await this.node.getClassHashAt(
       invocation.sender_address,
       blockIdentifier
     );
@@ -64,15 +64,15 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // can verify the block hash from state.
     let baseBlockNumber: bigint;
     if (blockIdentifier != null) {
-      const block = await this.provider.getBlock(blockIdentifier);
+      const block = await this.node.getBlock(blockIdentifier);
       baseBlockNumber = BigInt(block.block_number);
     } else {
-      const latestBlock = await this.provider.getBlock("latest");
+      const latestBlock = await this.node.getBlock("latest");
       const currentBlockNumber = BigInt(latestBlock.block_number);
       const blocksBack = 10n;
       baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
     }
-    const baseBlock = await this.provider.getBlock(Number(baseBlockNumber));
+    const baseBlock = await this.node.getBlock(Number(baseBlockNumber));
     const proofFacts = buildProofFacts(
       invocation.sender_address,
       poolClassHash,
@@ -127,7 +127,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // Calldata format: [hash, signature_length, ...signature_elements]
     const isValidCalldata = [txHash, num.toHex(signatureArray.length), ...signatureArray];
 
-    const result = await this.provider.callContract({
+    const result = await this.node.callContract({
       contractAddress: userAddress,
       entrypoint: "is_valid_signature",
       calldata: isValidCalldata,
