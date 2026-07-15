@@ -51,7 +51,7 @@ describe("SubAccountsBuilder.invoke", () => {
     const nonce = 3n;
     const calls = [{ contractAddress: "0xda99", entrypoint: "pay_out", calldata: [0x1234n, 0n] }];
     mocknet.executeOutside(
-      await transfers.subaccounts(dappName).invoke(nonce, { calls }).execute()
+      await transfers.build().subaccounts(dappName).invoke(nonce, { calls }).execute()
     );
 
     const identityKey = compute_identity_key(
@@ -92,7 +92,7 @@ describe("SubAccountsBuilder.invoke", () => {
 
     const dappFelt = toBigInt(shortString.encodeShortString("DAPP"));
     mocknet.executeOutside(
-      await transfers.subaccounts(dappFelt).invoke(0n, { calls: [] }).execute()
+      await transfers.build().subaccounts(dappFelt).invoke(0n, { calls: [] }).execute()
     );
 
     expect(anonymizer.computeCalls[0]?.slice(1)).toEqual([dappFelt, 0n]);
@@ -102,7 +102,7 @@ describe("SubAccountsBuilder.invoke", () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey);
-    expect(() => transfers.subaccounts("DAPP")).toThrow(/subAccountAnonymizerAddress/);
+    expect(() => transfers.build().subaccounts("DAPP")).toThrow(/subAccountAnonymizerAddress/);
   });
 });
 
@@ -124,7 +124,7 @@ describe("SubAccountsBuilder commitments", () => {
       toBigInt(shortString.encodeShortString("DAPP"))
     );
 
-    await expect(transfers.subaccounts("DAPP").partialCommitment()).resolves.toBe(
+    await expect(transfers.build().subaccounts("DAPP").partialCommitment()).resolves.toBe(
       partialCommitment
     );
   });
@@ -146,7 +146,7 @@ describe("SubAccountsBuilder commitments", () => {
       toBigInt(shortString.encodeShortString("DAPP"))
     );
 
-    await expect(transfers.subaccounts("DAPP").commitment(7n)).resolves.toBe(
+    await expect(transfers.build().subaccounts("DAPP").commitment(7n)).resolves.toBe(
       poseidonHash(partialCommitment, 7n)
     );
   });
@@ -159,8 +159,8 @@ describe("SubAccountsBuilder commitments", () => {
     });
 
     const dappFelt = toBigInt(shortString.encodeShortString("DAPP"));
-    await expect(transfers.subaccounts(dappFelt).partialCommitment()).resolves.toBe(
-      await transfers.subaccounts("DAPP").partialCommitment()
+    await expect(transfers.build().subaccounts(dappFelt).partialCommitment()).resolves.toBe(
+      await transfers.build().subaccounts("DAPP").partialCommitment()
     );
   });
 });

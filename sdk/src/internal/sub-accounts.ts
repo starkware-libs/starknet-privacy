@@ -3,7 +3,6 @@ import type {
   ComputeAndInvokeDetails,
   InvokeCalldataBuilderArgs,
   PrivateTransfersBuilder,
-  PrivateTransfersInterface,
   StarknetAddress,
   SubAccountsBuilder,
   ViewingKey,
@@ -25,7 +24,7 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
 
   constructor(
     private readonly params: {
-      transfers: PrivateTransfersInterface;
+      builder: PrivateTransfersBuilder;
       dappName: string | BigNumberish;
       subAccountAnonymizerAddress: StarknetAddress;
       user: bigint;
@@ -46,9 +45,8 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
       calldata: CallData.compile(call.calldata ?? []),
     }));
 
-    return this.params.transfers
-      .build()
-      .computeAndInvoke((args: InvokeCalldataBuilderArgs): ComputeAndInvokeDetails => {
+    return this.params.builder.computeAndInvoke(
+      (args: InvokeCalldataBuilderArgs): ComputeAndInvokeDetails => {
         const openNotes = args.openNotes.map((note) => ({
           note_id: note.noteId,
           token: note.token,
@@ -64,7 +62,8 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
           computeAdditionalData: [dappName, nonceFelt],
           invokeAdditionalData,
         };
-      });
+      }
+    );
   }
 
   async partialCommitment(): Promise<bigint> {

@@ -20,16 +20,13 @@ import type {
   SimulateOptions,
   StarknetAddress,
   StarknetAddressBigint,
-  SubAccountsBuilder,
   ViewingKey,
   ViewingKeyProvider,
 } from "../interfaces.js";
-import type { BigNumberish } from "starknet";
 import { SetupRequirement } from "../interfaces.js";
 import { AddressMap } from "../utils/maps.js";
 import { toBigInt } from "../utils/crypto.js";
 import { PrivateTransfersBuilderImpl } from "./builders.js";
-import { SubAccountsBuilderImpl } from "./sub-accounts.js";
 import type { ChannelCursor, NotesCursor, RecipientsFilter } from "./channel.js";
 
 /**
@@ -103,20 +100,8 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    * Create a builder for batching multiple operations
    */
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
-    return new PrivateTransfersBuilderImpl(this, this.user, options);
-  }
-
-  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder {
-    if (this.subAccountAnonymizerAddress === undefined) {
-      throw new Error(
-        "subaccounts(...) requires `subAccountAnonymizerAddress` in the createPrivateTransfers config."
-      );
-    }
-    return new SubAccountsBuilderImpl({
-      transfers: this,
-      dappName,
-      subAccountAnonymizerAddress: this.subAccountAnonymizerAddress,
-      user: this.user,
+    return new PrivateTransfersBuilderImpl(this, this.user, options, {
+      anonymizerAddress: this.subAccountAnonymizerAddress,
       getViewingKey: () => this.getViewingKey(),
     });
   }
