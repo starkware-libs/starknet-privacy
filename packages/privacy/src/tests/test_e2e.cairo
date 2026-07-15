@@ -1990,7 +1990,7 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
     let identity_key = user.compute_identity_key(contract_address: anonymizer);
     let sub_account_info = *anonymizer_disp
-        .get_sub_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1)[0];
+        .get_sub_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1, false)[0];
     assert!(sub_account_info.is_deployed);
     assert_eq!(token.balance_of(address: sub_account_info.address), 0);
 }
