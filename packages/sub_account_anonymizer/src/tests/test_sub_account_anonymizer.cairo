@@ -29,7 +29,7 @@ const NOTE_ID: felt252 = 'NOTE_ID';
 /// Resolves the `('USER', 'DAPP', nonce)` sub-account via the range view.
 fn sub_account_info(anonymizer: ContractAddress, nonce: u64) -> SubAccountInfo {
     let infos = anonymizer_disp(anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), nonce, nonce + 1);
+        .get_sub_accounts(partial_commitment('USER', 'DAPP'), nonce, nonce + 1, false);
     *infos[0]
 }
 
@@ -620,7 +620,7 @@ fn test_get_sub_accounts_resolves_deployed_and_undeployed() {
     deploy_nonce(components, 1);
 
     // Nonce 2 is undeployed; the view resolves every nonce in range with an is_deployed flag.
-    let infos = anonymizer.get_sub_accounts(partial, 0, 3);
+    let infos = anonymizer.get_sub_accounts(partial, 0, 3, false);
     assert_eq!(infos.len(), 3);
     assert_eq!((*infos[0]).nonce, 0);
     assert!((*infos[0]).is_deployed);
@@ -633,15 +633,41 @@ fn test_get_sub_accounts_resolves_deployed_and_undeployed() {
 }
 
 #[test]
+fn test_get_sub_accounts_until_undeployed_returns_deployed_prefix() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let partial = partial_commitment('USER', 'DAPP');
+    deploy_nonce(components, 0);
+    deploy_nonce(components, 1);
+
+    // Nonce 2 is the first gap; until_undeployed resolves the deployed prefix and omits the gap on.
+    let infos = anonymizer.get_sub_accounts(partial, 0, 5, true);
+    assert_eq!(infos.len(), 2);
+    assert_eq!((*infos[0]).nonce, 0);
+    assert_eq!((*infos[1]).nonce, 1);
+}
+
+#[test]
+fn test_get_sub_accounts_until_undeployed_on_leading_gap_is_empty() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let partial = partial_commitment('USER', 'DAPP');
+
+    // The range's first nonce is undeployed, so the deployed prefix is empty.
+    let infos = anonymizer.get_sub_accounts(partial, 0, 5, true);
+    assert_eq!(infos.len(), 0);
+}
+
+#[test]
 fn test_get_sub_accounts_computed_address_matches_deploy() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
 
-    let before = *anonymizer.get_sub_accounts(partial, 0, 1)[0];
+    let before = *anonymizer.get_sub_accounts(partial, 0, 1, false)[0];
     assert!(!before.is_deployed);
     deploy_nonce(components, 0);
-    let after = *anonymizer.get_sub_accounts(partial, 0, 1)[0];
+    let after = *anonymizer.get_sub_accounts(partial, 0, 1, false)[0];
     assert!(after.is_deployed);
     // The address computed before deployment matches the actual on-chain deploy address.
     assert_eq!(before.address, after.address);
@@ -651,10 +677,11 @@ fn test_get_sub_accounts_computed_address_matches_deploy() {
 fn test_get_sub_accounts_scopes_by_dapp_and_nonce() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
-    let dapp = anonymizer.get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, 2);
+    let dapp = anonymizer.get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, 2, false);
     let nonce0 = *dapp[0];
     let nonce1 = *dapp[1];
-    let other_dapp = *anonymizer.get_sub_accounts(partial_commitment('USER', 'OTHER'), 0, 1)[0];
+    let other_dapp = *anonymizer
+        .get_sub_accounts(partial_commitment('USER', 'OTHER'), 0, 1, false)[0];
     assert!(nonce0.address != nonce1.address);
     assert!(nonce0.address != other_dapp.address);
 }
@@ -668,7 +695,7 @@ fn test_get_sub_accounts_from_start_nonce() {
     deploy_nonce(components, 1);
 
     // Scanning from nonce 1 skips nonce 0; entries carry their own nonce.
-    let infos = anonymizer.get_sub_accounts(partial, 1, 3);
+    let infos = anonymizer.get_sub_accounts(partial, 1, 3, false);
     assert_eq!(infos.len(), 2);
     assert_eq!((*infos[0]).nonce, 1);
     assert!((*infos[0]).is_deployed);
@@ -680,7 +707,7 @@ fn test_get_sub_accounts_from_start_nonce() {
 fn test_get_sub_accounts_empty_range() {
     let components = deploy_components();
     let infos = anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 5);
+        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 5, false);
     assert_eq!(infos.len(), 0);
 }
 
@@ -689,7 +716,7 @@ fn test_get_sub_accounts_empty_range() {
 fn test_get_sub_accounts_range_too_large_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, MAX_SCAN_RANGE + 1);
+        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, MAX_SCAN_RANGE + 1, false);
 }
 
 #[test]
@@ -697,5 +724,5 @@ fn test_get_sub_accounts_range_too_large_reverts() {
 fn test_get_sub_accounts_inverted_range_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 3);
+        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 3, false);
 }
