@@ -29,6 +29,7 @@ name = "privacy_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "starkware_accounts::sub_account::SubAccount",
+    "starkware_accounts::eth_712_account::StarknetEth712Account",
     "ekubo_swap_anonymizer::ekubo_swap_anonymizer::EkuboSwapAnonymizer",
     "ekubo_swap_anonymizer::test_utils_contracts::mock_ekubo_amm::MockEkuboAMM",
     "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer",
