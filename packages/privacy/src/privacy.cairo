@@ -1,5 +1,6 @@
 #[starknet::contract(account)]
 pub mod Privacy {
+    use core::box::BoxTrait;
     use core::ec::EcPointTrait;
     use core::iter::Extend;
     use core::num::traits::{CheckedSub, Zero};
@@ -51,8 +52,8 @@ pub mod Privacy {
         storage_write_syscall,
     };
     use starknet::{
-        ContractAddress, SyscallResultTrait, VALIDATED, get_block_timestamp, get_caller_address,
-        get_contract_address, get_execution_info,
+        ContractAddress, SyscallResultTrait, TxInfo, VALIDATED, get_block_timestamp,
+        get_caller_address, get_contract_address, get_execution_info,
     };
     use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
@@ -199,16 +200,23 @@ pub mod Privacy {
             );
 
             let calls = calls.span();
-            let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
-                :calls, contract_address: execution_info.contract_address,
-            );
-            let server_actions = self
-                .compile_actions(:user_addr, :user_private_key, :client_actions);
-            assert_valid_signature(:user_addr, :calls, :tx_info);
+            let server_actions = self.compile_actions_authorized(:calls, tx_info: tx_info.unbox());
             send_message_to_server(
                 :server_actions, contract_address: execution_info.contract_address,
             );
             self.reentrancy_guard.end();
+        }
+
+        fn compile_actions_authorized(
+            self: @ContractState, calls: Span<Call>, tx_info: TxInfo,
+        ) -> Span<ServerAction> {
+            let (user_addr, user_private_key, client_actions) = extract_compile_actions_inputs(
+                :calls, contract_address: get_contract_address(),
+            );
+            let server_actions = self
+                .compile_actions(:user_addr, :user_private_key, :client_actions);
+            assert_valid_signature(:user_addr, :calls, tx_info: BoxTrait::new(tx_info));
+            server_actions
         }
 
         fn compile_actions(

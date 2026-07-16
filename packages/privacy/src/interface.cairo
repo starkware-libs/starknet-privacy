@@ -3,8 +3,8 @@ use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
 };
 use privacy::snip12::ScreeningAttestation;
-use starknet::ContractAddress;
 use starknet::account::Call;
+use starknet::{ContractAddress, TxInfo};
 
 #[starknet::interface]
 pub trait IClient<T> {
@@ -372,6 +372,25 @@ pub trait IClient<T> {
         user_addr: ContractAddress,
         user_private_key: felt252,
         client_actions: Span<ClientAction>,
+    ) -> Span<ServerAction>;
+
+    /// Read-only twin of [`__execute__`](privacy::interface::IClient::__execute__): compiles the
+    /// client actions carried by `calls` and validates that `tx_info` authorizes them, returning
+    /// the compiled server actions without emitting them to L1. Runs the same
+    /// [`assert_valid_signature`](privacy::utils::assert_valid_signature) three-way check as
+    /// `__execute__`, so a proving service (or a mock prover) can exercise the exact authorization
+    /// path off-chain. `calls` must be the single `compile_actions` call the account signed, and
+    /// `tx_info` carries that account's signature (and, for the tx-hash check, its transaction
+    /// hash).
+    ///
+    /// #### Access Control
+    /// - Any address can call this function.
+    ///
+    /// #### Notes
+    /// - This is a view function which never changes the state.
+    /// - Panics with `INVALID_SIGNATURE` when none of the three signature checks accepts.
+    fn compile_actions_authorized(
+        self: @T, calls: Span<Call>, tx_info: TxInfo,
     ) -> Span<ServerAction>;
 
     /// Validates execution context and returns valid.
