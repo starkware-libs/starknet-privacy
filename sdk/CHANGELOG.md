@@ -54,6 +54,17 @@
   When true the view stops at the first undeployed nonce and returns only the contiguous deployed
   prefix; when false it resolves every nonce in the range (the prior behavior). Regenerating the ABI
   also picks up the `OpenNote.collect_policy` field, from which the generated ABI had drifted.
+- Testing: `CallMockProofProvider` now compiles a signed invocation by simulating it as a real
+  `__execute__` invoke and reading the server actions out of the L2-to-L1 message the pool emits,
+  instead of calling the `compile_actions` view and validating the signature itself with a
+  tx-hash-only `is_valid_signature` call. The pool therefore runs `assert_valid_signature`, so every
+  accepted signature form (custom validation / SN tx hash / SNIP-12 `CallSet` hash) is honored exactly
+  as on-chain and CallSet or custom-signature accounts (e.g. `Snip12CallSetSigner`,
+  `Eip712CallSetSigner`) prove correctly against a devnet pool. This also removes the hand-rolled
+  transaction-hash reconstruction, since the node now computes it. Fee simulation
+  (`validateSignature: false`) and unsigned mock invocations still use the plain `compile_actions`
+  view, which performs no signature check. Requires a node whose channel supports
+  `simulateTransaction`.
 
 ## 0.14.3-RC.3
 

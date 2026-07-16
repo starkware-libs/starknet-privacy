@@ -1,20 +1,73 @@
 /**
  * Call-based proving provider for testing
  *
- * This provider simulates proof generation by making a call to the contract
- * to execute the invocation and capture the output.
+ * This provider stands in for the real proving service by executing the invocation against a node
+ * and capturing what the pool would have emitted, instead of generating a zero-knowledge proof.
  */
 
-import type { BlockIdentifier, constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, hash, num, stark } from "starknet";
+import type { BlockIdentifier, constants, ProviderInterface } from "starknet";
+import { TransactionType, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails, extractExecuteViewCalldata } from "./proof-invocation-factory.js";
-import { ProvingServiceError } from "./proving-service.js";
 import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
-import { toBigInt } from "../utils/convert.js";
 
-/** VALIDATED constant - 'VALID' encoded as short string felt252 */
-const VALIDATED = encode.utf8ToBigInt("VALID");
+/** An L2-to-L1 message in a simulation trace. */
+interface TraceMessage {
+  to_address: string;
+  payload: string[];
+}
+
+/**
+ * The RPC spec wraps trace messages as ORDERED_MESSAGE (`{ order, message }`); some nodes (devnet)
+ * return the MSG_TO_L1 unwrapped. Both shapes occur in practice.
+ */
+type TraceMessageEntry = TraceMessage | { order: number; message: TraceMessage };
+
+interface TraceInvocation {
+  messages?: TraceMessageEntry[];
+  calls?: TraceInvocation[];
+}
+
+interface SimulationResult {
+  transaction_trace?: { execute_invocation?: TraceInvocation };
+}
+
+/**
+ * The simulate surface this provider needs. `RpcProvider` does not implement `simulateTransaction`
+ * itself — only its public `channel` does — so the capability is reached structurally rather than by
+ * widening the constructor's `ProviderInterface`.
+ */
+interface SimulateCapableNode {
+  channel?: {
+    simulateTransaction?: (
+      invocations: unknown,
+      options?: {
+        blockIdentifier?: BlockIdentifier;
+        skipValidate?: boolean;
+        skipFeeCharge?: boolean;
+      }
+    ) => Promise<unknown>;
+  };
+}
+
+/** The pool's compile step output: the class hash and the serialized server actions. */
+interface CompiledActions {
+  poolClassHash: string;
+  serverActions: string[];
+}
+
+function unwrapMessage(entry: TraceMessageEntry): TraceMessage {
+  return "message" in entry ? entry.message : entry;
+}
+
+/** Depth-first collect of every L2-to-L1 message in an invocation subtree. */
+function collectMessages(invocation: TraceInvocation | undefined): TraceMessage[] {
+  if (invocation == null) return [];
+  return [
+    ...(invocation.messages ?? []).map(unwrapMessage),
+    ...(invocation.calls ?? []).flatMap(collectMessages),
+  ];
+}
 
 /**
  * A proving provider that uses Starknet calls to simulate proof generation.
@@ -33,29 +86,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
-    // Validate signature similar to how __execute__ does in the contract.
-    // compile_actions skips this since view functions don't have tx_info.
-    if (this.options?.validateSignature !== false) {
-      await this.validateSignature(invocation);
-    }
-
-    // __execute__ calldata is Array<Call> with one Call targeting compile_actions.
-    // Layout: [1, to, selector, inner_len, ...inner_calldata]
-    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
-
-    const result = await this.node.callContract(
-      {
-        contractAddress: invocation.sender_address,
-        entrypoint: "compile_actions",
-        calldata: executeViewCalldata,
-      },
-      blockIdentifier
-    );
-
-    const poolClassHash = await this.node.getClassHashAt(
-      invocation.sender_address,
-      blockIdentifier
-    );
+    const { poolClassHash, serverActions } = await this.compileActions(invocation, blockIdentifier);
 
     // Build proof facts for on-chain validation.
     // When the caller provides an explicit blockIdentifier, use it as the base block directly
@@ -76,7 +107,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
     const proofFacts = buildProofFacts(
       invocation.sender_address,
       poolClassHash,
-      result,
+      serverActions,
       baseBlockNumber,
       baseBlock.block_hash ?? "0x0",
       this.chainId
@@ -85,61 +116,94 @@ export class CallMockProofProvider implements ProofProviderInterface {
     // Return the full L2-to-L1 message payload: [class_hash, ...serialized_actions].
     // This matches the real proving service behavior. The consumer must strip the
     // class_hash prefix before passing to apply_actions.
-    const messagePayload = buildMessagePayload(poolClassHash, result);
-    return { output: messagePayload, data: undefined!, proofFacts };
+    return {
+      output: buildMessagePayload(poolClassHash, serverActions),
+      data: undefined!,
+      proofFacts,
+    };
   }
 
   /**
-   * Validates the signature by calling is_valid_signature on the user's account.
-   * This mirrors what the contract's __execute__ does after compile_actions.
+   * Runs the pool's compile step. A signed invocation is simulated as a real `__execute__` invoke, so
+   * the pool itself runs `assert_valid_signature` — every accepted signature form (custom validation,
+   * transaction hash, SNIP-12 `CallSet`) is honored exactly as on-chain, and an unauthorized one
+   * panics with `INVALID_SIGNATURE`. Fee simulation and unsigned mock invocations instead use the
+   * plain `compile_actions` view, which performs no signature check because a view has no `tx_info`.
    */
-  private async validateSignature(invocation: ProofInvocation): Promise<void> {
-    const signatureArray = invocation.signature ? stark.formatSignature(invocation.signature) : [];
-    if (signatureArray.length === 0) {
-      // No signature to validate (e.g., mock invocation factory)
-      return;
+  private async compileActions(
+    invocation: ProofInvocation,
+    blockIdentifier?: BlockIdentifier
+  ): Promise<CompiledActions> {
+    const signature = invocation.signature ? stark.formatSignature(invocation.signature) : [];
+    if (this.options?.validateSignature === false || signature.length === 0) {
+      const [serverActions, poolClassHash] = await Promise.all([
+        this.node.callContract(
+          {
+            contractAddress: invocation.sender_address,
+            entrypoint: "compile_actions",
+            calldata: extractExecuteViewCalldata(invocation.calldata as string[]),
+          },
+          blockIdentifier
+        ),
+        this.node.getClassHashAt(invocation.sender_address, blockIdentifier),
+      ]);
+      return { poolClassHash, serverActions };
     }
+    return this.simulateExecute(invocation, signature, blockIdentifier);
+  }
 
-    // First arg of compile_actions calldata is user_addr.
-    const calldata = invocation.calldata as string[];
-    const innerCalldata = extractExecuteViewCalldata(calldata);
-    const userAddress = num.toHex(innerCalldata[0]);
-
-    // Compute transaction hash using the same parameters as the signer.
-    // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
-    // compile_actions), so use it directly — no re-wrapping via getExecuteCalldata.
-    const details = await this.getDefaultDetails();
-    const txHash = hash.calculateInvokeTransactionHash({
-      senderAddress: num.toHex(invocation.sender_address),
-      version: details.version as ETransactionVersion3,
-      compiledCalldata: calldata,
-      chainId: this.chainId,
-      nonce: details.nonce!,
-      accountDeploymentData: details.accountDeploymentData!,
-      nonceDataAvailabilityMode: EDAMode[details.nonceDataAvailabilityMode!],
-      feeDataAvailabilityMode: EDAMode[details.feeDataAvailabilityMode!],
-      resourceBounds: details.resourceBounds!,
-      tip: details.tip!,
-      paymasterData: details.paymasterData!,
-    });
-
-    // Call is_valid_signature on user's account
-    // Calldata format: [hash, signature_length, ...signature_elements]
-    const isValidCalldata = [txHash, num.toHex(signatureArray.length), ...signatureArray];
-
-    const result = await this.node.callContract({
-      contractAddress: userAddress,
-      entrypoint: "is_valid_signature",
-      calldata: isValidCalldata,
-    });
-
-    // Check result equals VALIDATED ('VALID' as felt252)
-    if (toBigInt(result[0]) !== VALIDATED) {
-      throw new ProvingServiceError(
-        55,
-        "Account validation failed",
-        `Signature validation failed: expected ${VALIDATED}, got ${result[0]}`
+  /**
+   * Simulates the invocation as an `__execute__` invoke and reads the compile output back out of the
+   * L2-to-L1 message the pool emits (`send_message_to_server`), whose payload is
+   * `[class_hash, ...server_actions]` — so the class hash needs no separate query.
+   */
+  private async simulateExecute(
+    invocation: ProofInvocation,
+    signature: string[],
+    blockIdentifier?: BlockIdentifier
+  ): Promise<CompiledActions> {
+    const channel = (this.node as unknown as SimulateCapableNode).channel;
+    if (channel?.simulateTransaction == null) {
+      throw new Error(
+        "CallMockProofProvider needs a node whose channel supports simulateTransaction to validate " +
+          "signatures; pass validateSignature: false to compile without validation"
       );
     }
+
+    const simulation = (await channel.simulateTransaction(
+      [
+        {
+          type: TransactionType.INVOKE,
+          contractAddress: invocation.sender_address,
+          calldata: invocation.calldata,
+          signature,
+          nonce: invocation.nonce,
+          version: invocation.version,
+          resourceBounds: invocation.resource_bounds,
+          tip: invocation.tip,
+          paymasterData: invocation.paymaster_data,
+          accountDeploymentData: invocation.account_deployment_data,
+          nonceDataAvailabilityMode: invocation.nonce_data_availability_mode,
+          feeDataAvailabilityMode: invocation.fee_data_availability_mode,
+        },
+      ],
+      // skipValidate drops only __validate__'s zero-tip / zero-resource-price assertions; the
+      // signature check lives in __execute__ and still runs. skipFeeCharge is required, not
+      // cosmetic: __validate__ demands a zero max_price_per_unit, so the invocation carries zero
+      // resource bounds and the node's fee-bounds pre-check would otherwise reject the transaction
+      // before __execute__ runs ("resources don't cover the minimal transaction fee"). It is passed
+      // explicitly rather than relying on the client's default.
+      { blockIdentifier, skipValidate: true, skipFeeCharge: true }
+    )) as SimulationResult[];
+
+    const payload = collectMessages(simulation?.[0]?.transaction_trace?.execute_invocation).find(
+      (message) => BigInt(message.to_address) === 0n
+    )?.payload;
+    if (payload == null || payload.length === 0) {
+      throw new Error(
+        "simulated __execute__ emitted no server message; the pool did not compile the actions"
+      );
+    }
+    return { poolClassHash: payload[0], serverActions: payload.slice(1) };
   }
 }
