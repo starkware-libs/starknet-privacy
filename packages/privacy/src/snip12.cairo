@@ -96,6 +96,7 @@ impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
     }
 }
 
+
 // SNIP-12 type hash `CallSet`.
 // `AdditionalData` carries opaque extra data (e.g. a nonce) bound into the signed message.
 // The privacy pool passes it empty.
