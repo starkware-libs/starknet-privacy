@@ -13,14 +13,14 @@ jobs:
       run:
         working-directory: sdk
     steps:
-      - uses: actions/checkout@v4
-      - uses: dorny/paths-filter@v3
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
           filters: |
             sdk:
               - 'sdk/**'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.filter.outputs.sdk == 'true'
         with:
           node-version: '24'
@@ -37,9 +37,9 @@ jobs:
         working-directory: sdk
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
@@ -49,16 +49,16 @@ jobs:
         run: npm ci
 
       - name: Install Scarb
-        uses: software-mansion/setup-scarb@v1
+        uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.17.0"
 
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
 
       - name: Install starknet-foundry via asdf
-        uses: asdf-vm/actions/install@v3
+        uses: asdf-vm/actions/install@05e0d2ed97b598bfce82fd30daf324ae0c4570e6 # v3
         with:
           asdf_branch: v0.14.1
           tool_versions: |
@@ -83,20 +83,20 @@ jobs:
         working-directory: sdk
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
           cache: 'npm'
           cache-dependency-path: sdk/package-lock.json
 
       - name: Install Scarb
-        uses: software-mansion/setup-scarb@v1
+        uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.17.0"
 
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
 

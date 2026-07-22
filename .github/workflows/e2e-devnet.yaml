@@ -22,16 +22,16 @@ jobs:
     name: E2E Devnet
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Rust
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
 
       # Node
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -40,7 +40,7 @@ jobs:
             e2e/package-lock.json
 
       # Scarb (for Cairo contract build)
-      - uses: software-mansion/setup-scarb@v1
+      - uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.17.0"
 
@@ -50,7 +50,7 @@ jobs:
           curl -L https://github.com/0xSpaceShard/starknet-devnet/releases/download/v0.8.0-rc.3/starknet-devnet-x86_64-unknown-linux-gnu.tar.gz | tar -xz -C /usr/local/bin
           chmod +x /usr/local/bin/starknet-devnet
 
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
 
@@ -74,7 +74,7 @@ jobs:
 
       # Vesu contracts require Scarb 2.11.4 (alexandria dep incompatible with newer Scarb)
       - name: Install Scarb 2.11.4 for vesu contracts
-        uses: software-mansion/setup-scarb@v1
+        uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.11.4"
       - name: Build vesu contracts
