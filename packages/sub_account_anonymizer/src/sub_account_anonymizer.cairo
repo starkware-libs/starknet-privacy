@@ -189,6 +189,7 @@ pub mod errors {
     pub const INVALID_RANGE: felt252 = 'INVALID_RANGE';
     /// Internal error.
     pub const ZERO_ADDRESS: felt252 = 'ZERO_ADDRESS';
+    pub const DUPLICATE_TOKEN: felt252 = 'DUPLICATE_TOKEN';
 }
 
 #[starknet::contract]
@@ -394,14 +395,35 @@ pub mod SubAccountAnonymizer {
             sub_account: ISubAccountDispatcher,
             note_balance_snapshots: Array<(OpenNote, u256)>,
         ) -> Span<OpenNoteDeposit> {
-            let anonymizer = get_contract_address();
-            let privacy_contract = self.privacy_contract.read();
-            // Transfers are collected into one batch and run through a single
-            // `sub_account.execute`.
+            // Reject duplicate tokens before any state mutation.
+            // Check inline: if duplicate found, revert before any ERC20 call.
             let mut transfer_calls: Array<Call> = array![];
             let mut deposits: Array<OpenNoteDeposit> = array![];
+            let mut seen_tokens: Array<ContractAddress> = array![];
+            let anonymizer = get_contract_address();
+            let privacy_contract = self.privacy_contract.read();
+
             for (note, pre_balance) in note_balance_snapshots {
                 let OpenNote { note_id, token, collect_policy } = note;
+
+                // Fail before any state mutation if token was already seen.
+                let mut is_duplicate = false;
+                let mut i: u32 = 0;
+                loop {
+                    if i >= seen_tokens.len() {
+                        break;
+                    }
+                    if *seen_tokens[i] == token {
+                        is_duplicate = true;
+                        break;
+                    }
+                    i += 1;
+                }
+                if is_duplicate {
+                    assert(false, errors::DUPLICATE_TOKEN);
+                }
+                seen_tokens.append(token);
+
                 let token_contract = IERC20Dispatcher { contract_address: token };
                 let balance = token_contract.balance_of(account: sub_account.contract_address);
                 let collected = match collect_policy {
@@ -414,14 +436,10 @@ pub mod SubAccountAnonymizer {
                         exact.into()
                     },
                 };
-                // Every open note must be deposited with amount > 0.
                 assert(collected.is_non_zero(), errors::ZERO_BALANCE);
 
                 transfer_calls
                     .append(build_transfer_call(:token, recipient: anonymizer, amount: collected));
-                // TODO: Consider adding an explicit check for duplicate tokens in the open notes
-                // instead of relying on the privacy contract to fail due to the approval being
-                // overwritten.
                 token_contract.approve(spender: privacy_contract, amount: collected);
                 let amount: u128 = collected.try_into().expect(errors::AMOUNT_OVERFLOW);
                 deposits.append(OpenNoteDeposit { note_id, token, amount });
