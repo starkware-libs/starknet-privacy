@@ -9,4 +9,6 @@ export type {
   PrivacyWallet,
   STRK20_COMPUTE_AND_INVOKE_ACTION,
   Strk20Action,
+  SubmitOptions,
+  SubmitResult,
 } from "./interfaces.js";
