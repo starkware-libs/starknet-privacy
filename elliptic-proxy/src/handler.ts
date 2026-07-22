@@ -1,4 +1,5 @@
 // src/handler.ts
+import { timingSafeEqual } from "crypto";
 import type {
   HttpFunction,
   Request,
@@ -12,6 +13,44 @@ import { BlockedAddressCache } from "./cache.js";
 import { scoreResponse, type ScoringResult } from "./scoring.js";
 import type { ForwardResponse } from "./elliptic.js";
 import { signScreening, type ScreeningSignature } from "./signing.js";
+import { metricsContentType, renderMetrics } from "./metrics.js";
+
+const BEARER_PREFIX = "Bearer ";
+
+// Serves the Prometheus exposition on GET /metrics, gated by a bearer token.
+// Bypasses the screening response path so scrapes never count toward the
+// traffic metrics and a bad scraper token never trips the 401 alert.
+async function serveMetrics(
+  req: Request,
+  res: Response,
+  token: string | undefined
+): Promise<void> {
+  // Fail closed: with no configured token the endpoint does not exist.
+  if (!token) {
+    res.set("content-type", "application/json");
+    res.status(404).send(JSON.stringify({ error: "not found" }));
+    return;
+  }
+  if (!bearerTokenMatches(req.headers.authorization, token)) {
+    res.set("content-type", "application/json");
+    res.status(401).send(JSON.stringify({ error: "unauthorized" }));
+    return;
+  }
+  res.set("content-type", metricsContentType);
+  res.status(200).send(await renderMetrics());
+}
+
+function bearerTokenMatches(
+  authHeader: string | string[] | undefined,
+  expectedToken: string
+): boolean {
+  const header = Array.isArray(authHeader) ? authHeader[0] : authHeader;
+  if (!header || !header.startsWith(BEARER_PREFIX)) return false;
+  const providedBuf = Buffer.from(header.slice(BEARER_PREFIX.length));
+  const expectedBuf = Buffer.from(expectedToken);
+  if (providedBuf.length !== expectedBuf.length) return false;
+  return timingSafeEqual(providedBuf, expectedBuf);
+}
 
 export interface ConfigSource {
   get(): Promise<Config>;
@@ -72,6 +111,11 @@ export function createHandler(
         })
       );
       sendResponse(503, JSON.stringify({ error: "service unavailable" }));
+      return;
+    }
+
+    if (req.method === "GET" && req.path === "/metrics") {
+      await serveMetrics(req, res, config.metricsAuthToken);
       return;
     }
 
