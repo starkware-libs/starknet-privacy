@@ -14,6 +14,10 @@
     ".": {
       "import": "./dist/index.js",
       "types": "./dist/index.d.ts"
+    },
+    "./signers": {
+      "import": "./dist/signers/index.js",
+      "types": "./dist/signers/index.d.ts"
     }
   },
   "publishConfig": {
@@ -41,6 +45,8 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@noble/curves": "^1.7.0",
+    "@noble/hashes": "^1.6.0",
     "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
     "starknet": "^10.0.0-beta.6"
   },

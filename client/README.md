@@ -7,6 +7,15 @@ Starknet/EVM wallet signing (SNIP-12 / EIP-712 CallSet signers), and builds priv
 This package is under active development; the public API is being added incrementally. See the
 design in `.claude/plans/dapp-sdk-design.md`.
 
+## Signers
+
+The `./signers` subpath exports `Snip12CallSetSigner` (legacy Starknet wallets) and
+`Eip712CallSetSigner` (EVM wallets / `Eth712Account`) — starknet.js `SignerInterface`
+implementations that authorize privacy-pool invocations by signing the `CallSet` message the
+pool verifies on-chain, plus the `computeCallSetHash` / `computeCallSet712Hash` golden-vector
+oracles. The client factory wires the right one based on the wallet; you can also construct them
+directly.
+
 ## Scripts
 
 - `npm run build` — type-check and emit to `dist/` (tsc).
