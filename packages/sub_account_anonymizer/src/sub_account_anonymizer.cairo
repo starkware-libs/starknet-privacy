@@ -382,7 +382,9 @@ pub mod SubAccountAnonymizer {
             // Sanity check: deployed address cannot be zero.
             assert(sub_account.is_non_zero(), errors::ZERO_ADDRESS);
             self.sub_accounts.write(identity_commitment, sub_account);
-            self.emit(SubAccountDeployed { identity_commitment, sub_account });
+            // NOTE: SubAccountDeployed event intentionally omitted — emitting it
+            // exposes identity_commitment -> sub_account linkage on-chain, enabling
+            // off-chain enumeration attacks (BUG-06). Storage write preserved.
             ISubAccountDispatcher { contract_address: sub_account }
         }
 
