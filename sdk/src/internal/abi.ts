@@ -600,6 +600,106 @@ export const PrivacyPoolABI = [
     ]
   },
   {
+    "type": "struct",
+    "name": "core::array::Span::<core::starknet::account::Call>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::starknet::account::Call>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::starknet::info::v2::ResourceBounds",
+    "members": [
+      {
+        "name": "resource",
+        "type": "core::felt252"
+      },
+      {
+        "name": "max_amount",
+        "type": "core::integer::u64"
+      },
+      {
+        "name": "max_price_per_unit",
+        "type": "core::integer::u128"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::array::Span::<core::starknet::info::v2::ResourceBounds>",
+    "members": [
+      {
+        "name": "snapshot",
+        "type": "@core::array::Array::<core::starknet::info::v2::ResourceBounds>"
+      }
+    ]
+  },
+  {
+    "type": "struct",
+    "name": "core::starknet::info::v3::TxInfo",
+    "members": [
+      {
+        "name": "version",
+        "type": "core::felt252"
+      },
+      {
+        "name": "account_contract_address",
+        "type": "core::starknet::contract_address::ContractAddress"
+      },
+      {
+        "name": "max_fee",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "signature",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "transaction_hash",
+        "type": "core::felt252"
+      },
+      {
+        "name": "chain_id",
+        "type": "core::felt252"
+      },
+      {
+        "name": "nonce",
+        "type": "core::felt252"
+      },
+      {
+        "name": "resource_bounds",
+        "type": "core::array::Span::<core::starknet::info::v2::ResourceBounds>"
+      },
+      {
+        "name": "tip",
+        "type": "core::integer::u128"
+      },
+      {
+        "name": "paymaster_data",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "nonce_data_availability_mode",
+        "type": "core::integer::u32"
+      },
+      {
+        "name": "fee_data_availability_mode",
+        "type": "core::integer::u32"
+      },
+      {
+        "name": "account_deployment_data",
+        "type": "core::array::Span::<core::felt252>"
+      },
+      {
+        "name": "proof_facts",
+        "type": "core::array::Span::<core::felt252>"
+      }
+    ]
+  },
+  {
     "type": "interface",
     "name": "privacy::interface::IClient",
     "items": [
@@ -650,6 +750,26 @@ export const PrivacyPoolABI = [
           {
             "name": "client_actions",
             "type": "core::array::Span::<privacy::actions::ClientAction>"
+          }
+        ],
+        "outputs": [
+          {
+            "type": "core::array::Span::<privacy::actions::ServerAction>"
+          }
+        ],
+        "state_mutability": "view"
+      },
+      {
+        "type": "function",
+        "name": "compile_actions_authorized",
+        "inputs": [
+          {
+            "name": "calls",
+            "type": "core::array::Span::<core::starknet::account::Call>"
+          },
+          {
+            "name": "tx_info",
+            "type": "core::starknet::info::v3::TxInfo"
           }
         ],
         "outputs": [

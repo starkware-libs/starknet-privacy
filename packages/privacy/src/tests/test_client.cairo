@@ -6740,3 +6740,68 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
     assert!(result.is_ok(), "no-SRC5 account should route to the legacy path, not revert");
     stop_cheat_chain_id_global();
 }
+
+/// `compile_actions_authorized` is the read-only twin of `__execute__`: it compiles the actions and
+/// runs the same signature OR-fallback, returning the server actions without emitting them to L1. A
+/// legacy SN wallet's SNIP-12 `CallSet` signature (case III) authenticates through it, so a mock
+/// prover can reproduce the exact authorization path off-chain.
+#[test]
+fn test_compile_actions_authorized_call_set_signature() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
+    let depositor = deploy_mock_stark_account(salt: 20, public_key: key.public_key);
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CALLSET_PROTOCOL_PK', :client_actions,
+        );
+
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
+    let (r, s) = key.sign(hash).unwrap();
+
+    // The view validates the CallSet signature and returns the same actions the plain compiler
+    // does.
+    let expected = test
+        .privacy
+        .compile_actions(
+            user_addr: depositor, user_private_key: 'CALLSET_PROTOCOL_PK', :client_actions,
+        );
+    let server_actions = test
+        .privacy
+        .compile_actions_authorized(calls, signature: array![r, s].span(), transaction_hash: 0);
+    assert_eq!(server_actions.len(), expected.len());
+    assert!(server_actions.len() > 0, "the view must return the compiled server actions");
+    stop_cheat_chain_id_global();
+}
+
+/// A STARK signature over the wrong CallSet fails every OR branch, so the view panics
+/// `INVALID_SIGNATURE` just as `__execute__` would.
+#[test]
+fn test_compile_actions_authorized_rejects_wrong_signature() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
+    let depositor = deploy_mock_stark_account(salt: 21, public_key: key.public_key);
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CALLSET_PROTOCOL_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+
+    let result = test
+        .privacy
+        .safe_compile_actions_authorized(
+            calls, signature: array![r, s].span(), transaction_hash: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
+}

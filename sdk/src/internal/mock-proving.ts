@@ -6,15 +6,11 @@
  */
 
 import type { BlockIdentifier, constants, ETransactionVersion3, ProviderInterface } from "starknet";
-import { EDAMode, encode, hash, num, stark } from "starknet";
+import { CallData, EDAMode, hash, num, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails, extractExecuteViewCalldata } from "./proof-invocation-factory.js";
-import { ProvingServiceError } from "./proving-service.js";
 import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
-import { toBigInt } from "../utils/convert.js";
-
-/** VALIDATED constant - 'VALID' encoded as short string felt252 */
-const VALIDATED = encode.utf8ToBigInt("VALID");
+import { PrivacyPoolABI } from "./abi.js";
 
 /**
  * A proving provider that uses Starknet calls to simulate proof generation.
@@ -33,24 +29,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
   }
 
   async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
-    // Validate signature similar to how __execute__ does in the contract.
-    // compile_actions skips this since view functions don't have tx_info.
-    if (this.options?.validateSignature !== false) {
-      await this.validateSignature(invocation);
-    }
-
-    // __execute__ calldata is Array<Call> with one Call targeting compile_actions.
-    // Layout: [1, to, selector, inner_len, ...inner_calldata]
-    const executeViewCalldata = extractExecuteViewCalldata(invocation.calldata as string[]);
-
-    const result = await this.provider.callContract(
-      {
-        contractAddress: invocation.sender_address,
-        entrypoint: "compile_actions",
-        calldata: executeViewCalldata,
-      },
-      blockIdentifier
-    );
+    const result = await this.compileActions(invocation, blockIdentifier);
 
     const poolClassHash = await this.provider.getClassHashAt(
       invocation.sender_address,
@@ -90,26 +69,57 @@ export class CallMockProofProvider implements ProofProviderInterface {
   }
 
   /**
-   * Validates the signature by calling is_valid_signature on the user's account.
-   * This mirrors what the contract's __execute__ does after compile_actions.
+   * Runs the pool's compile step. When signature validation is enabled and the invocation carries a
+   * signature, it goes through `compile_actions_authorized` — the same authorization path
+   * `__execute__` runs — so an unauthorized signature panics here just as it would on-chain.
+   * Otherwise (fee simulation, or an unsigned mock invocation) it uses the plain `compile_actions`
+   * view, which does no signature check.
    */
-  private async validateSignature(invocation: ProofInvocation): Promise<void> {
-    const signatureArray = invocation.signature ? stark.formatSignature(invocation.signature) : [];
-    if (signatureArray.length === 0) {
-      // No signature to validate (e.g., mock invocation factory)
-      return;
+  private async compileActions(
+    invocation: ProofInvocation,
+    blockIdentifier?: BlockIdentifier
+  ): Promise<string[]> {
+    const signature = invocation.signature ? stark.formatSignature(invocation.signature) : [];
+    if (this.options?.validateSignature === false || signature.length === 0) {
+      return this.provider.callContract(
+        {
+          contractAddress: invocation.sender_address,
+          entrypoint: "compile_actions",
+          calldata: extractExecuteViewCalldata(invocation.calldata as string[]),
+        },
+        blockIdentifier
+      );
     }
+    return this.provider.callContract(
+      {
+        contractAddress: invocation.sender_address,
+        entrypoint: "compile_actions_authorized",
+        calldata: await this.buildAuthorizedCalldata(invocation, signature),
+      },
+      blockIdentifier
+    );
+  }
 
-    // First arg of compile_actions calldata is user_addr.
+  /**
+   * Builds the `compile_actions_authorized(calls, tx_info)` calldata. `calls` is the single
+   * `compile_actions` call the account signed, unwrapped from the `__execute__` Array<Call>;
+   * `tx_info` carries the signature and transaction hash. The pool reads only `signature` and
+   * `transaction_hash` from it (and `chain_id` from the ambient view call), so the remaining fields
+   * are left neutral.
+   */
+  private async buildAuthorizedCalldata(
+    invocation: ProofInvocation,
+    signature: string[]
+  ): Promise<string[]> {
     const calldata = invocation.calldata as string[];
-    const innerCalldata = extractExecuteViewCalldata(calldata);
-    const userAddress = num.toHex(innerCalldata[0]);
+    // __execute__ calldata is a single-Call Array<Call>: [1, to, selector, inner_len, ...inner].
+    const innerLength = Number(BigInt(calldata[3]));
+    const calls = [
+      { to: calldata[1], selector: calldata[2], calldata: calldata.slice(4, 4 + innerLength) },
+    ];
 
-    // Compute transaction hash using the same parameters as the signer.
-    // invocation.calldata is already the __execute__ calldata (Array<Call> wrapping
-    // compile_actions), so use it directly — no re-wrapping via getExecuteCalldata.
     const details = await this.getDefaultDetails();
-    const txHash = hash.calculateInvokeTransactionHash({
+    const transactionHash = hash.calculateInvokeTransactionHash({
       senderAddress: num.toHex(invocation.sender_address),
       version: details.version as ETransactionVersion3,
       compiledCalldata: calldata,
@@ -123,23 +133,25 @@ export class CallMockProofProvider implements ProofProviderInterface {
       paymasterData: details.paymasterData!,
     });
 
-    // Call is_valid_signature on user's account
-    // Calldata format: [hash, signature_length, ...signature_elements]
-    const isValidCalldata = [txHash, num.toHex(signatureArray.length), ...signatureArray];
-
-    const result = await this.provider.callContract({
-      contractAddress: userAddress,
-      entrypoint: "is_valid_signature",
-      calldata: isValidCalldata,
+    const txInfo = {
+      version: details.version,
+      account_contract_address: num.toHex(invocation.sender_address),
+      max_fee: 0,
+      signature,
+      transaction_hash: transactionHash,
+      chain_id: this.chainId,
+      nonce: details.nonce!,
+      resource_bounds: [],
+      tip: 0,
+      paymaster_data: [],
+      nonce_data_availability_mode: 0,
+      fee_data_availability_mode: 0,
+      account_deployment_data: [],
+      proof_facts: [],
+    };
+    return new CallData(PrivacyPoolABI).compile("compile_actions_authorized", {
+      calls,
+      tx_info: txInfo,
     });
-
-    // Check result equals VALIDATED ('VALID' as felt252)
-    if (toBigInt(result[0]) !== VALIDATED) {
-      throw new ProvingServiceError(
-        55,
-        "Account validation failed",
-        `Signature validation failed: expected ${VALIDATED}, got ${result[0]}`
-      );
-    }
   }
 }

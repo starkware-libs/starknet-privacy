@@ -74,7 +74,8 @@ use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
 use starknet::storage::StorableStoragePointerReadAccess;
 use starknet::{
-    ClassHash, ContractAddress, ResourcesBounds, SyscallResultTrait, VALIDATED, get_block_timestamp,
+    ClassHash, ContractAddress, ResourcesBounds, SyscallResultTrait, TxInfo, VALIDATED,
+    get_block_timestamp,
 };
 use starkware_utils::components::pausable::interface::{
     IPausableDispatcher, IPausableDispatcherTrait,
@@ -1692,6 +1693,27 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_client.__execute__(:calls)
     }
 
+    fn compile_actions_authorized(
+        self: @PrivacyCfg, calls: Array<Call>, signature: Span<felt252>, transaction_hash: felt252,
+    ) -> Span<ServerAction> {
+        self
+            .client
+            .compile_actions_authorized(
+                calls: calls.span(), tx_info: dummy_tx_info(:signature, :transaction_hash),
+            )
+    }
+
+    #[feature("safe_dispatcher")]
+    fn safe_compile_actions_authorized(
+        self: @PrivacyCfg, calls: Array<Call>, signature: Span<felt252>, transaction_hash: felt252,
+    ) -> Result<Span<ServerAction>, Array<felt252>> {
+        self
+            .safe_client
+            .compile_actions_authorized(
+                calls: calls.span(), tx_info: dummy_tx_info(:signature, :transaction_hash),
+            )
+    }
+
     #[feature("safe_dispatcher")]
     fn safe_compile_and_panic(
         self: @PrivacyCfg,
@@ -2213,6 +2235,27 @@ pub(crate) fn deploy_mock_custom_account(
     )
         .expect('MockCustomAccount deploy failed');
     contract_address
+}
+
+/// A `TxInfo` carrying `signature` and `transaction_hash`, with the remaining fields neutral —
+/// the pool's signature check reads only those two (and `chain_id` from the ambient call).
+fn dummy_tx_info(signature: Span<felt252>, transaction_hash: felt252) -> TxInfo {
+    TxInfo {
+        version: 0,
+        account_contract_address: Zero::zero(),
+        max_fee: 0,
+        signature,
+        transaction_hash,
+        chain_id: 0,
+        nonce: 0,
+        resource_bounds: [].span(),
+        tip: 0,
+        paymaster_data: [].span(),
+        nonce_data_availability_mode: 0,
+        fee_data_availability_mode: 0,
+        account_deployment_data: [].span(),
+        proof_facts: [].span(),
+    }
 }
 
 /// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.

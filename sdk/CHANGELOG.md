@@ -26,6 +26,11 @@
   `computeCallSetHash` / `computeCallSet712Hash` golden-vector oracles. Both signers accept an
   optional `additionalData` bound into the signed `CallSet` message (empty by default, matching
   the pool). SDK core stays signer-agnostic.
+- Privacy pool: `compile_actions_authorized(calls, tx_info)` view — the read-only twin of
+  `__execute__` that compiles the client actions and validates the account signature through the
+  same three-way OR-fallback (custom validation / SN tx hash / SNIP-12 `CallSet` hash), returning the
+  server actions without emitting them to L1. Lets a proving service (or the mock prover) reproduce
+  the exact on-chain authorization off-chain. `PrivacyPoolABI` regenerated.
 
 ### Fixed
 
@@ -40,6 +45,11 @@
   When true the view stops at the first undeployed nonce and returns only the contiguous deployed
   prefix; when false it resolves every nonce in the range (the prior behavior). Regenerating the ABI
   also picks up the `OpenNote.collect_policy` field, from which the generated ABI had drifted.
+- Testing: `CallMockProofProvider` now validates the account signature through the pool's
+  `compile_actions_authorized` view — matching `__execute__`'s custom / tx-hash / SNIP-12 `CallSet`
+  fallback — instead of a tx-hash-only `is_valid_signature` call. CallSet and custom-signature
+  accounts (e.g. `Snip12CallSetSigner`, `Eip712CallSetSigner`) now prove correctly against a devnet
+  pool. Validation is still skipped when `validateSignature: false` (fee simulation).
 
 ## 0.14.3-RC.3
 
