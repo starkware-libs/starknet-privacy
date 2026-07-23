@@ -3,6 +3,17 @@
 // Resolves sub-accounts, bridges Starknet/EVM wallet signing, and builds privacy operations
 // over @starkware-libs/starknet-privacy-sdk. More of the public API is added in later changesets.
 export { createPrivacyClient } from "./client.js";
+export { AvnuPaymaster, toPaymasterCall, normalizeSignature } from "./paymaster.js";
+export type {
+  AvnuPaymasterOptions,
+  Paymaster,
+  PaymasterBuild,
+  PaymasterCall,
+  PaymasterExecute,
+  PaymasterFeeAction,
+  PaymasterFeeMode,
+  PaymasterQuote,
+} from "./paymaster.js";
 export type {
   PrivacyClient,
   PrivacyClientConfig,
