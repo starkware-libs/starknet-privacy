@@ -154,4 +154,22 @@ describe("client.build()", () => {
     builder.invoke(() => ({ contractAddress: "0xdapp", calldata: [] }));
     expect(() => builder.with("0x7").createOpenNote()).toThrow(/before invoke/);
   });
+
+  it("subaccounts(dappName).invoke queues a subaccount_invoke action with the mapped calls", async () => {
+    const seen: Seen = {};
+    await client(seen)
+      .build()
+      .subaccounts("ekubo")
+      .invoke(3, { calls: [{ contractAddress: "0xswap", entrypoint: "swap", calldata: ["0x1"] }] })
+      .submit();
+    expect(seen.invoke).toEqual([
+      {
+        type: "subaccount_invoke",
+        dapp_name: "ekubo",
+        nonce: "0x3",
+        calls: [{ contract_address: "0xswap", entry_point: "swap", calldata: ["0x1"] }],
+        collect_policy: { type: "all" },
+      },
+    ]);
+  });
 });
