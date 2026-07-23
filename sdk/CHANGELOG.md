@@ -34,6 +34,13 @@
   `collect_policy`), and would have produced calldata the anonymizer rejects. The ABI is regenerated
   to include `collect_policy`.
 
+### Changed
+
+- `SubAccountAnonymizerABI`: `get_sub_accounts` gains a trailing `until_undeployed: bool` argument.
+  When true the view stops at the first undeployed nonce and returns only the contiguous deployed
+  prefix; when false it resolves every nonce in the range (the prior behavior). Regenerating the ABI
+  also picks up the `OpenNote.collect_policy` field, from which the generated ABI had drifted.
+
 ## 0.14.3-RC.3
 
 ### Breaking

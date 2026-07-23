@@ -141,17 +141,24 @@ pub trait ISubAccountAnonymizer<T> {
     /// the commitment, `hash(identity_key, dapp_name)`.
     /// - `start_nonce` (`u64`) - the first nonce to resolve (inclusive).
     /// - `end_nonce` (`u64`) - the upper bound (exclusive).
+    /// - `until_undeployed` (`bool`) - When true, resolution stops at the first undeployed nonce
+    /// and that nonce is not returned, so the result is the contiguous deployed prefix of the range.
+    /// When false, every nonce in the range is returned regardless of deployment.
     ///
     /// #### Returns
     /// - ([`Span<SubAccountInfo>`](SubAccountInfo)) - one entry per nonce in `[start_nonce,
-    /// end_nonce)`.
+    /// end_nonce)`, or the deployed prefix of that range when `until_undeployed` is true.
     ///
     /// #### Reverts
     /// - [`INVALID_RANGE`](errors::INVALID_RANGE): Thrown if `end_nonce < start_nonce`.
     /// - [`RANGE_TOO_LARGE`](errors::RANGE_TOO_LARGE): Thrown if `end_nonce - start_nonce` exceeds
     ///   [`MAX_SCAN_RANGE`](MAX_SCAN_RANGE).
     fn get_sub_accounts(
-        self: @T, partial_commitment: PartialCommitment, start_nonce: u64, end_nonce: u64,
+        self: @T,
+        partial_commitment: PartialCommitment,
+        start_nonce: u64,
+        end_nonce: u64,
+        until_undeployed: bool,
     ) -> Span<SubAccountInfo>;
 
     /// Returns the deployed sub-account address bound to `identity_commitment`.
@@ -318,6 +325,7 @@ pub mod SubAccountAnonymizer {
             partial_commitment: PartialCommitment,
             start_nonce: u64,
             end_nonce: u64,
+            until_undeployed: bool,
         ) -> Span<SubAccountInfo> {
             assert(end_nonce >= start_nonce, errors::INVALID_RANGE);
             assert(
@@ -330,6 +338,9 @@ pub mod SubAccountAnonymizer {
                 let commitment = commitment_from_partial(partial_commitment, nonce.into());
                 let stored = self.get_sub_account(commitment);
                 let is_deployed = stored.is_non_zero();
+                if until_undeployed && !is_deployed {
+                    break;
+                }
                 // Undeployed sub-accounts resolve to the address the deploy syscall would derive.
                 let address = if is_deployed {
                     stored
