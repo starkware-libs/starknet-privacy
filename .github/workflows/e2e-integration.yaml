@@ -8,10 +8,10 @@ jobs:
     name: E2E Integration
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       # Node
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '20'
           cache: 'npm'
@@ -20,11 +20,11 @@ jobs:
             e2e/package-lock.json
 
       # Scarb (for Cairo contract build)
-      - uses: software-mansion/setup-scarb@v1
+      - uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.17.0"
 
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
 
