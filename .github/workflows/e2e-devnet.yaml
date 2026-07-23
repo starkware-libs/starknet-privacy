@@ -67,6 +67,9 @@ jobs:
           # SubAccount + MockDapp come from the test build (sierra only); the e2e setup
           # compiles casm with universal-sierra-compiler (set up above) at declare time.
           scarb build -t -p sub_account_anonymizer
+          # StarknetEth712Account (the EVM account the signing e2e deploys) is a
+          # build-external-contract of the privacy test target; same sierra-only + USC-at-declare flow.
+          scarb build -t -p privacy
       - name: Build ekubo contracts
         run: cd e2e/contracts/ekubo && scarb build
       - name: Build test token
