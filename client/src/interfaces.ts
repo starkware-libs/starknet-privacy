@@ -8,7 +8,7 @@ import type {
   STRK20_PROOF,
   UniversalDetails,
 } from "starknet";
-import type { StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
+import type { PrivateRegistry, StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
 
 /**
  * LOCAL SHIM — remove when `@starknet-io/starknet-types` ships it. The compute-and-invoke sibling of
@@ -31,6 +31,30 @@ export interface STRK20_COMPUTE_AND_INVOKE_ACTION {
  * submits substitutes them (the native wallet at assembly; the SDK adapter before proving).
  */
 export type Strk20Action = STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION;
+
+/**
+ * Proves {@link Strk20Action}s into a submittable `{ call, proof }` and resolves the user's partial
+ * commitment. This is strk20-specific (not a general prover). Crucially, the viewing key needed to
+ * prove and to derive the partial commitment is the prover's own concern — it is retrieved inside the
+ * implementation, never passed in by the dapp. That keeps a future on-device prover free to fetch the
+ * key locally (more secure, and shareable across dapps).
+ */
+export interface Strk20Prover {
+  /** The nonce-independent commitment `hash(identity_key, dappName)` (derived from the viewing key). */
+  partialCommitment(dappName: string): Promise<bigint>;
+  /** Prove `actions` into `{ call, proof }`; `simulate` yields an empty proof. Does not broadcast. */
+  prove(actions: Strk20Action[], simulate?: boolean): Promise<STRK20_CALL_AND_PROOF>;
+}
+
+/**
+ * Persists the core note registry between transactions so proofs see previously-created notes. A
+ * fresh user with nothing stored returns an empty registry; the SDK path saves the updated registry
+ * after a proven (non-simulated) transaction.
+ */
+export interface PrivacyStorage {
+  loadRegistry(): Promise<PrivateRegistry>;
+  saveRegistry(registry: PrivateRegistry): Promise<void>;
+}
 
 /**
  * The wallet seam — the privacy subset of starknet.js `WalletAccountV6`. A get-starknet v6 wallet
