@@ -21,7 +21,8 @@ use starknet::ContractAddress;
 use starknet::account::Call;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
 use sub_account_anonymizer::sub_account_anonymizer::{
-    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait,
+    CollectPolicy, ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait, OpenNote,
+    partial_commitment,
 };
 
 // Helper: Constants for e2e testing.
@@ -1941,7 +1942,10 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
         calldata: array![token_addr.into(), amount.into(), 0].span(),
     };
     let calls: Array<Call> = array![transfer_to_caller];
-    let open_notes: Span<(felt252, ContractAddress)> = [(note_id, token_addr)].span();
+    let open_notes: Span<OpenNote> = [
+        OpenNote { note_id, token: token_addr, collect_policy: CollectPolicy::All },
+    ]
+        .span();
     let mut invoke_data: Array<felt252> = array![];
     calls.serialize(ref invoke_data);
     open_notes.serialize(ref invoke_data);
@@ -1985,8 +1989,144 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     // A sub-account was deployed for the derived commitment and holds nothing after collection.
     let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
     let identity_key = user.compute_identity_key(contract_address: anonymizer);
-    let identity_commitment = anonymizer_disp.privacy_compute(:identity_key, :dapp_name, :nonce);
-    let sub_account = anonymizer_disp.get_sub_account(:identity_commitment);
-    assert!(sub_account.is_non_zero());
-    assert_eq!(token.balance_of(address: sub_account), 0);
+    let sub_account_info = *anonymizer_disp
+        .get_sub_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1)[0];
+    assert!(sub_account_info.is_deployed);
+    assert_eq!(token.balance_of(address: sub_account_info.address), 0);
+}
+
+/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+#[test]
+#[test_case(CollectPolicy::All)]
+#[test_case(CollectPolicy::Diff)]
+#[should_panic(expected: 'ERC20: insufficient balance')]
+fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balance(
+    policy: CollectPolicy,
+) {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let payout = 100_u128;
+    let mut user = test.new_user();
+
+    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_sub_account_mock_dapp();
+    // Fund the dapp so its `transfer_to_caller` pays `payout` into the sub-account.
+    token.supply(address: mock_dapp, amount: payout);
+
+    // Two open notes on the same token (distinct indices), both settled in the same interaction.
+    let create_open_note_1 = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+    let (note_id_1, _) = user.compute_open_note(create_note_input: create_open_note_1);
+    let create_open_note_2 = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 1);
+    let (note_id_2, _) = user.compute_open_note(create_note_input: create_open_note_2);
+
+    // compute_data feeds `privacy_compute(identity_key, dapp_name, nonce)`.
+    let dapp_name = 'DAPP';
+    let nonce = 0;
+    let compute_data = [dapp_name, nonce].span();
+    // invoke_data carries `(calls, open_notes)` forwarded to `privacy_invoke_with_computation`.
+    let transfer_to_caller = Call {
+        to: mock_dapp,
+        selector: selector!("transfer_to_caller"),
+        calldata: array![token_addr.into(), payout.into(), 0].span(),
+    };
+    let calls: Array<Call> = array![transfer_to_caller];
+    // Second transfer from sub-account to anonymizer will fail with insufficient balance.
+    let open_notes: Span<OpenNote> = [
+        OpenNote { note_id: note_id_1, token: token_addr, collect_policy: policy },
+        OpenNote { note_id: note_id_2, token: token_addr, collect_policy: policy },
+    ]
+        .span();
+    let mut invoke_data: Array<felt252> = array![];
+    calls.serialize(ref invoke_data);
+    open_notes.serialize(ref invoke_data);
+    let compute_and_invoke = ClientAction::ComputeAndInvoke(
+        ComputeAndInvokeInput {
+            contract_address: anonymizer,
+            compute_additional_data: compute_data,
+            invoke_additional_data: invoke_data.span(),
+        },
+    );
+
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_note_1),
+                ClientAction::CreateOpenNote(create_open_note_2), compute_and_invoke,
+            ]
+                .span(),
+        );
+}
+
+/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+#[test]
+#[should_panic(expected: "Insufficient ERC20 allowance")]
+fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_allowance() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let payout = 100_u128;
+    let mut user = test.new_user();
+
+    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_sub_account_mock_dapp();
+    // Fund the dapp so its `transfer_to_caller` pays `payout` into the sub-account.
+    token.supply(address: mock_dapp, amount: payout);
+
+    // Two open notes on the same token (distinct indices), both settled in the same interaction.
+    let create_open_note_1 = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+    let (note_id_1, _) = user.compute_open_note(create_note_input: create_open_note_1);
+    let create_open_note_2 = user
+        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 1);
+    let (note_id_2, _) = user.compute_open_note(create_note_input: create_open_note_2);
+
+    // compute_data feeds `privacy_compute(identity_key, dapp_name, nonce)`.
+    let dapp_name = 'DAPP';
+    let nonce = 0;
+    let compute_data = [dapp_name, nonce].span();
+    // invoke_data carries `(calls, open_notes)` forwarded to `privacy_invoke_with_computation`.
+    let transfer_to_caller = Call {
+        to: mock_dapp,
+        selector: selector!("transfer_to_caller"),
+        calldata: array![token_addr.into(), payout.into(), 0].span(),
+    };
+    let calls: Array<Call> = array![transfer_to_caller];
+    // Both transfers into the anonymizer succeed; the failure surfaces only downstream when the
+    // privacy contract pulls the deposits against the approval left by the *second* note.
+    let policy = CollectPolicy::Exact(payout / 2);
+    let open_notes: Span<OpenNote> = [
+        OpenNote { note_id: note_id_1, token: token_addr, collect_policy: policy },
+        OpenNote { note_id: note_id_2, token: token_addr, collect_policy: policy },
+    ]
+        .span();
+    let mut invoke_data: Array<felt252> = array![];
+    calls.serialize(ref invoke_data);
+    open_notes.serialize(ref invoke_data);
+    let compute_and_invoke = ClientAction::ComputeAndInvoke(
+        ComputeAndInvokeInput {
+            contract_address: anonymizer,
+            compute_additional_data: compute_data,
+            invoke_additional_data: invoke_data.span(),
+        },
+    );
+
+    test
+        .privacy
+        .execute_actions_e2e(
+            :user,
+            client_actions: [
+                set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
+                open_subchannel_action(from: user, to: user, :token_addr, index: 0),
+                ClientAction::CreateOpenNote(create_open_note_1),
+                ClientAction::CreateOpenNote(create_open_note_2), compute_and_invoke,
+            ]
+                .span(),
+        );
 }

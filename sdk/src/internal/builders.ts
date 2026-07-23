@@ -24,16 +24,21 @@ import {
   type TransferOutput,
   type SurplusAction,
   type InvokeAction,
+  type ComputeAndInvokeAction,
+  type ComputeAndInvokeDetails,
   type Amount,
   type InvokeCalldataBuilderArgs,
   type SimulateOptions,
+  type SubAccountsBuilder,
+  type ViewingKey,
   Open,
   PrivateTransfersInterface,
 } from "../interfaces.js";
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
 import { isOpenNote } from "../utils/validation.js";
-import type { CallDetails } from "starknet";
+import { SubAccountsBuilderImpl } from "./sub-accounts.js";
+import type { BigNumberish, CallDetails } from "starknet";
 
 // ============ Token Operations Builder ============
 
@@ -157,6 +162,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   public setViewingKey?: SetViewingKeyAction;
   public openChannels: OpenChannelAction[] = [];
   public invokeExternal?: InvokeAction;
+  public computeAndInvokeAction?: ComputeAndInvokeAction;
   public tokenBuilders = new AddressMap<TokenOperationsBuilderImpl>(
     (token) => new TokenOperationsBuilderImpl(this, token)
   );
@@ -170,7 +176,11 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   constructor(
     private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
-    options?: ExecuteOptions
+    options?: ExecuteOptions,
+    private subAccountDeps?: {
+      anonymizerAddress?: StarknetAddress;
+      getViewingKey: () => Promise<ViewingKey>;
+    }
   ) {
     this.buildOptions = options;
   }
@@ -186,13 +196,47 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
   }
 
   invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this {
-    if (this.invokeExternal !== undefined) {
-      throw new Error("At most one .invoke() per transaction; already set.");
-    }
+    this.assertNoInvokePhaseAction();
     this.invokeExternal = {
       callBuilder,
     };
     return this;
+  }
+
+  computeAndInvoke(
+    callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails
+  ): this {
+    this.assertNoInvokePhaseAction();
+    this.computeAndInvokeAction = {
+      callBuilder,
+    };
+    return this;
+  }
+
+  // `invoke` and `computeAndInvoke` both occupy the single invoke phase the contract allows
+  // per transaction, so only one of them may be queued.
+  private assertNoInvokePhaseAction(): void {
+    if (this.invokeExternal !== undefined || this.computeAndInvokeAction !== undefined) {
+      throw new Error(
+        "At most one invoke-phase action (.invoke() / .computeAndInvoke()) per transaction; already set."
+      );
+    }
+  }
+
+  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder {
+    const deps = this.subAccountDeps;
+    if (deps?.anonymizerAddress === undefined) {
+      throw new Error(
+        "subaccounts(...) requires `subAccountAnonymizerAddress` in the createPrivateTransfers config."
+      );
+    }
+    return new SubAccountsBuilderImpl({
+      builder: this,
+      dappName,
+      subAccountAnonymizerAddress: deps.anonymizerAddress,
+      user: toBigInt(this.userAddress),
+      getViewingKey: deps.getViewingKey,
+    });
   }
 
   surplusTo(recipient: StarknetAddress, withdraw?: boolean): this {
@@ -261,6 +305,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
       withdraws,
       surpluses,
       invoke: this.invokeExternal,
+      computeAndInvoke: this.computeAndInvokeAction,
     };
 
     return { actions, mergedOptions };

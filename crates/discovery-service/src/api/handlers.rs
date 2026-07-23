@@ -46,7 +46,7 @@ where
             if lag <= state.health_max_lag_secs {
                 ("OK", lag, StatusCode::OK)
             } else {
-                ("UNHEALTHY", lag, StatusCode::OK)
+                ("UNHEALTHY", lag, StatusCode::SERVICE_UNAVAILABLE)
             }
         }
         None => ("UNHEALTHY", 0, StatusCode::SERVICE_UNAVAILABLE),
@@ -376,4 +376,62 @@ where
         transactions,
         cursor,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::chain_state::mock::MockChainState;
+    use crate::config::ValidationLimits;
+    use crate::public_key_cache::PublicKeyCache;
+    use http_body_util::BodyExt;
+
+    fn app_state(
+        backend: MockChainState,
+        health_max_lag_secs: u64,
+    ) -> Arc<AppState<MockChainState>> {
+        Arc::new(AppState {
+            backend,
+            health_max_lag_secs,
+            validation_limits: ValidationLimits::default(),
+            public_key_cache: PublicKeyCache::new(1),
+        })
+    }
+
+    async fn call_health(state: Arc<AppState<MockChainState>>) -> (StatusCode, HealthResponse) {
+        let response = health_handler(State(state)).await.into_response();
+        let status = response.status();
+        let body = response.into_body().collect().await.unwrap().to_bytes();
+        let health = serde_json::from_slice(&body).expect("health body should deserialize");
+        (status, health)
+    }
+
+    // `MockChainState::new`'s head timestamp is far in the past, so any small
+    // threshold makes `now - timestamp` exceed it: the lag branch must 503.
+    #[tokio::test]
+    async fn test_health_returns_503_when_lag_exceeds_threshold() {
+        let (status, health) = call_health(app_state(MockChainState::new(), 5)).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(health.status, "UNHEALTHY");
+        assert!(health.lag_secs > 5);
+    }
+
+    // No indexed head is a distinct 503 path with zero reported lag.
+    #[tokio::test]
+    async fn test_health_returns_503_when_no_head() {
+        let (status, health) = call_health(app_state(MockChainState::with_no_head(), 5)).await;
+        assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+        assert_eq!(health.status, "UNHEALTHY");
+        assert_eq!(health.lag_secs, 0);
+        assert!(health.chain_head.is_none());
+    }
+
+    // A threshold above the observed lag keeps a reachable head healthy (200).
+    #[tokio::test]
+    async fn test_health_returns_200_within_threshold() {
+        let (status, health) = call_health(app_state(MockChainState::new(), u64::MAX)).await;
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(health.status, "OK");
+        assert!(health.chain_head.is_some());
+    }
 }

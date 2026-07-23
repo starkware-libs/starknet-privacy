@@ -2,6 +2,56 @@
 
 ## Unreleased
 
+## 0.14.3-RC.4
+
+### Added
+
+- Exported `SubAccountAnonymizerABI` from the package entry point, so downstream packages can
+  read the anonymizer (e.g. its `get_sub_accounts` view) against a single generated ABI source.
+- Sub-accounts: `transfers.build().subaccounts(dappName)` returns a `SubAccountsBuilder` (hung off the
+  builder so a sub-account `invoke` shares the builder's `ExecuteOptions`/context). `invoke(nonce, { calls })`
+  queues a `ComputeAndInvoke` against the sub-account anonymizer — `computeAdditionalData = [dappName, nonce]`
+  and `invokeAdditionalData` compiled from the dapp `calls` via the generated anonymizer ABI — and returns the
+  builder so the caller can add the open-note creation and `.execute()`. `dappName` accepts a felt or
+  a short string. Requires the new `subAccountAnonymizerAddress` field on the `createPrivateTransfers`
+  config; calling `subaccounts(...)` without it throws. `identify()` and `deployed()` on the builder
+  are declared but not yet implemented.
+- Sub-accounts: `invoke(nonce, { calls, collectPolicy })` now takes an optional `collectPolicy`
+  applied to every open note the invoke settles — `{ type: "all" }`, `{ type: "diff" }`, or
+  `{ type: "exact"; amount }` (the `exact` variant requires an `amount`); defaults to
+  `{ type: "all" }`. Exported the `CollectPolicy` type.
+- `@starkware-libs/starknet-privacy-sdk/signers` subpath export: `Snip12CallSetSigner`
+  and `Eip712CallSetSigner` (starknet.js `SignerInterface` implementations for authorizing
+  privacy-pool invocations with legacy SN wallets and `Eth712Account` / EVM wallets), plus the
+  `computeCallSetHash` / `computeCallSet712Hash` golden-vector oracles. Both signers accept an
+  optional `additionalData` bound into the signed `CallSet` message (empty by default, matching
+  the pool). SDK core stays signer-agnostic.
+
+### Fixed
+
+- Sub-accounts: `invoke` now encodes the anonymizer `OpenNote.collect_policy` field. It was omitted
+  before — which only compiled because the committed `SubAccountAnonymizerABI` was stale (missing
+  `collect_policy`), and would have produced calldata the anonymizer rejects. The ABI is regenerated
+  to include `collect_policy`.
+
+## 0.14.3-RC.3
+
+### Breaking
+
+- Removed pool-mode selection: the screening attestation `Option` suffix is now
+  always appended to `apply_actions` calldata, so the SDK only supports
+  screening-capable pools (whose `apply_actions` takes the trailing
+  `Option<ScreeningAttestation>` parameter). Class-hash detection, the
+  `PoolCapabilityMode` export, and the `poolMode` override on
+  `createPrivateTransfers()` are gone; pre-screening pools now revert on
+  calldata arity.
+- Testing: `createCompatibilityAliceTransfers()` is renamed to
+  `createUnattestedAliceTransfers()` — with pool-mode selection removed it can
+  no longer omit the attestation suffix; it now sends `Option::None`, which the
+  screening pool still rejects for deposits (`SCREENING_REQUIRED`).
+
+## 0.14.3-RC.2
+
 ### Changed
 
 - Opening a channel to a new recipient no longer issues a second
@@ -11,6 +61,17 @@
   discovery work on that path. Providers whose targeted discovery stops short of
   the sentinel (e.g. on-chain `ContractDiscovery`) still fall back to the
   dedicated count query.
+
+### Fixed
+
+- `discoverChannels("total-only")` now paginates outgoing channel discovery to
+  the sentinel instead of issuing a single request. A sender with at least
+  `max_channels` (default 256) outgoing channels caps the first page before the
+  sentinel, so the service returned no `total_n_channels`; the count surfaced as
+  `undefined` and the compiler turned it into channel index `0`, producing a
+  `NON_ZERO_VALUE` write-once collision when opening a channel to the next
+  (e.g. 257th) recipient. The count is now derived once discovery completes, and
+  a missing total after completion throws instead of being silently coerced.
 
 ## 0.14.3-RC.1
 
@@ -40,6 +101,13 @@
   point. It extends `CallMockProofProvider` to sign each deposit's screening
   attestation with the canonical test screener key, so integration suites can
   drive a screening-capable pool's deposit path end to end.
+- `computeAndInvoke` builder method on `PrivateTransfersBuilder`: queues a
+  `ComputeAndInvoke` client action that, after the private operations, queries the
+  target contract's `privacy_compute` (with the derived identity key and `computeAdditionalData`)
+  and forwards its result plus `invokeAdditionalData` to `privacy_invoke_with_computation`. The
+  call builder receives the same `{ openNotes, withdrawals, poolAddress }` as `invoke`.
+  Mutually exclusive with `invoke` (one invoke-phase action per transaction). Supported
+  by the `MockPoolContract` simulate flow.
 
 ### Changed
 

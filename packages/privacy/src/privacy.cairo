@@ -33,10 +33,9 @@ pub mod Privacy {
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
         decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
         encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs,
-        extract_server_actions_from_compile_and_panic, is_canonical_key, open_note, pack,
-        panic_with_server_actions, propagate_external_panic, send_message_to_server,
-        storage_path_to_felt252, to_write_once_action, unpack,
+        encrypt_user_addr, extract_compile_actions_inputs, extract_server_actions_from_panic,
+        is_canonical_key, open_note, pack, panic_with_server_actions, propagate_external_panic,
+        send_message_to_server, storage_path_to_felt252, to_write_once_action, unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -140,6 +139,7 @@ pub mod Privacy {
         OpenNoteCreated: events::OpenNoteCreated,
         EncNoteCreated: events::EncNoteCreated,
         OpenNoteDeposited: events::OpenNoteDeposited,
+        ExternalContractInvoked: events::ExternalContractInvoked,
         NoteUsed: events::NoteUsed,
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
@@ -227,7 +227,7 @@ pub mod Privacy {
                 calldata: calldata.span(),
             );
 
-            extract_server_actions_from_compile_and_panic(:syscall_result)
+            extract_server_actions_from_panic(:syscall_result)
         }
 
         /// Panics directly for internal errors; external calls should be wrapped via syscall
@@ -557,16 +557,16 @@ pub mod Privacy {
             );
             let mut compute_calldata = array![identity_key];
             compute_calldata.append_span(compute_additional_data);
-            let compute_result =
-                match call_contract_syscall(
-                    address: contract_address,
-                    entry_point_selector: PRIVACY_COMPUTE_SELECTOR,
-                    calldata: compute_calldata.span(),
-                ) {
-                Ok(compute_result) => compute_result,
-                Err(panic_data) => propagate_external_panic(panic_data.span()),
-            };
+            let compute_result = call_contract_syscall(
+                address: contract_address,
+                entry_point_selector: PRIVACY_COMPUTE_SELECTOR,
+                calldata: compute_calldata.span(),
+            )
+                .unwrap_or_else(|panic_data| propagate_external_panic(panic_data.span()));
+            // The compute result should be non-empty, as `privacy_compute` is assumed to bind the
+            // identity key to it.
             assert(!compute_result.is_empty(), errors::EMPTY_COMPUTE_RESULT);
+
             // The target's `privacy_invoke_with_computation` receives the compute result followed
             // by the caller-supplied invoke data as a single calldata span.
             let mut invoke_calldata = array![];
@@ -967,6 +967,11 @@ pub mod Privacy {
             checked_transfer(token_address: token, recipient: to_addr, amount: amount.into());
         }
 
+        /// Executes the external invoke on `contract_address` with `selector`, emits an
+        /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
+        /// returned open notes.
+        /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
+        /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
             ref self: ContractState,
             input: InvokeInput,
@@ -978,30 +983,21 @@ pub mod Privacy {
                 address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
+            self.emit(events::ExternalContractInvoked { contract_address, selector });
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
             assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
-            self
-                ._apply_open_note_deposits(
-                    :deposits, depositor: contract_address, ref :undeposited_open_notes,
-                );
-        }
 
-        fn _apply_open_note_deposits(
-            ref self: ContractState,
-            deposits: Span<OpenNoteDeposit>,
-            depositor: ContractAddress,
-            ref undeposited_open_notes: usize,
-        ) {
+            // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
             if !deposits.is_empty() {
                 assert(
-                    !self.blocked_open_note_depositors.read(depositor),
+                    !self.blocked_open_note_depositors.read(contract_address),
                     errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
                 );
                 // Apply deposits to open notes returned by Invoke.
                 for deposit in deposits {
-                    self._deposit_to_open_note(:depositor, deposit: *deposit);
+                    self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
                 undeposited_open_notes = undeposited_open_notes
                     .checked_sub(deposits.len())

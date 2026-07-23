@@ -1,6 +1,7 @@
 export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
+export { SubAccountAnonymizerABI } from "./internal/anonymizer-abi.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
 export {
   ProvingService,
@@ -20,7 +21,6 @@ export {
   ScreeningUnavailable,
   screeningErrorFromProvingError,
 } from "./internal/errors.js";
-export type { PoolCapabilityMode } from "./internal/pool-mode.js";
 export type { BlockIdentifier } from "starknet";
 export { ProvingServiceProofProvider } from "./internal/proving-service-provider.js";
 export type { ProvingServiceProofProviderOptions } from "./internal/proving-service-provider.js";

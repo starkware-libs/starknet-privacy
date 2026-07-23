@@ -43,7 +43,7 @@ backoff_max_interval = 60
 
 [api]
 host = "127.0.0.1:8080"
-health_max_lag_secs = 5
+health_max_lag_secs = 60    # 503 when now - latest block timestamp exceeds this
 request_timeout = 30        # seconds
 
 [api.tls]

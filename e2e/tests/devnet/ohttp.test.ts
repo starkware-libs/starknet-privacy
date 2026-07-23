@@ -85,8 +85,6 @@ describe("E2E OHTTP", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     // Discover notes via OHTTP — if this works, the full encrypt/decrypt pipeline is correct
@@ -121,8 +119,6 @@ describe("E2E OHTTP", () => {
       ),
       discoveryProvider: ohttpDiscovery,
       poolContractAddress: de.privacy.address,
-      // Source-built devnet pool screens deposits — drive it in screening mode with signed attestations.
-      poolMode: "screening",
     });
 
     const { notes: bobNotes } = await bobOhttp.discoverNotes();

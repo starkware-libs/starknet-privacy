@@ -4,31 +4,32 @@
 
 `GET /health`
 
+Reports whether the indexer is caught up enough to serve reads. The HTTP status
+code mirrors the JSON `status`, so readiness probes and uptime monitors can key
+on the status code alone without parsing the body.
+
 **Returns:**
 
 ```json
 {
-  "status": "healthy",
-  "indexed_head": {
+  "status": "OK",
+  "chain_head": {
     "block_number": 123456,
     "block_hash": "0x...",
     "timestamp": 1704067200
   },
-  "chain_head": {
-    "block_number": 123457,
-    "block_hash": "0x..."
-  },
-  "blocks_behind": 1,
-  "rpc_status": "healthy",
-  "backfill_in_progress": false
+  "lag_secs": 1
 }
 ```
 
-**Status values:**
+- `status` — `"OK"` or `"UNHEALTHY"`.
+- `chain_head` — the most recently indexed block; omitted when nothing has been indexed yet.
+- `lag_secs` — seconds between `chain_head.timestamp` and now; `0` when no head is indexed.
 
-- `healthy` - Indexer is within acceptable lag.
-- `degraded` - Indexer is behind but operational.
-- `unhealthy` - Indexer is significantly behind or RPC is unavailable.
+**HTTP status codes:**
+
+- `200 OK` — `status: "OK"`. A chain head is indexed and its lag is within `health_max_lag_secs`.
+- `503 SERVICE_UNAVAILABLE` — `status: "UNHEALTHY"`. Either the indexed head's lag exceeds `health_max_lag_secs`, or no block has been indexed yet.
 
 ## 16.2 Status Endpoint
 

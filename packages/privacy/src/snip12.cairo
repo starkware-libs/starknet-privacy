@@ -22,9 +22,9 @@ const DEPOSITOR_VALIDATION_TYPE_HASH: felt252 = selector!(
 );
 
 #[derive(Copy, Drop, Hash)]
-pub(crate) struct DepositorValidation {
-    pub(crate) depositor: ContractAddress,
-    pub(crate) issued_at: u64,
+struct DepositorValidation {
+    depositor: ContractAddress,
+    issued_at: u64,
 }
 
 /// Off-chain screening attestation relayed into `apply_actions` for deposits.
@@ -48,8 +48,9 @@ pub struct ScreeningAttestation {
 pub fn is_screening_attestation_valid(
     depositor: ContractAddress, attestation: ScreeningAttestation, signer_public_key: felt252,
 ) -> bool {
-    let validation = DepositorValidation { depositor, issued_at: attestation.issued_at };
-    let message_hash = compute_screening_message_hash(@validation, signer_public_key);
+    let message_hash = compute_screening_message_hash(
+        :depositor, issued_at: attestation.issued_at, signer: signer_public_key,
+    );
     let (r, s) = attestation.signature;
     check_ecdsa_signature(message_hash, signer_public_key, r, s)
 }
@@ -71,14 +72,16 @@ fn snip12_message_hash(
         .finalize()
 }
 
-/// SNIP-12 off-chain message hash for a `DepositorValidation`.
+/// SNIP-12 off-chain message hash for the `DepositorValidation { depositor, issued_at }` typed
+/// message.
 ///
 /// `signer` is the trusted signer's STARK-curve public key (felt252). Exposed so off-chain tooling
 /// (TS/Python reference signers, test-vector generators) can derive the exact hash the verifier
 /// will check against.
 pub(crate) fn compute_screening_message_hash(
-    validation: @DepositorValidation, signer: felt252,
+    depositor: ContractAddress, issued_at: u64, signer: felt252,
 ) -> felt252 {
+    let validation = DepositorValidation { depositor, issued_at };
     snip12_message_hash(
         SCREENING_SNIP12_NAME, SCREENING_SNIP12_VERSION, signer, validation.hash_struct(),
     )
@@ -93,14 +96,18 @@ impl DepositorValidationStructHashImpl of StructHash<DepositorValidation> {
     }
 }
 
+
 // SNIP-12 type hash `CallSet`.
+// `AdditionalData` carries opaque extra data (e.g. a nonce) bound into the signed message.
+// The privacy pool passes it empty.
 const CALL_SET_TYPE_HASH: felt252 = selector!(
-    "\"CallSet\"(\"Calls\":\"Call*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
+    "\"CallSet\"(\"Calls\":\"Call*\",\"AdditionalData\":\"felt*\")\"Call\"(\"To\":\"ContractAddress\",\"Selector\":\"selector\",\"Calldata\":\"felt*\")",
 );
 
 #[derive(Drop)]
 pub(crate) struct CallSet {
     pub(crate) calls: Span<Call>,
+    pub(crate) additional_data: Span<felt252>,
 }
 
 impl CallSetStructHashImpl of StructHash<CallSet> {
@@ -112,6 +119,7 @@ impl CallSetStructHashImpl of StructHash<CallSet> {
         PoseidonTrait::new()
             .update_with(CALL_SET_TYPE_HASH)
             .update_with(poseidon_hash_span(hashed_calls.span()))
+            .update_with(poseidon_hash_span(*self.additional_data))
             .finalize()
     }
 }
@@ -119,11 +127,14 @@ impl CallSetStructHashImpl of StructHash<CallSet> {
 /// SNIP-12 off-chain message hash for a `CallSet` authorized by `signer` (the depositor account
 /// address — the SNIP-12 envelope binds the signing account, matching starknet.js
 /// `typedData.getMessageHash(td, accountAddress)`). The off-chain golden oracle for the SDK.
-pub(crate) fn compute_call_set_hash(signer: ContractAddress, calls: Span<Call>) -> felt252 {
+/// `additional_data` is opaque extra data bound into the message (empty for the pool's own path).
+pub(crate) fn compute_call_set_hash(
+    signer: ContractAddress, calls: Span<Call>, additional_data: Span<felt252>,
+) -> felt252 {
     snip12_message_hash(
         CALL_SET_SNIP12_NAME,
         CALL_SET_SNIP12_VERSION,
         signer.into(),
-        CallSet { calls }.hash_struct(),
+        CallSet { calls, additional_data }.hash_struct(),
     )
 }

@@ -8,7 +8,6 @@ on:
 jobs:
   test:
     uses: ./.github/workflows/test.yaml
-    secrets: inherit
 
   notify-slack:
     needs: test
@@ -17,4 +16,5 @@ jobs:
     with:
       context_title: "main branch"
       failed_job_name: "test"
-    secrets: inherit
+    secrets:
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}

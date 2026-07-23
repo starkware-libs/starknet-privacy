@@ -36,7 +36,7 @@ use privacy::objects::{
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
-use privacy::snip12::{DepositorValidation, ScreeningAttestation, compute_screening_message_hash};
+use privacy::snip12::{ScreeningAttestation, compute_screening_message_hash};
 use privacy::test_contracts::mock_amm::MockAMM::deploy_for_test as deploy_mock_amm_for_test;
 use privacy::test_contracts::mock_swap_executor::MockSwapExecutor::deploy_for_test as deploy_mock_swap_executor_for_test;
 use privacy::test_contracts::mock_swap_executor::{
@@ -46,6 +46,7 @@ use privacy::test_contracts::mock_swap_executor::{
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
 use privacy::tests::mock_invoke_returns::MockCompute::deploy_for_test as deploy_mock_compute_for_test;
+use privacy::tests::mock_invoke_returns::MockComputeArray::deploy_for_test as deploy_mock_compute_array_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeEmpty::deploy_for_test as deploy_mock_compute_empty_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::deploy_for_test as deploy_mock_compute_multi_felt_for_test;
 use privacy::tests::mock_invoke_returns::MockEcho::deploy_for_test as deploy_mock_echo_for_test;
@@ -1297,7 +1298,7 @@ pub(crate) impl TestImpl of TestTrait {
         }
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
-        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid);
+        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid, public_key: 0);
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
@@ -1988,8 +1989,9 @@ pub(crate) fn sign_screening_attestation(
 pub(crate) fn sign_screening_attestation_with(
     key_pair: StarkCurveKeyPair, depositor: ContractAddress, issued_at: u64,
 ) -> ScreeningAttestation {
-    let validation = DepositorValidation { depositor, issued_at };
-    let message_hash = compute_screening_message_hash(@validation, key_pair.public_key);
+    let message_hash = compute_screening_message_hash(
+        :depositor, :issued_at, signer: key_pair.public_key,
+    );
     let signature = key_pair.sign(message_hash).unwrap();
     ScreeningAttestation { issued_at, signature }
 }
@@ -2196,15 +2198,18 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 }
 
 /// Deploy a depositor account with custom-signature-validation.
-/// `is_valid` controls the signature validation result.
-pub(crate) fn deploy_mock_custom_account(salt: felt252, is_valid: bool) -> ContractAddress {
+/// `is_valid` controls the custom-validation verdict; `public_key` is the key its raw-hash
+/// `is_valid_signature` verifies against (0 disables that path).
+pub(crate) fn deploy_mock_custom_account(
+    salt: felt252, is_valid: bool, public_key: felt252,
+) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockCustomAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_custom_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :is_valid,
+        class_hash: *contract_class_hash, :deployment_params, :is_valid, :public_key,
     )
         .expect('MockCustomAccount deploy failed');
     contract_address
@@ -2308,6 +2313,21 @@ pub(crate) fn deploy_mock_compute_multi_felt() -> ContractAddress {
         class_hash: *class_hash, :deployment_params,
     )
         .expect('MOCK_COMPUTE_MULTI_DEPLOY_FAIL');
+    contract_address
+}
+
+/// Deploys a `MockComputeArray` target, whose `privacy_compute` takes no `compute_additional_data`
+/// and returns an `Array<felt252>` (a length-prefixed `compute_result`).
+pub(crate) fn deploy_mock_compute_array() -> ContractAddress {
+    let class_hash = declare(contract: "MockComputeArray")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_compute_array_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('MOCK_COMPUTE_ARRAY_DEPLOY_FAIL');
     contract_address
 }
 

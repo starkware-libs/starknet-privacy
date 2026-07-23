@@ -42,7 +42,8 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
   constructor(
     userAddress: StarknetAddress,
     protected readonly viewingKeyProvider: ViewingKeyProvider,
-    protected readonly discoveryProvider: DiscoveryProviderInterface
+    protected readonly discoveryProvider: DiscoveryProviderInterface,
+    protected readonly subAccountAnonymizerAddress?: StarknetAddress
   ) {
     this.user = toBigInt(userAddress);
   }
@@ -99,7 +100,10 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    * Create a builder for batching multiple operations
    */
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
-    return new PrivateTransfersBuilderImpl(this, this.user, options);
+    return new PrivateTransfersBuilderImpl(this, this.user, options, {
+      anonymizerAddress: this.subAccountAnonymizerAddress,
+      getViewingKey: () => this.getViewingKey(),
+    });
   }
 
   /**

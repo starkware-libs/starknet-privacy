@@ -234,6 +234,21 @@ export type InvokeAction = {
   callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails;
 };
 
+/**
+ * Result of a `computeAndInvoke` call builder.
+ * `computeAdditionalData` is forwarded to the target's `privacy_compute` (after the derived identity key);
+ * `invokeAdditionalData` is forwarded to its `privacy_invoke_with_computation` (after the compute result).
+ */
+export type ComputeAndInvokeDetails = {
+  contractAddress: string;
+  computeAdditionalData?: CallDetails["calldata"];
+  invokeAdditionalData?: CallDetails["calldata"];
+};
+
+export type ComputeAndInvokeAction = {
+  callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails;
+};
+
 /** Actions - context comes from registry */
 export type Actions = {
   setViewingKey?: SetViewingKeyAction;
@@ -245,6 +260,7 @@ export type Actions = {
   withdraws?: WithdrawAction[];
   surpluses?: SurplusAction[];
   invoke?: InvokeAction;
+  computeAndInvoke?: ComputeAndInvokeAction;
 };
 
 // ============ Auto-Discovery & Registry Types ============
@@ -500,6 +516,51 @@ export interface PrivateTransfersInterface {
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
 
+/** A sub-account: its `nonce` for the dapp and the deployed `address`. */
+export type SubAccount = { nonce: number; address: StarknetAddressBigint };
+
+/**
+ * How much of the sub-account's balance a settled open note collects, per the anonymizer's
+ * `CollectPolicy`: `all` — the sub-account's entire token balance; `diff` — only the balance gained
+ * during this interaction; `exact` — the given amount. A single policy applies to every open note
+ * settled by a {@link SubAccountsBuilder.invoke}.
+ */
+export type CollectPolicy = { type: "all" } | { type: "diff" } | { type: "exact"; amount: Amount };
+
+/**
+ * Sub-account operations for one user + dapp, driven through the sub-account anonymizer contract.
+ * Each `nonce` maps to a distinct, deterministic sub-account address.
+ */
+export interface SubAccountsBuilder {
+  /**
+   * Return the nonce-independent commitment for this user + dapp:
+   * `hash(identity_key, dappName)`.
+   *
+   * Computed locally in TypeScript; does not call the anonymizer contract.
+   */
+  partialCommitment(): Promise<bigint>;
+
+  /**
+   * Return the full sub-account commitment for `nonce`:
+   * `hash(partialCommitment(), nonce)`.
+   *
+   * Computed locally in TypeScript; does not call the anonymizer contract.
+   */
+  commitment(nonce: BigNumberish): Promise<bigint>;
+
+  /**
+   * Queue a `computeAndInvoke` against the sub-account for `nonce`: run `calls` through it and
+   * settle the proceeds into the open notes created in the same transaction. `collectPolicy` (one
+   * policy for all of the transaction's open notes; default `{ type: "all" }`) selects how much of
+   * the sub-account's balance each note collects. Returns the builder so the caller can add the
+   * open-note creation (e.g. `.with(token).transfer({ recipient, amount: Open })`) and `.execute()`.
+   */
+  invoke(
+    nonce: BigNumberish,
+    options: { calls: Call[]; collectPolicy?: CollectPolicy }
+  ): PrivateTransfersBuilder;
+}
+
 // ============ Builder Types ============
 
 /**
@@ -647,6 +708,23 @@ export interface PrivateTransfersBuilder {
 
   /** Add a call to `privacy_invoke` entrypoint that will run on starknet after the private operations are executed */
   invoke(callBuilder: (args: InvokeCalldataBuilderArgs) => CallDetails): this;
+
+  /**
+   * Add a `privacy_invoke_with_computation` call that runs on starknet after the private
+   * operations: the pool first queries the target's `privacy_compute` (with the derived
+   * identity key and `computeAdditionalData`), then invokes it with the compute result and `invokeAdditionalData`.
+   * Mutually exclusive with `invoke` — at most one invoke-phase action per transaction.
+   */
+  computeAndInvoke(callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails): this;
+
+  /**
+   * Sub-account operations scoped to a single dapp.
+   *
+   * `dappName` scopes the derived sub-accounts to one dapp (a felt; a plain string is encoded as a
+   * Cairo short string). Requires `subAccountAnonymizerAddress` in the factory config; throws
+   * otherwise.
+   */
+  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
 
   /**
    * Set the default recipient for any surplus across all tokens.

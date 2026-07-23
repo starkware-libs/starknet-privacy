@@ -14,14 +14,17 @@ use privacy::objects::{EncSubchannelInfo, EncUserAddr, OpenNoteDeposit};
 use privacy::snip12::compute_call_set_hash;
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::mock_invoke_returns::MockCompute::COMPUTE_PANIC;
-use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::COMPUTED_MARKER;
+use privacy::tests::mock_invoke_returns::MockComputeMultiFelt::{
+    COMPUTED_MARKER_1, COMPUTED_MARKER_2,
+};
 use privacy::tests::mock_invoke_returns::{IMockComputeDispatcher, IMockComputeDispatcherTrait};
 use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
-    deploy_mock_compute, deploy_mock_compute_empty, deploy_mock_compute_multi_felt,
-    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_stark_account,
+    deploy_mock_compute, deploy_mock_compute_array, deploy_mock_compute_empty,
+    deploy_mock_compute_multi_felt, deploy_mock_custom_account, deploy_mock_reentrancy,
+    deploy_mock_return_garbage, deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
     ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
@@ -3102,8 +3105,9 @@ fn test_create_open_note_decrypt_recipient_addr() {
     // Auditor should be able to decrypt the sender address from the OpenNoteCreated event.
     let events = spy_events.get_events().emitted_by(contract_address: test.privacy.address).events;
     // events[0]: OpenNoteCreated from apply_actions.
-    // events[1]: OpenNoteDeposited from apply_actions.
-    assert_eq!(events.len(), 2);
+    // events[1]: ExternalContractInvoked from the invoke that fills the open note.
+    // events[2]: OpenNoteDeposited from apply_actions.
+    assert_eq!(events.len(), 3);
     let (_, event) = events[0];
     let enc_recipient_addr = EncUserAddr {
         auditor_public_key: *event.data[0],
@@ -3677,7 +3681,7 @@ fn test_execute_use_note_swap() {
     assert_eq!(token.balance_of(address: test.privacy.swap_executor.address), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.mock_amm), amount.into());
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 4);
+    assert_eq!(events.len(), 5);
     assert_expected_event_emitted(
         spied_event: events[0],
         expected_event: events::NoteUsed { nullifier },
@@ -3707,11 +3711,20 @@ fn test_execute_use_note_swap() {
         expected_event_selector: @selector!("Withdrawal"),
         expected_event_name: "Withdrawal",
     );
+    let expected_event_external_invoke = events::ExternalContractInvoked {
+        contract_address: test.privacy.swap_executor.address, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events[3],
+        expected_event: expected_event_external_invoke,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
     let expected_event_deposit_to_open_note = events::OpenNoteDeposited {
         depositor: test.privacy.swap_executor.address, token: out_token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: events[3],
+        spied_event: events[4],
         expected_event: expected_event_deposit_to_open_note,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -5124,7 +5137,7 @@ fn test_execute_create_open_note() {
     test.privacy.apply_actions(:actions);
     assert_eq!(test.privacy.get_note(:note_id), expected_note);
     let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 2);
+    assert_eq!(events.len(), 3);
     let expected_event = events::OpenNoteCreated {
         enc_recipient_addr: user_2.compute_enc_user_addr(random: random.into()),
         token: token_addr,
@@ -5136,12 +5149,21 @@ fn test_execute_create_open_note() {
         expected_event_selector: @selector!("OpenNoteCreated"),
         expected_event_name: "OpenNoteCreated",
     );
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: test.privacy.echo_executor, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
     // Assert that the other event was OpenNoteFilled.
     let expected_deposited_event = events::OpenNoteDeposited {
         depositor: test.privacy.echo_executor, token: token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: events[1],
+        spied_event: events[2],
         expected_event: expected_deposited_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -5536,7 +5558,7 @@ fn test_swap_client_action() {
 
     // Verify events were properly emitted.
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 4);
+    assert_eq!(emitted_events.len(), 5);
 
     // Verify NoteUsed event (nullifier recorded).
     let nullifier = user.compute_nullifier(sender: user, token_addr: in_token_addr, index: 0);
@@ -5581,6 +5603,17 @@ fn test_swap_client_action() {
         expected_event_name: "Withdrawal",
     );
 
+    // Verify ExternalContractInvoked event (the pool invoked the swap executor via privacy_invoke).
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: swap_executor_addr, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[3],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
+
     // Verify OpenNoteDeposited event (output tokens deposited to open note).
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: swap_executor_addr,
@@ -5589,7 +5622,7 @@ fn test_swap_client_action() {
         amount: swap_amount,
     };
     assert_expected_event_emitted(
-        spied_event: emitted_events[3],
+        spied_event: emitted_events[4],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -5936,10 +5969,65 @@ fn test_compute_and_invoke_assembles_empty_compute_and_multi_felt_result() {
     );
     let expected = ServerAction::InvokeWithComputation(
         InvokeInput {
-            contract_address: mock, calldata: [identity_key, COMPUTED_MARKER, 'INVOKE'].span(),
+            contract_address: mock,
+            calldata: [COMPUTED_MARKER_1, identity_key, COMPUTED_MARKER_2, 'INVOKE'].span(),
         },
     );
     assert_eq!(*actions[actions.len() - 1], expected);
+}
+
+#[test]
+fn test_compute_and_invoke_assembles_multi_felt_result() {
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_multi_felt();
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: [].span(),
+        invoke_additional_data: [].span(),
+    };
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+    // Test invoke_with_computation gets the correct calldata.
+    test.privacy.apply_actions(:actions);
+}
+
+#[test]
+fn test_compute_and_invoke_assembles_array_result() {
+    // Full client -> server round-trip against a mock that serdes `Array<felt252>` on both legs.
+    let mut test: Test = Default::default();
+    let mut user = test.new_user();
+    let random = user.get_random();
+
+    let mock = deploy_mock_compute_array();
+    let compute_input = array![1, 2].span();
+    let mut compute_additional_data = array![];
+    compute_input.serialize(ref compute_additional_data);
+    let invoke_input = array![3, 4].span();
+    let mut invoke_additional_data = array![];
+    invoke_input.serialize(ref invoke_additional_data);
+
+    let compute_and_invoke_input = ComputeAndInvokeInput {
+        contract_address: mock,
+        compute_additional_data: compute_additional_data.span(),
+        invoke_additional_data: invoke_additional_data.span(),
+    };
+    // SetViewingKey provides the WriteOnce replay protection the batch requires.
+    let client_actions = [
+        ClientAction::SetViewingKey(SetViewingKeyInput { random }),
+        ClientAction::ComputeAndInvoke(compute_and_invoke_input),
+    ]
+        .span();
+
+    let actions = user.execute(:client_actions);
+    test.privacy.apply_actions(:actions);
 }
 
 #[test]
@@ -5996,10 +6084,10 @@ fn test_compute_and_invoke_e2e_with_mock_deposits_to_open_note() {
     assert_eq!(token.balance_of(address: mock), Zero::zero());
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 
-    // apply_actions emits OpenNoteCreated (from CreateOpenNote) then OpenNoteDeposited (from the
-    // InvokeWithComputation deposit, with the invoke target as depositor).
+    // apply_actions emits OpenNoteCreated (from CreateOpenNote), then ExternalContractInvoked and
+    // OpenNoteDeposited (from the InvokeWithComputation, with the invoke target as depositor).
     let emitted_events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(emitted_events.len(), 2);
+    assert_eq!(emitted_events.len(), 3);
     let expected_create_event = events::OpenNoteCreated {
         enc_recipient_addr: encrypt_user_addr(
             ephemeral_secret: create_note_input.random,
@@ -6015,11 +6103,20 @@ fn test_compute_and_invoke_e2e_with_mock_deposits_to_open_note() {
         expected_event_selector: @selector!("OpenNoteCreated"),
         expected_event_name: "OpenNoteCreated",
     );
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: mock, selector: selector!("privacy_invoke_with_computation"),
+    };
+    assert_expected_event_emitted(
+        spied_event: emitted_events[1],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: mock, token: token_addr, note_id, amount,
     };
     assert_expected_event_emitted(
-        spied_event: emitted_events[1],
+        spied_event: emitted_events[2],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -6388,7 +6485,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         .get_events()
         .emitted_by(contract_address: test.privacy.address)
         .events;
-    assert_eq!(events_after.len(), 4);
+    assert_eq!(events_after.len(), 5);
     assert_expected_event_emitted(
         spied_event: events_after[0],
         expected_event: events::NoteUsed { nullifier },
@@ -6415,6 +6512,15 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         expected_event_selector: @selector!("Withdrawal"),
         expected_event_name: "Withdrawal",
     );
+    let expected_external_invoke_event = events::ExternalContractInvoked {
+        contract_address: swap_executor_addr, selector: selector!("privacy_invoke"),
+    };
+    assert_expected_event_emitted(
+        spied_event: events_after[3],
+        expected_event: expected_external_invoke_event,
+        expected_event_selector: @selector!("ExternalContractInvoked"),
+        expected_event_name: "ExternalContractInvoked",
+    );
     let expected_deposit_event = events::OpenNoteDeposited {
         depositor: swap_executor_addr,
         token: out_token_addr,
@@ -6422,7 +6528,7 @@ fn test_invoke_external_swap_doesnt_execute_during_execute() {
         amount: swap_amount,
     };
     assert_expected_event_emitted(
-        spied_event: events_after[3],
+        spied_event: events_after[4],
         expected_event: expected_deposit_event,
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
@@ -6482,8 +6588,9 @@ fn test_deposit_custom_account_valid() {
     assert!(result.is_ok());
 }
 
-/// A capable account whose `is_custom_signature_valid` returns 0 must hard-fail with
-/// INVALID_SIGNATURE — no silent fallback to the legacy raw-hash check.
+/// A custom-capable account whose `is_custom_signature_valid` returns 0 rejects: its raw-hash
+/// `is_valid_signature` is disabled (`public_key` 0), so none of the three checks accept and the
+/// deposit fails with INVALID_SIGNATURE.
 #[test]
 fn test_deposit_custom_account_rejected() {
     let mut test: Test = Default::default();
@@ -6491,6 +6598,63 @@ fn test_deposit_custom_account_rejected() {
     let random = user.get_random();
     let result = user.safe_set_viewing_key(:random);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+}
+
+/// Fallback path: a custom-capable account whose `is_custom_signature_valid` rejects can still
+/// authenticate via a valid standard signature. Custom validation returns 0, but the account holds
+/// `key` and the wallet signs the SNIP-12 `CallSet` message, so check III accepts.
+#[test]
+fn test_deposit_custom_account_custom_fails_but_call_set_sig_passes() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 11, is_valid: false, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_FALLBACK_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "custom rejection must fall through to a valid CallSet signature");
+    stop_cheat_chain_id_global();
+}
+
+/// A custom-capable account where custom validation rejects AND the standard signature is over the
+/// wrong message must fail all three checks and revert with INVALID_SIGNATURE.
+#[test]
+fn test_deposit_custom_account_all_checks_fail_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 12, is_valid: false, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_FALLBACK_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty) — matches neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
 }
 
 /// A legacy SN wallet that signs the SNIP-12 `CallSet` message (not the tx hash).
@@ -6514,7 +6678,7 @@ fn test_deposit_legacy_sn_wallet_via_snip12_call_set() {
         );
 
     // The wallet signs the SNIP-12 CallSet message over exactly these calls.
-    let hash = compute_call_set_hash(depositor, calls.span());
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6539,7 +6703,7 @@ fn test_deposit_legacy_sn_wallet_wrong_call_set_reverts() {
         );
 
     // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
-    let wrong_hash = compute_call_set_hash(depositor, [].span());
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
     let (r, s) = key.sign(wrong_hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
@@ -6568,7 +6732,7 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
             user_addr: depositor, user_private_key: 'NO_SRC5_PROTOCOL_PK', :client_actions,
         );
 
-    let hash = compute_call_set_hash(depositor, calls.span());
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
     let (r, s) = key.sign(hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());
 

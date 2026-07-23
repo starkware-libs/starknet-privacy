@@ -13,7 +13,6 @@ import type {
   PrivateTransfersUser,
 } from "./interfaces.js";
 import { PrivateTransfers } from "./internal/private-transfers.js";
-import type { PoolCapabilityMode } from "./internal/pool-mode.js";
 import {
   ProofInvocationFactory,
   type ProofInvocationFactoryInterface,
@@ -49,10 +48,10 @@ export interface CreatePrivateTransfersParams {
   discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
   poolContractAddress: StarknetAddress;
   /**
-   * Overrides class-hash pool-mode detection — for pools whose class hash
-   * isn't pinned in the SDK (e.g. source-built devnet/test pools).
+   * Sub-account anonymizer contract address. Required for `subaccounts(...)`: the contract the
+   * `ComputeAndInvoke` flow targets and whose views resolve sub-account addresses.
    */
-  poolMode?: PoolCapabilityMode;
+  subAccountAnonymizerAddress?: StarknetAddress;
 }
 
 /**
@@ -116,6 +115,6 @@ export function createPrivateTransfers(
     discoveryProvider,
     proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
     poolContractAddress: params.poolContractAddress,
-    poolMode: params.poolMode,
+    subAccountAnonymizerAddress: params.subAccountAnonymizerAddress,
   });
 }

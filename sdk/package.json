@@ -1,6 +1,6 @@
 {
   "name": "@starkware-libs/starknet-privacy-sdk",
-  "version": "0.14.3-rc.1",
+  "version": "0.14.3-rc.4",
   "description": "TypeScript SDK for private transfers on Starknet — deposit, transfer, withdraw, and discover notes via a fluent builder API",
   "repository": {
     "type": "git",
@@ -41,11 +41,12 @@
   "scripts": {
     "scarb:build": "cd .. && scarb cache clean && scarb build --features test_contracts",
     "generate:abi": "npx tsx scripts/generate-abi.ts",
+    "generate:anonymizer-abi": "npx tsx scripts/generate-anonymizer-abi.ts",
     "generate:client-actions": "npx tsx scripts/generate-client-actions.ts",
     "generate:cairo-hashes": "npx tsx scripts/generate-hashes.ts && prettier --write src/utils/hashes.ts",
     "generate:pool-interface": "npx tsx scripts/generate-pool-interface.ts",
     "generate:cairo-refs": "cd .. && scarb test -p privacy -- --color always generate_reference --include-ignored 2>&1 | tee target/cairo-refs-output.txt && cd sdk && npx tsx scripts/generate-cairo-refs.ts ../target/cairo-refs-output.txt",
-    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:client-actions && npm run generate:cairo-hashes && npm run generate:pool-interface && npm run generate:cairo-refs",
+    "generate": "npm run scarb:build && npm run generate:abi && npm run generate:anonymizer-abi && npm run generate:client-actions && npm run generate:cairo-hashes && npm run generate:pool-interface && npm run generate:cairo-refs",
     "build": "tsc -p tsconfig.build.json",
     "build:browser": "npx tsx scripts/build-browser.ts",
     "lint": "prettier --check src/ tests/ && eslint src/ tests/ && tsc --noEmit -p tsconfig.build.json",

@@ -39,6 +39,7 @@ import {
   compute_note_id,
   compute_nullifier,
   compute_outgoing_channel_id,
+  compute_identity_key,
 } from "../utils/hashes.js";
 
 import { toHex } from "../utils/convert.js";
@@ -95,8 +96,8 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   private nullifiers = new Set<Hash>();
   private outgoingChannels = new Map<bigint, EncOutgoingChannelInfo>();
   private outgoingChannelCounters = new AddressMap<number>(() => 0);
-  // Class hash this mock pool is "deployed" under; heads the proof payload so
-  // tests can drive the SDK's class-hash pool-mode detection.
+  // Class hash this mock pool is "deployed" under; heads the proof payload,
+  // where the SDK strips it before building apply_actions calldata.
   classHash = "0x0";
 
   // Allow dynamic access for MockContract interface
@@ -307,11 +308,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
   /**
    * Apply server actions to mutate state.
    *
-   * Mirrors the on-chain calldata shape. Against a screening-capable pool the
-   * action span is followed by a Serde-encoded Option<ScreeningAttestation> —
-   * [0x1] when absent, [0x0, issued_at, sig_r, sig_s] when present (Cairo's
-   * Option Serde: Some=0, None=1). Against the current pool there is no suffix
-   * at all (compatibility mode).
+   * Mirrors the on-chain calldata shape: the action span is followed by a
+   * Serde-encoded Option<ScreeningAttestation> — [0x1] when absent,
+   * [0x0, issued_at, sig_r, sig_s] when present (Cairo's Option Serde:
+   * Some=0, None=1).
    */
   apply_actions(calldata: string[]): void {
     const actionCount = this.serverActions.length;
@@ -325,11 +325,10 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     this.serverActions = [];
 
     const screeningSuffix = calldata.slice(actionCount);
-    const isCompatibility = screeningSuffix.length == 0;
     const isNoneAttestation = screeningSuffix.length == 1 && screeningSuffix[0] == "0x1";
     const isSomeAttestation = screeningSuffix.length == 4 && screeningSuffix[0] == "0x0";
     assert(
-      isCompatibility || isNoneAttestation || isSomeAttestation,
+      isNoneAttestation || isSomeAttestation,
       () => `Malformed screening attestation suffix: [${screeningSuffix.join(", ")}]`
     );
   }
@@ -572,6 +571,17 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
       case "InvokeExternal":
         return [this.invoke(action.input.contract_address, action.input.calldata as bigint[])];
+
+      case "ComputeAndInvoke":
+        return [
+          this.computeAndInvoke(
+            sender,
+            privateKey,
+            action.input.contract_address,
+            action.input.compute_additional_data as bigint[],
+            action.input.invoke_additional_data as bigint[]
+          ),
+        ];
 
       default:
         throw new Error(`Unsupported action type in mock: ${(action as ClientAction).type}`);
@@ -853,6 +863,42 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
       apply: () => {
         const entrypoint = "privacy_invoke";
         this.contracts.call(contractAddress, entrypoint, calldata);
+      },
+      deferred: true,
+    };
+  }
+
+  // Mirrors Cairo's `compute_and_invoke`: query the target's `privacy_compute` with the derived
+  // identity key and `computeAdditionalData`, then forward its result followed by `invokeAdditionalData` to
+  // `privacy_invoke_with_computation`.
+  private computeAndInvoke(
+    sender: StarknetAddressBigint,
+    privateKey: bigint,
+    contractAddress: StarknetAddressBigint,
+    computeAdditionalData: bigint[],
+    invokeAdditionalData: bigint[]
+  ): MockServerAction {
+    return {
+      type: "ComputeAndInvoke",
+      apply: () => {
+        const identityKey = compute_identity_key(
+          toBigInt(sender),
+          privateKey,
+          toBigInt(contractAddress)
+        );
+        const computed = this.contracts.call(contractAddress, "privacy_compute", [
+          identityKey,
+          ...computeAdditionalData,
+        ]);
+        assert(
+          computed !== undefined,
+          () => `Mock privacy_compute at ${toHex(contractAddress)} returned undefined`
+        );
+        const computedFelts = (Array.isArray(computed) ? computed : [computed]).map(toBigInt);
+        this.contracts.call(contractAddress, "privacy_invoke_with_computation", [
+          ...computedFelts,
+          ...invokeAdditionalData,
+        ]);
       },
       deferred: true,
     };

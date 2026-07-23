@@ -1,4 +1,9 @@
-import { Account, RpcProvider } from "starknet";
+import {
+  Account,
+  RpcProvider,
+  TransactionFinalityStatus,
+  type waitForTransactionOptions,
+} from "starknet";
 import {
   createPrivateTransfers,
   ProvingServiceProofProvider,
@@ -17,6 +22,16 @@ import { NoValidateProofProvider } from "./proof-provider.ts";
  */
 export const STRK_TOKEN_ADDRESS =
   "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+
+/** Must include the ACCEPTED_ON_L* states, else a tx skipping PRE_CONFIRMED is polled forever. */
+export const WAIT_OPTIONS: waitForTransactionOptions = {
+  successStates: [
+    TransactionFinalityStatus.PRE_CONFIRMED,
+    TransactionFinalityStatus.ACCEPTED_ON_L2,
+    TransactionFinalityStatus.ACCEPTED_ON_L1,
+  ],
+  retryInterval: 100,
+};
 
 export function createDiscoveryProvider(
   config: AppConfig,
