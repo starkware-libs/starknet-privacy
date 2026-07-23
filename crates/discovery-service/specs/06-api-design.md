@@ -352,6 +352,8 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - An account whose most-recent note is far behind chain head no longer fails with an oversized single charge; the wide gap is traversed across pages with forward progress, so the request returns `200` and the cursor advances.
 - A page may therefore return **few or zero transactions** while still advancing `begin_block_number` through a long stretch with no activity. Clients must keep paginating until `history_complete` is `true` rather than treating an empty page as the end.
 - The gap window is always strictly **above** the note block it anchors, so a withdrawal in a note's own block is attributed once (via that block's events) and never re-scanned by a later page's gap.
+- One gap window can attach every withdrawal it contains at once, so a page covering a withdrawal-dense range may return **more than `max_transactions`** transactions. `max_transactions` is a per-page target, not a hard cap on a single page's size.
+- A page that can make **no** forward progress (the budget covers neither a gap chunk nor the next note step) returns `500 INTERNAL_ERROR` rather than an endless stream of empty `200`s. This only occurs when `server_budget` is set too low for the account's per-request cost (e.g. many subchannels); raise `server_budget`.
 
 **Validation limits:**
 
