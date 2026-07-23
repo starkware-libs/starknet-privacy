@@ -1,6 +1,7 @@
 export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
+export { SubAccountAnonymizerABI } from "./internal/anonymizer-abi.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
 export {
   ProvingService,

@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
 import { ec, num, shortString, stark } from "starknet";
-import { Mocknet } from "../../src/testing/index.js";
-import { createPrivateTransfers } from "../../src/index.js";
-import { MockProofProvider } from "../../src/testing/index.js";
-import { ContractDiscoveryProvider } from "../../src/testing/index.js";
+import { Mocknet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
+import { MockProofProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { ContractDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
   Snip12CallSetSigner,
   computeCallSetHash,

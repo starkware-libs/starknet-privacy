@@ -1,0 +1,62 @@
+{
+  "name": "@starkware-libs/starknet-privacy-client",
+  "version": "0.1.0",
+  "description": "Dapp client for Starknet privacy — resolve sub-accounts, sign via Starknet/EVM wallets, and build privacy operations over the privacy SDK",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/starkware-libs/starknet-privacy.git",
+    "directory": "client"
+  },
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./signers": {
+      "import": "./dist/signers/index.js",
+      "types": "./dist/signers/index.d.ts"
+    }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "lint": "prettier --check src/ tests/ && eslint src/ tests/ && tsc --noEmit -p tsconfig.build.json",
+    "format": "prettier --write src/ tests/ && eslint --fix src/ tests/",
+    "test": "vitest run",
+    "check": "npm run build && npm run lint && npm run test",
+    "clean": "rm -rf dist",
+    "prepack": "node scripts/publish-sdk-dep.mjs pin",
+    "postpack": "node scripts/publish-sdk-dep.mjs restore"
+  },
+  "keywords": [
+    "starknet",
+    "privacy",
+    "client",
+    "typescript"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@noble/curves": "^1.7.0",
+    "@noble/hashes": "^1.6.0",
+    "@starkware-libs/starknet-privacy-sdk": "file:../sdk",
+    "starknet": "^10.0.0-beta.6"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.2",
+    "@types/node": "^24.10.1",
+    "eslint": "^9.39.2",
+    "prettier": "^3.7.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.51.0",
+    "vitest": "^4.0.15"
+  }
+}

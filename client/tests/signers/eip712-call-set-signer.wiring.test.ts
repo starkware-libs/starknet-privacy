@@ -1,18 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { num, stark } from "starknet";
-import { Mocknet } from "../../src/testing/index.js";
-import { createPrivateTransfers } from "../../src/index.js";
-import { MockProofProvider } from "../../src/testing/index.js";
-import { ContractDiscoveryProvider } from "../../src/testing/index.js";
+import { Mocknet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
+import { MockProofProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
+import { ContractDiscoveryProvider } from "@starkware-libs/starknet-privacy-sdk/testing";
 import {
-  Eip712CallSetSigner,
+  Eip712HashSigner,
   computeCallSet712Hash,
   secp256k1SignFn,
 } from "../../src/signers/eip712-call-set-signer.js";
 
 const POOL_ADDRESS = 0x1n;
 
-describe("Eip712CallSetSigner wiring", () => {
+describe("Eip712HashSigner wiring", () => {
   it("flows through createPrivateTransfers and emits the 6-felt CallSet signature", async () => {
     const mocknet = new Mocknet({ poolAddress: POOL_ADDRESS });
     const env = mocknet.initialize();
@@ -22,7 +22,7 @@ describe("Eip712CallSetSigner wiring", () => {
     const evmChainId = 1n;
     const evmPrivateKey = 0xc0ffeen;
 
-    const signer = new Eip712CallSetSigner({
+    const signer = new Eip712HashSigner({
       accountAddress,
       snChainName,
       evmChainId,
