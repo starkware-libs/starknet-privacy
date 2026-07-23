@@ -20,9 +20,15 @@ export type {
   PaymasterQuote,
 } from "./paymaster.js";
 export type {
+  PrivacyBuilder,
   PrivacyClient,
   PrivacyClientConfig,
+  PrivacyComputeInvokeCallBuilder,
+  PrivacyComputeInvokeDetails,
+  PrivacyInvokeArgs,
+  PrivacyInvokeCallBuilder,
   PrivacyStorage,
+  PrivacyTokenBuilder,
   PrivacyWallet,
   STRK20_COMPUTE_AND_INVOKE_ACTION,
   Strk20Action,
