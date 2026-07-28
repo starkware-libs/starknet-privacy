@@ -43,7 +43,7 @@
     "typescript"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "dependencies": {
     "@noble/curves": "^1.7.0",
     "@noble/hashes": "^1.6.0",

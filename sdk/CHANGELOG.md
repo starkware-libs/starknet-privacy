@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Fixed
+
+- `license` in `package.json` now reads `Apache-2.0`, matching the repository's `LICENSE`. It
+  previously declared `ISC` (an `npm init` default), so the registry metadata contradicted the
+  license the package actually ships under.
+
 ## 0.14.3-RC.4
 
 ### Added

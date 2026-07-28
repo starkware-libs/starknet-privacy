@@ -69,7 +69,7 @@
     "typescript"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "dependencies": {
     "@starknet-io/starknet-types-0101": "npm:@starknet-io/types-js@~0.10.2",
     "ohttp-ts": "^0.3.0",
