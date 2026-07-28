@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
-import { CallData, cairo, hash, shortString } from "starknet";
+import { CairoCustomEnum, CallData, cairo, hash, shortString } from "starknet";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
 import {
@@ -95,7 +95,14 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
                 ]),
               },
             ],
-            [{ note_id: openNote.noteId, token: usdToken }],
+            [
+              {
+                note_id: openNote.noteId,
+                token: usdToken,
+                // Collect the sub-account's entire token balance into the open note.
+                collect_policy: new CairoCustomEnum({ All: {} }),
+              },
+            ],
           ])
           .slice(1)
           .map((felt) => BigInt(felt));

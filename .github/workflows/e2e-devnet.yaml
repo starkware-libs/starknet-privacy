@@ -5,11 +5,15 @@ on:
   pull_request:
     paths:
       - 'e2e/**'
+      - 'sdk/**'
+      - 'packages/**'
       - '.github/workflows/e2e-devnet.yaml'
   push:
     branches: [main]
     paths:
       - 'e2e/**'
+      - 'sdk/**'
+      - 'packages/**'
       - '.github/workflows/e2e-devnet.yaml'
 
 env:
