@@ -340,11 +340,10 @@ export type ExecuteOptions = {
 
 export type SimulateOptions = {
   /**
-   * Node provider used to call the pool's view function for fee estimation.
-   * Required because the minimal `PrivateTransfersUser` ({ address, signer })
-   * carries no provider of its own.
+   * Node used to call the pool's view function for fee estimation. Required because the minimal
+   * `PrivateTransfersUser` ({ address, signer }) carries no node of its own.
    */
-  provider: ProviderInterface;
+  node: ProviderInterface;
   /** When true, validate the user's signature during simulation. Default: false. */
   validateSignature?: boolean;
 };

@@ -34,8 +34,8 @@ export class ScreeningCallMockProofProvider extends CallMockProofProvider {
     // (get_tx_info().chain_id), queried from the chain rather than assumed, and
     // an issued_at <= the block timestamp the contract reads (else
     // SCREENING_FUTURE_DATED) — use the chain's own clock, not the host's.
-    const chainId = await this.provider.getChainId();
-    const block = await this.provider.getBlock(blockIdentifier ?? "latest");
+    const chainId = await this.node.getChainId();
+    const block = await this.node.getBlock(blockIdentifier ?? "latest");
     const signature = signScreeningAttestation(
       SCREENING_SIGNER_PRIVATE_KEY,
       BigInt(chainId),

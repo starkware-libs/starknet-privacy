@@ -41,7 +41,7 @@ describe("E2E provingBlockId", () => {
     await env.indexer.waitForBlock(devnet.url);
 
     // 2. Record current block number (after first deposit is confirmed)
-    const oldBlock = await de.provider.getBlockNumber();
+    const oldBlock = await de.node.getBlockNumber();
 
     // 3. Mine 10 empty blocks to advance the chain
     for (let blockIndex = 0; blockIndex < 10; blockIndex++) {

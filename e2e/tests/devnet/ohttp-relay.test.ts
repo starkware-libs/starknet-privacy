@@ -84,7 +84,7 @@ describe("E2E OHTTP via relay", () => {
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new ScreeningCallMockProofProvider(
-        de.provider,
+        de.node,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: ohttpDiscovery,
@@ -121,7 +121,7 @@ describe("E2E OHTTP via relay", () => {
       account: de.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new ScreeningCallMockProofProvider(
-        de.provider,
+        de.node,
         constants.StarknetChainId.SN_SEPOLIA,
       ),
       discoveryProvider: ohttpDiscovery,

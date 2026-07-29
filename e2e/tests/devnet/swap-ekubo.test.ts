@@ -24,10 +24,10 @@ describe("Ekubo swap on devnet", () => {
       indexer: { logFile: "swap-ekubo-indexer.log" },
     });
 
-    const { admin, provider } = env.env;
-    tokens = await deployTestTokens(admin, provider);
-    ekubo = await deployEkuboInfra(admin, provider, tokens);
-    executorAddress = await deployEkuboExecutor(admin, provider);
+    const { admin, node } = env.env;
+    tokens = await deployTestTokens(admin, node);
+    ekubo = await deployEkuboInfra(admin, node, tokens);
+    executorAddress = await deployEkuboExecutor(admin, node);
   });
 
   afterAll(async () => {

@@ -286,7 +286,7 @@ describe("Devnet Integration", () => {
         body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "devnet_createBlock" }),
       });
     }
-    const latestBlock = await env.provider.getBlockNumber();
+    const latestBlock = await env.node.getBlockNumber();
     const olderBlock = latestBlock - 10;
 
     const buildOptions = {
@@ -301,7 +301,7 @@ describe("Devnet Integration", () => {
       .with(env.strk)
       .withdraw({ amount: 50n, recipient: env.alice.address })
       .surplusTo(env.alice.address)
-      .simulate({ provider: env.provider });
+      .simulate({ node: env.node });
 
     // Structure checks
     expect(simResult.callAndProof.call.entrypoint).toBe("apply_actions");

@@ -1,5 +1,7 @@
 import type {
+  BigNumberish,
   Call,
+  CallDetails,
   EstimateFeeResponseOverhead,
   ProviderInterface,
   STRK20_ACTION,
@@ -8,7 +10,7 @@ import type {
   STRK20_PROOF,
   UniversalDetails,
 } from "starknet";
-import type { StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
+import type { PrivateRegistry, StarknetAddress } from "@starkware-libs/starknet-privacy-sdk";
 
 /**
  * LOCAL SHIM — remove when `@starknet-io/starknet-types` ships it. The compute-and-invoke sibling of
@@ -31,6 +33,30 @@ export interface STRK20_COMPUTE_AND_INVOKE_ACTION {
  * submits substitutes them (the native wallet at assembly; the SDK adapter before proving).
  */
 export type Strk20Action = STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION;
+
+/**
+ * Proves {@link Strk20Action}s into a submittable `{ call, proof }` and resolves the user's partial
+ * commitment. This is strk20-specific (not a general prover). Crucially, the viewing key needed to
+ * prove and to derive the partial commitment is the prover's own concern — it is retrieved inside the
+ * implementation, never passed in by the dapp. That keeps a future on-device prover free to fetch the
+ * key locally (more secure, and shareable across dapps).
+ */
+export interface Strk20Prover {
+  /** The nonce-independent commitment `hash(identity_key, dappName)` (derived from the viewing key). */
+  partialCommitment(dappName: string): Promise<bigint>;
+  /** Prove `actions` into `{ call, proof }`; `simulate` yields an empty proof. Does not broadcast. */
+  prove(actions: Strk20Action[], simulate?: boolean): Promise<STRK20_CALL_AND_PROOF>;
+}
+
+/**
+ * Persists the core note registry between transactions so proofs see previously-created notes. A
+ * fresh user with nothing stored returns an empty registry; the SDK path saves the updated registry
+ * after a proven (non-simulated) transaction.
+ */
+export interface PrivacyStorage {
+  loadRegistry(): Promise<PrivateRegistry>;
+  saveRegistry(registry: PrivateRegistry): Promise<void>;
+}
 
 /**
  * The wallet seam — the privacy subset of starknet.js `WalletAccountV6`. A get-starknet v6 wallet
@@ -57,15 +83,17 @@ export interface PrivacyWallet {
 
 /**
  * Dependencies for {@link createPrivacyClient}. The dapp constructs the {@link PrivacyWallet} it wants
- * (a get-starknet v6 wallet directly, or — upstack — an `SdkWallet` over a signer). `provider` +
+ * (a get-starknet v6 wallet directly, or — upstack — an `SdkWallet` over a signer). `node` +
  * `subAccountAnonymizerAddress` are the client's read context: it queries the anonymizer view (through
- * the provider) with `wallet.partialCommitment(dappName)` to resolve sub-account addresses.
+ * the node) with `wallet.partialCommitment(dappName)` to resolve sub-account addresses.
  */
 export interface PrivacyClientConfig {
   /** The wallet — signs, proves, and submits privacy operations. */
   wallet: PrivacyWallet;
-  /** Provider for the sub-account anonymizer view call. */
-  provider: ProviderInterface;
+  /** The user's Starknet account address — the default recipient for self-directed ops (open notes). */
+  userAddress: StarknetAddress;
+  /** Node the sub-account anonymizer view call is read from. */
+  node: ProviderInterface;
   /** The sub-account anonymizer contract the client queries for sub-account addresses. */
   subAccountAnonymizerAddress: StarknetAddress;
 }
@@ -108,4 +136,60 @@ export interface PrivacyClient {
     actions: Strk20Action[],
     options: SubmitOptions & { simulate: true }
   ): Promise<EstimateFeeResponseOverhead>;
+  /** Open a fluent operation builder that compiles into one privacy transaction. */
+  build(): PrivacyBuilder;
+}
+
+/** The transaction-time values an invoke call builder may reference, as wallet-resolved placeholders. */
+export interface PrivacyInvokeArgs {
+  /** Placeholder per open note created in this transaction: `openNoteIds[N]` is the Nth open note's id. */
+  openNoteIds: string[];
+  /** Placeholder for the privacy pool address. */
+  poolAddress: string;
+}
+
+/** Builds a plain invoke's target + calldata (which may embed {@link PrivacyInvokeArgs} placeholders). */
+export type PrivacyInvokeCallBuilder = (args: PrivacyInvokeArgs) => CallDetails;
+
+/** The target + compute/invoke calldata a compute-and-invoke produces, for the two-stage invocation. */
+export interface PrivacyComputeInvokeDetails {
+  contractAddress: string;
+  computeCalldata: STRK20_CALLDATA_ITEM[];
+  invokeCalldata: STRK20_CALLDATA_ITEM[];
+}
+
+/** Builds a compute-and-invoke's target + two calldata arrays (may embed placeholders). */
+export type PrivacyComputeInvokeCallBuilder = (
+  args: PrivacyInvokeArgs
+) => PrivacyComputeInvokeDetails;
+
+/** Token-scoped operations, opened by {@link PrivacyBuilder.with}. Each queues an action + chains. */
+export interface PrivacyTokenBuilder {
+  /** Deposit `amount` of the token from the user's public balance into the pool (always to self). */
+  deposit(output: { amount: BigNumberish }): PrivacyBuilder;
+  /** Withdraw `amount` of the token from the pool to `recipient`. */
+  withdraw(output: { amount: BigNumberish; recipient: StarknetAddress }): PrivacyBuilder;
+  /** Privately transfer `amount` of the token to `recipient` inside the pool. */
+  transfer(output: { amount: BigNumberish; recipient: StarknetAddress }): PrivacyBuilder;
+  /** Create an open note for the token owned by the user — its amount is settled later in the same tx. */
+  createOpenNote(): PrivacyBuilder;
+}
+
+/**
+ * A fluent builder for one privacy transaction. Token operations are opened with `with(token)`;
+ * `invoke` / `invokeWithComputation` run a contract after the private operations. Every method queues
+ * an action and returns the builder; `submit` proves + broadcasts the whole set, `simulate` returns a
+ * fee estimate without broadcasting.
+ */
+export interface PrivacyBuilder {
+  /** Open token-scoped operations for `token`. */
+  with(token: StarknetAddress): PrivacyTokenBuilder;
+  /** Queue a contract invocation that runs after the private operations. */
+  invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder;
+  /** Queue a two-stage compute-and-invoke that runs after the private operations. */
+  invokeWithComputation(callBuilder: PrivacyComputeInvokeCallBuilder): PrivacyBuilder;
+  /** Prove and broadcast the queued operations, returning the transaction hash. */
+  submit(): Promise<SubmitResult>;
+  /** Prove the queued operations in simulate mode and return the node fee estimate. */
+  simulate(): Promise<EstimateFeeResponseOverhead>;
 }

@@ -1,6 +1,8 @@
 import type { Call, EstimateFeeResponseOverhead } from "starknet";
+import { createPrivacyBuilder } from "./builder.js";
 import { toStarknetCall } from "./calls.js";
 import type {
+  PrivacyBuilder,
   PrivacyClient,
   PrivacyClientConfig,
   Strk20Action,
@@ -9,7 +11,7 @@ import type {
 } from "./interfaces.js";
 
 /**
- * The dapp client. Holds the injected wallet + read context (provider + sub-account anonymizer) and
+ * The dapp client. Holds the injected wallet + read context (node + sub-account anonymizer) and
  * drives the wallet seam. A native get-starknet v6 wallet satisfies {@link PrivacyWallet} directly,
  * so `submit` passes straight through to its strk20 methods; an `SdkWallet` (upstack) makes the same
  * seam calls but proves + submits through the core SDK + paymaster. The operation builder is added
@@ -42,6 +44,10 @@ class PrivacyClientImpl implements PrivacyClient {
     const calls: Call[] = [...preCalls, toStarknetCall(call), ...postCalls];
     // simulate: estimate the assembled invoke on the node (empty proof) for a fee quote/preview.
     return simulate ? wallet.estimateInvokeFee(calls) : wallet.executeWithProof(calls, proof);
+  }
+
+  build(): PrivacyBuilder {
+    return createPrivacyBuilder(this.config.userAddress, this.submit.bind(this));
   }
 }
 
