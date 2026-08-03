@@ -437,6 +437,26 @@ fn signature_accepted(validation_result: Result<felt252, Array<felt252>>) -> boo
     validation_result == Result::Ok(VALIDATED) || validation_result == Result::Ok(LEGACY_VALIDATED)
 }
 
+/// Removes `note_id` from `undeposited_open_note_ids`, panicking with
+/// [`errors::OPEN_NOTE_NOT_CREATED_IN_TX`] if it is not there.
+/// Exactly one occurrence is removed per call, so two deposits naming the same open note cannot
+/// both be accepted against a single creation.
+pub(crate) fn consume_undeposited_open_note(
+    ref undeposited_open_note_ids: Array<felt252>, note_id: felt252,
+) {
+    let mut remaining_note_ids: Array<felt252> = array![];
+    let mut is_note_consumed = false;
+    for undeposited_note_id in undeposited_open_note_ids.span() {
+        if !is_note_consumed && *undeposited_note_id == note_id {
+            is_note_consumed = true;
+        } else {
+            remaining_note_ids.append(*undeposited_note_id);
+        }
+    }
+    assert(is_note_consumed, errors::OPEN_NOTE_NOT_CREATED_IN_TX);
+    undeposited_open_note_ids = remaining_note_ids;
+}
+
 /// Sends server actions to L1.
 /// The payload contains [contract_class_hash, serialized_server_actions].
 pub(crate) fn send_message_to_server(

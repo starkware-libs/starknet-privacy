@@ -470,6 +470,13 @@ pub trait IServer<T> {
     /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
     /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action
     /// that funds the deposit) must not be on the block list.
+    /// - Each [`OpenNoteDeposit`](privacy::objects::OpenNoteDeposit) returned by an
+    /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
+    /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action must
+    /// name the `note_id` of an open note created earlier in the same span, by an
+    /// [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated) action whose
+    /// note no other deposit in the span has already funded. Deposits and creations are therefore
+    /// matched by note id, one to one, and neither may outnumber the other.
     ///
     /// #### Events Emitted
     /// Events are emitted based on the server actions in the input:
@@ -545,15 +552,24 @@ pub trait IServer<T> {
     /// the return data from the invoked contract is invalid.
     /// - When processing the returned
     /// [`OpenNoteDeposit`](privacy::objects::OpenNoteDeposit) values:
+    ///   - [`OPEN_NOTE_NOT_CREATED_IN_TX`](privacy::errors::OPEN_NOTE_NOT_CREATED_IN_TX): Thrown if
+    ///   `note_id` is not the id of an open note created earlier in this action span, or if an
+    ///   earlier deposit in the span already funded that note.
     ///   - [`ZERO_TOKEN`](privacy::errors::ZERO_TOKEN): Thrown if `token` is zero.
     ///   - [`ZERO_AMOUNT`](privacy::errors::ZERO_AMOUNT): Thrown if `amount` is zero.
-    ///   - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note does not exist.
-    ///   - [`NOTE_NOT_OPEN`](privacy::errors::NOTE_NOT_OPEN): Thrown if the note is not an open
-    ///   note.
-    ///   - [`NOTE_ALREADY_DEPOSITED`](privacy::errors::NOTE_ALREADY_DEPOSITED): Thrown if the note
-    ///   has already been deposited to.
     ///   - [`TOKEN_MISMATCH`](privacy::errors::TOKEN_MISMATCH): Thrown if `token` does not match
-    ///   the note's token.
+    ///   the note's token. The invoked contract chooses `token`, so this is reachable for any
+    ///   deposit.
+    ///   - The next three are unreachable for a span compiled by
+    ///   [`compile_actions`](IServer::compile_actions), which always pairs
+    ///   [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated) with a
+    ///   write-once of that note's slot, and are retained as defense in depth:
+    ///     - [`NOTE_NOT_FOUND`](privacy::errors::NOTE_NOT_FOUND): Thrown if the note does not
+    ///     exist.
+    ///     - [`NOTE_NOT_OPEN`](privacy::errors::NOTE_NOT_OPEN): Thrown if the note is not an open
+    ///     note.
+    ///     - [`NOTE_ALREADY_DEPOSITED`](privacy::errors::NOTE_ALREADY_DEPOSITED): Thrown if the
+    ///     note has already been deposited to.
     ///   - `INSUFFICIENT_BALANCE`: Thrown if the depositor has insufficient token balance (from
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
@@ -561,6 +577,11 @@ pub trait IServer<T> {
     ///   - [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED): Thrown if
     ///   the Invoke returned at least one deposit and the Invoke target (the open-note depositor)
     ///   is on the block list.
+    ///
+    /// **Errors for [`EmitOpenNoteCreated`](privacy::actions::ServerAction::EmitOpenNoteCreated)
+    /// action:**
+    /// - [`UNDEPOSITED_OPEN_NOTES`](privacy::errors::UNDEPOSITED_OPEN_NOTES): Thrown if the span
+    /// ends with an open note whose creation no deposit funded.
     ///
     /// #### Access Control
     /// - Any address can call this function.

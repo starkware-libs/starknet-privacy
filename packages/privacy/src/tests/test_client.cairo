@@ -5393,12 +5393,18 @@ fn test_deposit_to_open_note_twice() {
             create_note_input: create_note_input_a, :amount, :token,
         );
 
-    // TX 2: Attempt to deposit into the already-deposited note A.
+    // TX 2: Attempt to deposit into the already-deposited note A. Note A is announced as created
+    // again so the deposit reaches the note validations.
     let deposit = OpenNoteDeposit { note_id: note_id_a, token: token_addr, amount };
-    let bad_deposit = test
-        .privacy
-        .invoke_external_echo_deposits([deposit].span())
-        .into_server_actions();
+    let bad_deposit = user_1
+        .with_open_note_created_action(
+            note_id: note_id_a,
+            :token_addr,
+            actions: test
+                .privacy
+                .invoke_external_echo_deposits([deposit].span())
+                .into_server_actions(),
+        );
     let result = test.privacy.safe_apply_actions(actions: bad_deposit);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
@@ -6189,7 +6195,13 @@ fn test_invoke_external_swap_deposit_errors() {
     ]
         .span();
     let server_actions = user.execute(:client_actions);
-    let result = test.privacy.safe_apply_actions(actions: server_actions);
+    // The swap's target note is not created in this tx, so announce it as created to reach the
+    // note validations.
+    let actions = user
+        .with_open_note_created_action(
+            :note_id, token_addr: out_token_addr, actions: server_actions,
+        );
+    let result = test.privacy.safe_apply_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_FOUND);
 
     // === Test NOTE_NOT_OPEN ===
@@ -6218,7 +6230,12 @@ fn test_invoke_external_swap_deposit_errors() {
     ]
         .span();
     let server_actions = user.execute(:client_actions);
-    let result = test.privacy.safe_apply_actions(actions: server_actions);
+    // `note_id` now holds an enc note, and the swap still deposits into it.
+    let actions = user
+        .with_open_note_created_action(
+            :note_id, token_addr: out_token_addr, actions: server_actions,
+        );
+    let result = test.privacy.safe_apply_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_NOT_OPEN);
 
     // === Test NOTE_ALREADY_DEPOSITED ===
@@ -6244,7 +6261,7 @@ fn test_invoke_external_swap_deposit_errors() {
             in_token: in_token_addr, out_token: out_token_addr, amount: swap_amount, :note_id,
         );
 
-    // First swap succeeds — include CreateOpenNote so the create count matches the deposit.
+    // First swap succeeds — include CreateOpenNote so the deposit names a note created here.
     let client_actions = [
         ClientAction::UseNote(use_note_input_2),
         ClientAction::CreateOpenNote(create_open_note_input),
@@ -6274,7 +6291,11 @@ fn test_invoke_external_swap_deposit_errors() {
     ]
         .span();
     let server_actions = user.execute(:client_actions);
-    let result = test.privacy.safe_apply_actions(actions: server_actions);
+    let actions = user
+        .with_open_note_created_action(
+            :note_id, token_addr: out_token_addr, actions: server_actions,
+        );
+    let result = test.privacy.safe_apply_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::NOTE_ALREADY_DEPOSITED);
 
     // === Test TOKEN_MISMATCH ===
@@ -6306,7 +6327,11 @@ fn test_invoke_external_swap_deposit_errors() {
     ]
         .span();
     let server_actions = user.execute(:client_actions);
-    let result = test.privacy.safe_apply_actions(actions: server_actions);
+    let actions = user
+        .with_open_note_created_action(
+            :note_id, token_addr: in_token_addr, actions: server_actions,
+        );
+    let result = test.privacy.safe_apply_actions(:actions);
     assert_panic_with_felt_error(:result, expected_error: errors::TOKEN_MISMATCH);
 }
 
