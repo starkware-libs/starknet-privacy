@@ -380,6 +380,7 @@ pub(crate) fn extract_compile_actions_inputs(
 ///    `is_valid_signature` accepts the signature over the SN tx hash.
 /// III. **Legacy SN Wallet:**
 ///    `is_valid_signature` accepts the signature over the SNIP-12 `CallSet` hash of `calls`.
+#[feature("safe_dispatcher")]
 pub(crate) fn assert_valid_signature(
     user_addr: ContractAddress, calls: Span<Call>, tx_info: Box<TxInfo>,
 ) {
@@ -387,12 +388,13 @@ pub(crate) fn assert_valid_signature(
     if custom_signature_valid(user_addr, calls, tx_info.signature) {
         return;
     }
-    let user_account = IAccountDispatcher { contract_address: user_addr };
+    // Treat panics from the safe dispatcher as invalid signatures.
+    let user_account = IAccountSafeDispatcher { contract_address: user_addr };
     // II. Standard SN wallet: signature over the tx hash.
     if user_account
         .is_valid_signature(
             hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
-        ) == VALIDATED {
+        ) == Result::Ok(VALIDATED) {
         return;
     }
     // III. Legacy SN wallet: signature over the SNIP-12 `CallSet` hash of `calls`.
@@ -401,7 +403,7 @@ pub(crate) fn assert_valid_signature(
         .is_valid_signature(
             hash: compute_call_set_hash(user_addr, calls, array![].span()),
             signature: tx_info.signature.into(),
-        ) == VALIDATED {
+        ) == Result::Ok(VALIDATED) {
         return;
     }
     panic_with_felt252(errors::INVALID_SIGNATURE);
