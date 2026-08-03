@@ -90,7 +90,13 @@ async fn main() {
         None
     };
 
-    let rpc_backend = RpcBackend::new(rpc_config).expect("Failed to create RPC backend");
+    let rpc_backend = match RpcBackend::new(rpc_config) {
+        Ok(backend) => backend,
+        Err(error) => {
+            eprintln!("Failed to create RPC backend: {error}");
+            std::process::exit(1);
+        }
+    };
 
     let mut indexer = Indexer::new(indexer_config, shutdown.subscribe(), rpc_backend.clone());
     let mut api_server = ApiServer::new(
