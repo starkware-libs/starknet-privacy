@@ -10,8 +10,8 @@ interface SurplusCall {
   withdraw?: boolean;
 }
 
-// Records the per-token surplus routing requested on the builder, keeping the real behavior.
-function recordSurplusTo(transfers: PrivateTransfersInterface): SurplusCall[] {
+// Spies on surplusTo to record each call's arguments while still invoking the real implementation.
+function spyOnSurplusTo(transfers: PrivateTransfersInterface): SurplusCall[] {
   const surplusCalls: SurplusCall[] = [];
   const build = transfers.build.bind(transfers);
   vi.spyOn(transfers, "build").mockImplementation((options) => {
@@ -125,7 +125,7 @@ describe("SimplePrivateTransfers", () => {
     const alice = new SimplePrivateTransfersImpl(transfers.alice);
     mocknet.executeOutside(await alice.deposit(env.ace, 100n));
 
-    const surplusCalls = recordSurplusTo(transfers.alice);
+    const surplusCalls = spyOnSurplusTo(transfers.alice);
 
     // An amount is paid out as a withdraw output, so the surplus is the sender's own change note
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, 40n));
@@ -133,6 +133,7 @@ describe("SimplePrivateTransfers", () => {
 
     // All has no separate output: the whole balance is the surplus, withdrawn to the recipient
     surplusCalls.length = 0;
+    // TODO(Avi): also assert Bob's real balance/notes here, not just this call shape.
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, All));
     expect(surplusCalls).toEqual([{ recipient: toBigInt(env.bob.address), withdraw: true }]);
   });
