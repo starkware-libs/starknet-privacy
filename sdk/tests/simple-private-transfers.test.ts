@@ -133,7 +133,6 @@ describe("SimplePrivateTransfers", () => {
 
     // All has no separate output: the whole balance is the surplus, withdrawn to the recipient
     surplusCalls.length = 0;
-    // TODO(Avi): also assert Bob's real balance/notes here, not just this call shape.
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, All));
     expect(surplusCalls).toEqual([{ recipient: toBigInt(env.bob.address), withdraw: true }]);
   });
