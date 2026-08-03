@@ -118,6 +118,7 @@ describe("SimplePrivateTransfers", () => {
 
   it("withdraw routes surplus to the sender for an amount and to the recipient for All", async () => {
     const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
 
     mocknet.executeOutside(await transfers.alice.build().register().execute());
     mocknet.executeOutside(await transfers.bob.build().register().execute());
@@ -135,6 +136,16 @@ describe("SimplePrivateTransfers", () => {
     surplusCalls.length = 0;
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, All));
     expect(surplusCalls).toEqual([{ recipient: toBigInt(env.bob.address), withdraw: true }]);
+
+    // Requesting the surplus is not the same as moving it: with no withdraw/transfer action of
+    // its own to seed a balance for the token, the All call above selects no notes and pays out
+    // nothing, so nothing changes past the first withdraw. Tracked by the TODO on withdraw's isAll
+    // branch; these assertions must flip once that's fixed.
+    expect(env.contracts.get(ace).balanceOf(env.bob.address)).toBe(1040n); // unchanged since the 40n withdraw
+    const bobNotes = (await transfers.bob.discoverNotes()).notes.get(ace) ?? [];
+    expect(bobNotes).toEqual([]);
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([60n]); // untouched change note from the first withdraw
   });
 
   it("transfer sends funds to recipient", async () => {
