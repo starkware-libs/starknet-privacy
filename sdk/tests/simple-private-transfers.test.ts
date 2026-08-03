@@ -100,24 +100,21 @@ describe("SimplePrivateTransfers", () => {
     mocknet.executeOutside(await alice.deposit(env.ace, 100n));
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, 40n));
 
-    // Verify: Bob receives exactly the requested amount publicly
     expect(env.contracts.get(ace).balanceOf(env.bob.address)).toBe(1040n); // 1000 + 40
 
-    // Verify: Bob gets no private note
     const bobNotes = (await transfers.bob.discoverNotes()).notes.get(ace) ?? [];
     expect(bobNotes).toEqual([]);
 
-    // Verify: Alice keeps the change privately
     const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
     expect(aliceNotes.length).toBe(1);
     expect(aliceNotes[0].amount).toBe(160n);
 
-    // Verify: Alice's public balance only reflects the deposits
     expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(800n); // 1000 - 200
   });
 
   it("withdraw routes surplus to the sender for an amount and to the recipient for All", async () => {
     const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
 
     mocknet.executeOutside(await transfers.alice.build().register().execute());
     mocknet.executeOutside(await transfers.bob.build().register().execute());
@@ -135,6 +132,14 @@ describe("SimplePrivateTransfers", () => {
     surplusCalls.length = 0;
     mocknet.executeOutside(await alice.withdraw(env.ace, env.bob.address, All));
     expect(surplusCalls).toEqual([{ recipient: toBigInt(env.bob.address), withdraw: true }]);
+
+    // Nothing moved: with no action of its own to seed a balance for the token, the All call above
+    // selects no notes. These assertions must flip once the TODO on withdraw's isAll branch is fixed.
+    expect(env.contracts.get(ace).balanceOf(env.bob.address)).toBe(1040n); // unchanged since the 40n withdraw
+    const bobNotes = (await transfers.bob.discoverNotes()).notes.get(ace) ?? [];
+    expect(bobNotes).toEqual([]);
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([60n]); // untouched change note from the first withdraw
   });
 
   it("transfer sends funds to recipient", async () => {
