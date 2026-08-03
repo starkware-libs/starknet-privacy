@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+### Fixed
+
+- `SimplePrivateTransfers` runs one operation at a time per instance. `deposit`, `withdraw`,
+  `transfer` and `swap` calls issued without awaiting the previous one now queue in call order
+  instead of overlapping. Every operation clears the instance's registry, refills it from discovery
+  and writes back the result across several `await` points, so overlapping calls used to interleave
+  those steps and compile against a registry another call had already emptied or overwritten. A
+  failing operation rejects for its own caller only, and the queued operations behind it still run.
+  Note that this orders operations without making their note selection disjoint: `execute` returns a
+  proof for the caller to submit, so a caller that needs one operation to see the previous one's
+  change note must submit it and let it land first.
+- `SimplePrivateTransfers` operations after the first no longer lose the sender's notes: the
+  instance registry's discovery cursor is reset together with the note cache it accounts for, so
+  every operation rediscovers the notes created by the previous one.
+
 ## 0.14.3-RC.5
 
 ### Fixed
