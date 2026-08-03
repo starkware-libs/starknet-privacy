@@ -7,18 +7,21 @@ use discovery_core::events_backend::RawEventAccess;
 use discovery_core::storage_backend::{
     RawStorageAccess, StorageBackend, StorageError, StorageSnapshot,
 };
+use serde::{de::DeserializeOwned, Serialize};
 use starknet_core::types::{
     requests::GetStorageAtRequest, AddressFilter, BlockId, BlockTag, EmittedEvent, EventFilter,
     Felt, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey,
     StorageResponseFlag, StorageResult,
 };
 use starknet_providers::{
-    jsonrpc::{HttpTransport, JsonRpcClient},
+    jsonrpc::{
+        HttpTransport, HttpTransportError, JsonRpcClient, JsonRpcMethod, JsonRpcResponse,
+        JsonRpcTransport,
+    },
     Provider, ProviderError, ProviderRequestData, ProviderResponseData,
 };
 use thiserror::Error;
-use tokio::sync::RwLock;
-use tower::limit::concurrency::ConcurrencyLimitLayer;
+use tokio::sync::{RwLock, Semaphore, SemaphorePermit};
 use url::Url;
 
 use crate::chain_state::{ChainHead, ChainState, ChainStateError};
@@ -39,6 +42,9 @@ pub enum RpcBackendError {
     /// Unexpected response type from batch request.
     #[error("unexpected response type from batch request")]
     UnexpectedResponseType,
+    /// A zero request limit would leave the backend unable to issue any call.
+    #[error("max_concurrent_requests must be greater than zero")]
+    InvalidMaxConcurrentRequests,
 }
 
 impl From<RpcBackendError> for StorageError {
@@ -47,9 +53,71 @@ impl From<RpcBackendError> for StorageError {
     }
 }
 
+/// [`JsonRpcTransport`] wrapper that caps how many JSON-RPC calls may be in
+/// flight against the node at any moment.
+///
+/// Must stay at the transport layer: a `reqwest` connector layer gates only
+/// connection establishment, so requests served by a pooled connection bypass it.
+///
+/// A permit covers exactly one HTTP round trip, so multi-round-trip operations
+/// (`starknet_getEvents` pagination, chunked batch reads) release between calls.
+struct LimitedTransport {
+    transport: HttpTransport,
+    request_permits: Semaphore,
+}
+
+impl LimitedTransport {
+    /// Wraps `transport`, allowing at most `max_concurrent_requests` outbound
+    /// JSON-RPC calls at a time.
+    fn new(transport: HttpTransport, max_concurrent_requests: usize) -> Self {
+        Self {
+            transport,
+            request_permits: Semaphore::new(max_concurrent_requests),
+        }
+    }
+
+    /// Takes a permit for one outbound round trip. `request_permits` is private
+    /// and never closed, so acquiring cannot fail.
+    async fn acquire_request_permit(&self) -> SemaphorePermit<'_> {
+        self.request_permits
+            .acquire()
+            .await
+            .expect("request permits are never closed")
+    }
+}
+
+#[async_trait]
+impl JsonRpcTransport for LimitedTransport {
+    type Error = HttpTransportError;
+
+    async fn send_request<P, R>(
+        &self,
+        method: JsonRpcMethod,
+        params: P,
+    ) -> Result<JsonRpcResponse<R>, Self::Error>
+    where
+        P: Serialize + Send + Sync,
+        R: DeserializeOwned + Send,
+    {
+        let _permit = self.acquire_request_permit().await;
+        self.transport.send_request(method, params).await
+    }
+
+    async fn send_requests<R>(
+        &self,
+        requests: R,
+    ) -> Result<Vec<JsonRpcResponse<serde_json::Value>>, Self::Error>
+    where
+        R: AsRef<[ProviderRequestData]> + Send + Sync,
+    {
+        let _permit = self.acquire_request_permit().await;
+        self.transport.send_requests(requests).await
+    }
+}
+
 /// Inner state shared across clones of RpcBackend.
 struct RpcBackendInner {
-    provider: JsonRpcClient<HttpTransport>,
+    provider: JsonRpcClient<LimitedTransport>,
     head: RwLock<Option<ChainHead>>,
     max_batch_size: usize,
     event_page_size: usize,
@@ -59,7 +127,7 @@ struct RpcBackendInner {
 ///
 /// This backend is cheaply cloneable and uses a connection pool with
 /// configurable concurrency limits. Cloned instances share the same
-/// underlying connection pool and concurrency limiter.
+/// underlying connection pool and request limiter.
 #[derive(Clone)]
 pub struct RpcBackend {
     inner: Arc<RpcBackendInner>,
@@ -67,18 +135,27 @@ pub struct RpcBackend {
 
 impl RpcBackend {
     /// Creates a new RPC backend with the given configuration.
+    ///
+    /// Fails when `config.max_concurrent_requests` is zero, which would admit no
+    /// outbound calls at all.
     pub fn new(config: RpcConfig) -> Result<Self, RpcBackendError> {
+        if config.max_concurrent_requests == 0 {
+            return Err(RpcBackendError::InvalidMaxConcurrentRequests);
+        }
+
         let rpc_url = Url::parse(&config.url).map_err(RpcBackendError::InvalidUrl)?;
 
         let client = reqwest::Client::builder()
             .connect_timeout(config.connect_timeout)
             .timeout(config.request_timeout)
             .pool_max_idle_per_host(config.max_idle_per_host)
-            .connector_layer(ConcurrencyLimitLayer::new(config.max_concurrent_requests))
             .build()
             .map_err(RpcBackendError::HttpClientBuild)?;
 
-        let transport = HttpTransport::new_with_client(rpc_url, client);
+        let transport = LimitedTransport::new(
+            HttpTransport::new_with_client(rpc_url, client),
+            config.max_concurrent_requests,
+        );
         let provider = JsonRpcClient::new(transport);
 
         Ok(Self {
