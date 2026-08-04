@@ -47,6 +47,7 @@ The service works with soft finality to provide updates as soon as possible. All
 
 - Notes may appear that are later reorged out.
 - Clients should handle reorg errors gracefully and re-sync from scratch (simple strategy).
+- A `last_known_block` that left the chain is reported as `BLOCK_REORGED` whether the node dropped it or replaced it with a competing block at the same height (see §11.1).
 
 For use cases requiring stronger finality, clients should wait for L1 confirmation before acting on discovered notes.
 

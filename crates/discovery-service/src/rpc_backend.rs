@@ -9,9 +9,10 @@ use discovery_core::storage_backend::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use starknet_core::types::{
-    requests::GetStorageAtRequest, AddressFilter, BlockId, BlockTag, EmittedEvent, EventFilter,
-    Felt, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey,
-    StorageResponseFlag, StorageResult,
+    requests::GetStorageAtRequest, AddressFilter, BlockId, BlockStatus, BlockTag,
+    BlockWithTxHashes, EmittedEvent, EventFilter, Felt, GetStorageAtResult,
+    MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey, StorageResponseFlag,
+    StorageResult,
 };
 use starknet_providers::{
     jsonrpc::{
@@ -457,15 +458,37 @@ impl ChainState for RpcBackend {
     }
 
     async fn is_canonical(&self, block_hash: Felt) -> Result<bool, ChainStateError> {
-        match self
-            .inner
-            .provider
-            .get_block_transaction_count(BlockId::Hash(block_hash))
-            .await
-        {
-            Ok(_) => Ok(true),
-            Err(ProviderError::StarknetError(StarknetError::BlockNotFound)) => Ok(false),
-            Err(e) => Err(ChainStateError::RpcError(e)),
+        // Two round trips: a height addresses exactly one block, so hash ->
+        // height -> hash decides canonicity where knowing the hash cannot.
+        let block = match self.block_by_id(BlockId::Hash(block_hash)).await? {
+            Some(block) => block,
+            None => return Ok(false),
+        };
+        // Except once the block is final: an L1-accepted block had its state
+        // update finalized on Ethereum, so no reorg can replace it and the
+        // second round trip cannot change the answer.
+        if block.status == BlockStatus::AcceptedOnL1 {
+            return Ok(true);
+        }
+        Ok(self
+            .block_by_id(BlockId::Number(block.block_number))
+            .await?
+            .is_some_and(|candidate| candidate.block_hash == block_hash))
+    }
+}
+
+impl RpcBackend {
+    /// Fetches the accepted block `block_id` addresses, or `None` when the node
+    /// has no such block. A pre-confirmed block is `None`: it carries no hash.
+    async fn block_by_id(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<BlockWithTxHashes>, ChainStateError> {
+        match self.inner.provider.get_block_with_tx_hashes(block_id).await {
+            Ok(MaybePreConfirmedBlockWithTxHashes::Block(block)) => Ok(Some(block)),
+            Ok(MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(_)) => Ok(None),
+            Err(ProviderError::StarknetError(StarknetError::BlockNotFound)) => Ok(None),
+            Err(error) => Err(ChainStateError::RpcError(error)),
         }
     }
 }
