@@ -1299,7 +1299,14 @@ pub(crate) impl TestImpl of TestTrait {
         }
         let public_key = derive_public_key(:private_key);
         self.nonce += 1;
-        let address = deploy_mock_custom_account(salt: self.nonce.into(), :is_valid, public_key: 0);
+        let custom_result = if is_valid {
+            VALIDATED
+        } else {
+            Zero::zero()
+        };
+        let address = deploy_mock_custom_account(
+            salt: self.nonce.into(), :custom_result, panics_on_reject: false, public_key: 0,
+        );
         User { address, privacy: self.privacy, private_key, public_key, nonce: Zero::zero() }
     }
 
@@ -2202,7 +2209,7 @@ pub(crate) fn deploy_mock_account(salt: felt252, is_valid: bool) -> ContractAddr
 /// `is_valid` controls the custom-validation verdict; `public_key` is the key its raw-hash
 /// `is_valid_signature` verifies against (0 disables that path).
 pub(crate) fn deploy_mock_custom_account(
-    salt: felt252, is_valid: bool, public_key: felt252,
+    salt: felt252, custom_result: felt252, panics_on_reject: bool, public_key: felt252,
 ) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockCustomAccount")
         .unwrap_syscall()
@@ -2210,21 +2217,28 @@ pub(crate) fn deploy_mock_custom_account(
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_custom_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :is_valid, :public_key,
+        class_hash: *contract_class_hash,
+        :deployment_params,
+        :custom_result,
+        :panics_on_reject,
+        :public_key,
     )
         .expect('MockCustomAccount deploy failed');
     contract_address
 }
 
 /// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
-pub(crate) fn deploy_mock_stark_account(salt: felt252, public_key: felt252) -> ContractAddress {
+/// `returns_legacy_bool` selects whether it accepts with a pre-SNIP-6 boolean or with `VALIDATED`.
+pub(crate) fn deploy_mock_stark_account(
+    salt: felt252, public_key: felt252, returns_legacy_bool: bool,
+) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockStarkAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_stark_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :public_key,
+        class_hash: *contract_class_hash, :deployment_params, :public_key, :returns_legacy_bool,
     )
         .expect('MockStarkAccount deploy failed');
     contract_address

@@ -5,7 +5,7 @@ pub mod MockAssertingAccount {
     use privacy::utils::IAccount;
     use starknet::VALIDATED;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    
+
     pub const INVALID_SIG: felt252 = 'INVALID_SIG';
 
     #[storage]
