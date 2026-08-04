@@ -88,7 +88,13 @@ impl<C: ChainState> Indexer<C> {
         info!("Indexer started");
 
         loop {
-            match self.run_inner().await {
+            let outcome = self.run_inner().await;
+            if outcome.is_err() {
+                // On loss, not on reconnect: a reconnect may be many backoff intervals
+                // away, and nothing notifies about the gap.
+                self.chain_state.forget_recent_blocks().await;
+            }
+            match outcome {
                 Ok(()) => {
                     info!("Indexer terminated");
                     return Ok(());
@@ -149,6 +155,7 @@ impl<C: ChainState> Indexer<C> {
                                 "Reorg detected: #{} -> #{}",
                                 reorg.starting_block_number, reorg.ending_block_number
                             );
+                            self.chain_state.record_reorg(&reorg).await;
                         }
                     }
                 }
@@ -167,5 +174,129 @@ impl<C: ChainState> Indexer<C> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::{Arc, Mutex};
+    use std::time::Duration;
+
+    use async_trait::async_trait;
+    use starknet_core::types::{Felt, ReorgData};
+
+    use super::*;
+    use crate::chain_state::{ChainStateError, RecentBlockWindow};
+
+    /// Keeps a real [`RecentBlockWindow`] and counts forget calls, so a test can
+    /// assert on the window's verdicts rather than only on the calls.
+    #[derive(Clone, Default)]
+    struct RecordingChainState {
+        recent_blocks: Arc<Mutex<RecentBlockWindow>>,
+        num_forget_calls: Arc<AtomicUsize>,
+    }
+
+    impl RecordingChainState {
+        fn canonicity(&self, block_hash: Felt) -> Option<bool> {
+            self.recent_blocks
+                .lock()
+                .expect("recent blocks lock")
+                .canonicity(block_hash)
+        }
+
+        fn num_forget_calls(&self) -> usize {
+            self.num_forget_calls.load(Ordering::SeqCst)
+        }
+    }
+
+    #[async_trait]
+    impl ChainState for RecordingChainState {
+        async fn get_head(&self) -> Option<ChainHead> {
+            None
+        }
+
+        async fn set_head(&self, head: ChainHead) {
+            self.recent_blocks
+                .lock()
+                .expect("recent blocks lock")
+                .record_head(&head);
+        }
+
+        async fn record_reorg(&self, reorg: &ReorgData) {
+            self.recent_blocks
+                .lock()
+                .expect("recent blocks lock")
+                .record_reorg(reorg);
+        }
+
+        async fn forget_recent_blocks(&self) {
+            self.num_forget_calls.fetch_add(1, Ordering::SeqCst);
+            self.recent_blocks
+                .lock()
+                .expect("recent blocks lock")
+                .clear();
+        }
+
+        async fn is_canonical(&self, _block_hash: Felt) -> Result<bool, ChainStateError> {
+            unreachable!("the indexer never asks about canonicity")
+        }
+    }
+
+    /// Losing the stream must drop what it announced straight away; deferring to a
+    /// successful reconnect would answer the whole outage out of stale memory.
+    #[tokio::test]
+    async fn test_lost_subscription_forgets_announced_blocks_before_reconnecting() {
+        let announced_hash = Felt::from_hex_unchecked("0xabc");
+        let chain_state = RecordingChainState::default();
+        chain_state
+            .set_head(ChainHead {
+                block_number: 100,
+                block_hash: announced_hash,
+                timestamp: 1_700_000_000,
+            })
+            .await;
+        assert_eq!(
+            chain_state.canonicity(announced_hash),
+            Some(true),
+            "the announced head starts out covered by the window"
+        );
+
+        let (tx_shutdown, rx_shutdown) = broadcast::channel(1);
+        let mut indexer = Indexer::new(
+            IndexerConfig {
+                // Nothing listening, so the connect fails at once.
+                ws_url: "ws://127.0.0.1:1/ws".to_string(),
+                connect_timeout: Duration::from_secs(1),
+                // Long enough that the assertions below can only pass if the window
+                // was cleared on the failure rather than on a reconnect.
+                backoff_initial_interval: Duration::from_secs(600),
+                backoff_max_interval: Duration::from_secs(600),
+                backoff_max_elapsed_time: None,
+            },
+            rx_shutdown,
+            chain_state.clone(),
+        );
+        let indexer_task = tokio::spawn(async move { indexer.run().await });
+
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while chain_state.num_forget_calls() == 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("a failed connect must forget the announced blocks");
+
+        assert_eq!(
+            chain_state.canonicity(announced_hash),
+            None,
+            "a hash announced by a dead subscription must go back to the node"
+        );
+
+        tx_shutdown.send(()).expect("shutdown receiver is alive");
+        indexer_task
+            .await
+            .expect("indexer task panicked")
+            .expect("shutdown during backoff is a clean exit");
     }
 }
