@@ -15,7 +15,7 @@
 
 mod common;
 
-use common::setup_devnet_with_dump;
+use common::{setup_devnet_with_dump, DevnetClient, DevnetConfig};
 use discovery_core::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
 use discovery_core::privacy_pool::storage_slots;
 use discovery_core::privacy_pool::views::IViews;
@@ -169,6 +169,47 @@ async fn test_withdrawal_events_empty_for_non_recipient() {
         .unwrap();
 
     assert!(withdrawals.is_empty());
+}
+
+/// A block that left the chain must be reported non-canonical against real devnet.
+///
+/// This cannot separate canonicity from existence: devnet drops an aborted block
+/// rather than keeping it addressable, and its `--lite-mode` hashes are derived
+/// from the block number, so a replacement at the vacated height would reuse the
+/// same hash. The retained-orphan case is covered in
+/// `test_chain_state_canonicity.rs`; do not cite this test for it.
+#[tokio::test]
+async fn test_aborted_block_is_not_canonical() {
+    let devnet = DevnetClient::spawn(DevnetConfig {
+        full_state_archive: true,
+        ..Default::default()
+    })
+    .expect("Failed to spawn devnet");
+
+    let backend = RpcBackend::new(RpcConfig {
+        url: devnet.rpc_url(),
+        ..Default::default()
+    })
+    .unwrap();
+
+    devnet.create_block().await.unwrap();
+    let aborted_block_hash_text = devnet.create_block().await.unwrap();
+    let aborted_block_hash = Felt::from_hex(&aborted_block_hash_text).unwrap();
+
+    assert!(
+        backend.is_canonical(aborted_block_hash).await.unwrap(),
+        "a block the chain currently carries is canonical"
+    );
+
+    devnet
+        .abort_blocks(&aborted_block_hash_text)
+        .await
+        .expect("devnet should abort blocks");
+
+    assert!(
+        !backend.is_canonical(aborted_block_hash).await.unwrap(),
+        "a block the chain no longer carries is not canonical"
+    );
 }
 
 #[tokio::test]

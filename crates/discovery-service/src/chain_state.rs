@@ -30,11 +30,10 @@ pub trait ChainState: Send + Sync {
     /// Set the current chain head.
     async fn set_head(&self, head: ChainHead);
 
-    /// Check if a block hash is in the canonical chain.
+    /// Check whether `block_hash` is the block the chain carries at its height.
     ///
-    /// Returns `Ok(true)` if the block exists in the canonical chain,
-    /// `Ok(false)` if the block is not found (orphaned or non-existent),
-    /// and `Err` for RPC failures.
+    /// Canonicity is not existence: a node keeps serving an orphaned block by
+    /// hash. `Err` means the node could not answer, which is neither verdict.
     async fn is_canonical(&self, block_hash: Felt) -> Result<bool, ChainStateError>;
 }
 

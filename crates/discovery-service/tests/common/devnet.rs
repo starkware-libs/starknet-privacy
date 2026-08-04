@@ -36,6 +36,9 @@ pub struct DevnetConfig {
     pub accounts: u32,
     /// Optional port to use. If None, a free port will be found automatically.
     pub port: Option<u16>,
+    /// Keep the full state archive, which devnet requires before it will abort
+    /// blocks. Defaults to `false`, leaving devnet at its cheapest setting.
+    pub full_state_archive: bool,
 }
 
 pub struct DevnetClient {
@@ -49,6 +52,11 @@ impl DevnetClient {
     pub fn spawn(config: DevnetConfig) -> Result<Self> {
         let port = config.port.unwrap_or(find_free_port()?);
 
+        let state_archive_capacity = if config.full_state_archive {
+            "full"
+        } else {
+            "none"
+        };
         let mut process = Command::new("starknet-devnet")
             .args([
                 "--lite-mode",
@@ -61,7 +69,7 @@ impl DevnetClient {
                 "--block-generation-on",
                 "transaction",
                 "--state-archive-capacity",
-                "none",
+                state_archive_capacity,
                 "--l2-gas-price-fri",
                 "1",
                 "--data-gas-price-fri",
@@ -195,6 +203,32 @@ impl DevnetClient {
             .as_str()
             .map(String::from)
             .ok_or_else(|| anyhow::anyhow!("No block_hash in response"))
+    }
+
+    /// Orphan `starting_block_hash` and every block above it
+    /// (devnet_abortBlocks), which devnet answers only when it was spawned with
+    /// [`DevnetConfig::full_state_archive`].
+    ///
+    /// Devnet also pushes a `starknet_subscriptionReorg` notification to live
+    /// new-heads subscribers, and stops serving the aborted hashes.
+    pub async fn abort_blocks(&self, starting_block_hash: &str) -> Result<()> {
+        let resp: serde_json::Value = reqwest::Client::new()
+            .post(format!("{}/rpc", self.rpc_url()))
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "devnet_abortBlocks",
+                "params": { "starting_block_id": { "block_hash": starting_block_hash } }
+            }))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        if let Some(error) = resp.get("error") {
+            bail!("devnet_abortBlocks failed: {}", error);
+        }
+        Ok(())
     }
 }
 
