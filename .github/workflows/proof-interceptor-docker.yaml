@@ -20,6 +20,9 @@ on:
       - 'deploy/proof-interceptor/**'
       - '.github/workflows/proof-interceptor-docker.yaml'
 
+env:
+  docker_repository: "ghcr.io/starkware-libs/starkware-private-ghcr"
+
 jobs:
   build:
     name: Build (${{ matrix.platform }})
@@ -42,7 +45,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/proof-interceptor
+          images: ${{ env.docker_repository }}/proof-interceptor
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -56,7 +59,7 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.platform }}
           cache-to: type=gha,mode=max,scope=${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,"name=ghcr.io/${{ github.repository }}/proof-interceptor",push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,"name=${{ env.docker_repository }}/proof-interceptor",push-by-digest=true,name-canonical=true,push=true
       - run: |
           mkdir -p /tmp/digests
           digest="${{ steps.build.outputs.digest }}"
@@ -83,7 +86,7 @@ jobs:
       - id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ghcr.io/${{ github.repository }}/proof-interceptor
+          images: ${{ env.docker_repository }}/proof-interceptor
           tags: |
             type=ref,event=branch
             type=ref,event=pr
@@ -96,6 +99,6 @@ jobs:
       - run: |
           cd /tmp/digests
           tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}')
-          sources=$(printf 'ghcr.io/${{ github.repository }}/proof-interceptor@sha256:%s ' *)
+          sources=$(printf '${{ env.docker_repository }}/proof-interceptor@sha256:%s ' *)
           docker buildx imagetools create $tags $sources
         shell: bash
