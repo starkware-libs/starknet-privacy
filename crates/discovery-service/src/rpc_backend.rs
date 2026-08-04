@@ -11,7 +11,7 @@ use serde::{de::DeserializeOwned, Serialize};
 use starknet_core::types::{
     requests::GetStorageAtRequest, AddressFilter, BlockId, BlockStatus, BlockTag,
     BlockWithTxHashes, EmittedEvent, EventFilter, Felt, GetStorageAtResult,
-    MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey, StorageResponseFlag,
+    MaybePreConfirmedBlockWithTxHashes, ReorgData, StarknetError, StorageKey, StorageResponseFlag,
     StorageResult,
 };
 use starknet_providers::{
@@ -25,7 +25,9 @@ use thiserror::Error;
 use tokio::sync::{RwLock, Semaphore, SemaphorePermit};
 use url::Url;
 
-use crate::chain_state::{ChainHead, ChainState, ChainStateError};
+use crate::chain_state::{
+    lowest_orphaned_block_number, ChainHead, ChainState, ChainStateError, RecentBlockWindow,
+};
 use crate::config::RpcConfig;
 
 /// Errors specific to the RPC backend.
@@ -120,6 +122,7 @@ impl JsonRpcTransport for LimitedTransport {
 struct RpcBackendInner {
     provider: JsonRpcClient<LimitedTransport>,
     head: RwLock<Option<ChainHead>>,
+    recent_blocks: RwLock<RecentBlockWindow>,
     max_batch_size: usize,
     event_page_size: usize,
 }
@@ -163,6 +166,7 @@ impl RpcBackend {
             inner: Arc::new(RpcBackendInner {
                 provider,
                 head: RwLock::new(None),
+                recent_blocks: RwLock::new(RecentBlockWindow::default()),
                 max_batch_size: config.max_batch_size,
                 event_page_size: config.event_page_size,
             }),
@@ -455,9 +459,37 @@ impl ChainState for RpcBackend {
 
     async fn set_head(&self, head: ChainHead) {
         *self.inner.head.write().await = Some(head);
+        self.inner.recent_blocks.write().await.record_head(&head);
+    }
+
+    async fn record_reorg(&self, reorg: &ReorgData) {
+        {
+            // An orphaned head must stop being handed out as the pin for new
+            // requests; dropping it sends `get_head` back to the node.
+            let mut cached_head = self.inner.head.write().await;
+            if cached_head
+                .is_some_and(|head| head.block_number >= lowest_orphaned_block_number(reorg))
+            {
+                *cached_head = None;
+            }
+        }
+        self.inner.recent_blocks.write().await.record_reorg(reorg);
+    }
+
+    async fn forget_recent_blocks(&self) {
+        // The cached head was announced by the same dead stream, so it is no more
+        // verifiable than the window.
+        *self.inner.head.write().await = None;
+        self.inner.recent_blocks.write().await.clear();
     }
 
     async fn is_canonical(&self, block_hash: Felt) -> Result<bool, ChainStateError> {
+        // Copied out before any await: no lock may be held across a node call.
+        let tracked_canonicity = self.inner.recent_blocks.read().await.canonicity(block_hash);
+        if let Some(is_canonical) = tracked_canonicity {
+            return Ok(is_canonical);
+        }
+
         // Two round trips: a height addresses exactly one block, so hash ->
         // height -> hash decides canonicity where knowing the hash cannot.
         let block = match self.block_by_id(BlockId::Hash(block_hash)).await? {

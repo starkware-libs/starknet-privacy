@@ -252,8 +252,10 @@ pub async fn validate_viewing_key<S: StorageSnapshot>(
 mod tests {
     use super::*;
     use crate::chain_state::mock::MockChainState;
+    use crate::chain_state::ChainHead;
     use discovery_core::discovery::{ChannelCursor, SubchannelCursor};
     use discovery_core::privacy_pool::types::SecretFelt;
+    use starknet_core::types::ReorgData;
 
     #[tokio::test]
     async fn test_none_resolves_to_head_hash() {
@@ -297,6 +299,42 @@ mod tests {
             validate_block_ref(Some(Felt::from_hex_unchecked("0x999")), None, &backend).await;
         assert!(result.is_err());
 
+        let (status, error) = result.unwrap_err();
+        assert_eq!(status, StatusCode::CONFLICT);
+        assert_eq!(error.error.code, error_codes::BLOCK_REORGED);
+    }
+
+    /// A reorg the node reported must turn into the 409 that tells the client to
+    /// discard its cursor, even though the block was announced as a head first.
+    #[tokio::test]
+    async fn test_reorged_announced_block_conflicts() {
+        let backend = MockChainState::new();
+        let announced_hash = Felt::from_hex_unchecked("0x456");
+        backend
+            .set_head(ChainHead {
+                block_number: 101,
+                block_hash: announced_hash,
+                timestamp: 1010,
+            })
+            .await;
+
+        assert!(
+            validate_block_ref(Some(announced_hash), None, &backend)
+                .await
+                .is_ok(),
+            "an announced head is accepted"
+        );
+
+        backend
+            .record_reorg(&ReorgData {
+                starting_block_hash: announced_hash,
+                starting_block_number: 101,
+                ending_block_hash: announced_hash,
+                ending_block_number: 101,
+            })
+            .await;
+
+        let result = validate_block_ref(Some(announced_hash), None, &backend).await;
         let (status, error) = result.unwrap_err();
         assert_eq!(status, StatusCode::CONFLICT);
         assert_eq!(error.error.code, error_codes::BLOCK_REORGED);

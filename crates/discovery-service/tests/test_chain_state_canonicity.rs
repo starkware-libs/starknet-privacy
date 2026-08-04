@@ -15,13 +15,15 @@ use std::sync::Arc;
 use axum::extract::State;
 use axum::routing::post;
 use axum::{Json, Router};
-use discovery_service::chain_state::{ChainState, ChainStateError};
+use discovery_service::chain_state::{
+    ChainHead, ChainState, ChainStateError, MAX_TRACKED_CANONICAL_BLOCKS,
+};
 use discovery_service::config::RpcConfig;
 use discovery_service::rpc_backend::RpcBackend;
 use serde_json::{json, Value};
 use starknet_core::types::{
     BlockStatus, BlockWithTxHashes, Felt, L1DataAvailabilityMode,
-    MaybePreConfirmedBlockWithTxHashes, PreConfirmedBlockWithTxHashes, ResourcePrice,
+    MaybePreConfirmedBlockWithTxHashes, PreConfirmedBlockWithTxHashes, ReorgData, ResourcePrice,
 };
 use tokio::net::TcpListener;
 use tokio::task::JoinSet;
@@ -235,6 +237,23 @@ async fn spawn_backend(node: MockNode) -> (RpcBackend, Arc<MockNode>) {
     (backend, node)
 }
 
+fn head_at(block_number: u64, block_hash: Felt) -> ChainHead {
+    ChainHead {
+        block_number,
+        block_hash,
+        timestamp: 1_700_000_000 + block_number,
+    }
+}
+
+fn reorg_of(block_number: u64, block_hash: Felt) -> ReorgData {
+    ReorgData {
+        starting_block_hash: block_hash,
+        starting_block_number: block_number,
+        ending_block_hash: block_hash,
+        ending_block_number: block_number,
+    }
+}
+
 /// The node still serves the orphaned block by hash, but its height now resolves
 /// to a different block. Existence alone would call this canonical.
 #[tokio::test]
@@ -340,6 +359,146 @@ async fn test_rpc_failure_is_reported_as_error() {
     assert!(
         matches!(result, Err(ChainStateError::RpcError(_))),
         "an unreachable node must leave canonicity unknown, not answer it"
+    );
+}
+
+/// A reported orphaned range settles those hashes without asking the node.
+#[tokio::test]
+async fn test_reorg_notification_answers_without_calling_node() {
+    let (backend, node) = spawn_backend(MockNode {
+        canonical_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: ORPHANED_HASH,
+        }],
+        addressable_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: ORPHANED_HASH,
+        }],
+        ..Default::default()
+    })
+    .await;
+
+    backend
+        .set_head(head_at(ORPHANED_BLOCK_NUMBER, ORPHANED_HASH))
+        .await;
+    assert!(
+        backend.is_canonical(ORPHANED_HASH).await.unwrap(),
+        "an announced head is canonical"
+    );
+
+    backend
+        .record_reorg(&reorg_of(ORPHANED_BLOCK_NUMBER, ORPHANED_HASH))
+        .await;
+
+    assert!(
+        !backend.is_canonical(ORPHANED_HASH).await.unwrap(),
+        "the reorg notification settles the announced hash"
+    );
+    assert_eq!(
+        node.n_block_requests(),
+        0,
+        "neither answer may cost a call: the node has already stated both"
+    );
+}
+
+/// A reorg covering the cached head must stop that head being handed out as the
+/// pin for new requests.
+#[tokio::test]
+async fn test_reorg_drops_the_cached_head() {
+    let (backend, _node) = spawn_backend(MockNode {
+        canonical_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: REPLACEMENT_HASH,
+        }],
+        addressable_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: REPLACEMENT_HASH,
+        }],
+        ..Default::default()
+    })
+    .await;
+
+    backend
+        .set_head(head_at(ORPHANED_BLOCK_NUMBER, ORPHANED_HASH))
+        .await;
+    backend
+        .record_reorg(&reorg_of(ORPHANED_BLOCK_NUMBER, ORPHANED_HASH))
+        .await;
+
+    // With no cached head, `get_head` resolves the tip against the node, which
+    // serves no `latest` block, so nothing stale is reported.
+    assert!(backend.get_head().await.is_none());
+}
+
+/// Reorgs reach live subscribers only, so a subscription restart has to send
+/// every previously announced hash back to the node.
+#[tokio::test]
+async fn test_forgetting_recent_blocks_returns_to_node() {
+    let (backend, node) = spawn_backend(MockNode {
+        canonical_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: REPLACEMENT_HASH,
+        }],
+        addressable_blocks: vec![BlockAtHeight {
+            block_number: ORPHANED_BLOCK_NUMBER,
+            block_hash: REPLACEMENT_HASH,
+        }],
+        ..Default::default()
+    })
+    .await;
+
+    backend
+        .set_head(head_at(ORPHANED_BLOCK_NUMBER, REPLACEMENT_HASH))
+        .await;
+    backend.forget_recent_blocks().await;
+
+    assert!(backend.is_canonical(REPLACEMENT_HASH).await.unwrap());
+    assert_eq!(
+        node.n_block_requests(),
+        2,
+        "a forgotten hash is resolved against the node again"
+    );
+}
+
+/// Eviction must degrade to a node round trip. Answering `false` for an evicted
+/// hash would make every client holding an older cursor re-sync.
+#[tokio::test]
+async fn test_evicted_announced_head_falls_back_to_node() {
+    // Filler heads are hashed from their own height, offset clear of the hash
+    // under test so no filler can accidentally match it.
+    let filler_hash = |block_number: u64| Felt::from(block_number + 0x10_0000);
+    let evicted_block_number = 1;
+    let evicted_hash = Felt::from_hex_unchecked("0xe1");
+    let (backend, node) = spawn_backend(MockNode {
+        canonical_blocks: vec![BlockAtHeight {
+            block_number: evicted_block_number,
+            block_hash: evicted_hash,
+        }],
+        addressable_blocks: vec![BlockAtHeight {
+            block_number: evicted_block_number,
+            block_hash: evicted_hash,
+        }],
+        ..Default::default()
+    })
+    .await;
+
+    backend
+        .set_head(head_at(evicted_block_number, evicted_hash))
+        .await;
+    for block_number in 2..=(MAX_TRACKED_CANONICAL_BLOCKS as u64 + 2) {
+        backend
+            .set_head(head_at(block_number, filler_hash(block_number)))
+            .await;
+    }
+
+    assert!(
+        backend.is_canonical(evicted_hash).await.unwrap(),
+        "the node still carries the evicted block at its height"
+    );
+    assert_eq!(
+        node.n_block_requests(),
+        2,
+        "an evicted hash is resolved against the node, not answered from memory"
     );
 }
 
