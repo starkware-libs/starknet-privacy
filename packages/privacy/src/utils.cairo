@@ -392,7 +392,7 @@ pub(crate) fn assert_valid_signature(
     // doesn't advertise from being credited with custom validation at all.
     // The pool binds no extra data, so `additional_data` is empty.
     if supports_custom_validation(user_addr)
-        && custom_validation_accepted(
+        && signature_accepted(
             ICustomSignatureValidationSafeDispatcher { contract_address: user_addr }
                 .is_custom_signature_valid(calls, array![].span(), tx_info.signature),
         ) {
@@ -400,7 +400,7 @@ pub(crate) fn assert_valid_signature(
     }
     let user_account = IAccountSafeDispatcher { contract_address: user_addr };
     // II. Standard SN wallet: signature over the tx hash.
-    if wallet_signature_accepted(
+    if signature_accepted(
         user_account
             .is_valid_signature(
                 hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
@@ -410,7 +410,7 @@ pub(crate) fn assert_valid_signature(
     }
     // III. Legacy SN wallet: signature over the SNIP-12 `CallSet` hash of `calls`.
     // The pool binds no extra data, so `additional_data` is empty.
-    if wallet_signature_accepted(
+    if signature_accepted(
         user_account
             .is_valid_signature(
                 hash: compute_call_set_hash(user_addr, calls, array![].span()),
@@ -432,11 +432,8 @@ fn supports_custom_validation(user_addr: ContractAddress) -> bool {
         .unwrap_or(false)
 }
 
-fn custom_validation_accepted(validation_result: Result<felt252, Array<felt252>>) -> bool {
-    validation_result == Result::Ok(VALIDATED)
-}
 
-fn wallet_signature_accepted(validation_result: Result<felt252, Array<felt252>>) -> bool {
+fn signature_accepted(validation_result: Result<felt252, Array<felt252>>) -> bool {
     validation_result == Result::Ok(VALIDATED) || validation_result == Result::Ok(LEGACY_VALIDATED)
 }
 
