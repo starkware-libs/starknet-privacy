@@ -22,9 +22,9 @@ use privacy::tests::utils_for_tests::{
     AuditorTrait, CreateEncNoteInputIntoServerActionTrait, CreateOpenNoteInputIntoServerActionTrait,
     InvokeExternalInputIntoServerActionTrait, NoteZero, PrivacyCfgTrait, Test, TestTrait, UserTrait,
     constants, decrypt_channel_info, decrypt_outgoing_channel_info, decrypt_subchannel_token,
-    deploy_mock_asserting_account, deploy_mock_compute, deploy_mock_compute_array,
-    deploy_mock_compute_empty, deploy_mock_compute_multi_felt, deploy_mock_custom_account,
-    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_stark_account,
+    deploy_mock_compute, deploy_mock_compute_array, deploy_mock_compute_empty,
+    deploy_mock_compute_multi_felt, deploy_mock_custom_account, deploy_mock_reentrancy,
+    deploy_mock_return_garbage, deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
     ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, LEGACY_VALIDATED, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
@@ -6726,7 +6726,7 @@ fn test_deposit_legacy_sn_wallet_via_snip12_call_set() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 7, public_key: key.public_key, returns_legacy_bool: false,
+        salt: 7, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6753,7 +6753,7 @@ fn test_deposit_legacy_sn_wallet_wrong_call_set_reverts() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 8, public_key: key.public_key, returns_legacy_bool: false,
+        salt: 8, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6785,7 +6785,7 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('NO_SRC5_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 9, public_key: key.public_key, returns_legacy_bool: false,
+        salt: 9, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6812,7 +6812,7 @@ fn test_deposit_legacy_bool_wallet_via_tx_hash() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 18, public_key: key.public_key, returns_legacy_bool: true,
+        salt: 18, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6840,7 +6840,7 @@ fn test_deposit_legacy_bool_wallet_via_snip12_call_set() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 19, public_key: key.public_key, returns_legacy_bool: true,
+        salt: 19, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6868,7 +6868,7 @@ fn test_deposit_legacy_bool_wallet_wrong_call_set_reverts() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
     let depositor = deploy_mock_stark_account(
-        salt: 20, public_key: key.public_key, returns_legacy_bool: true,
+        salt: 20, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6891,17 +6891,19 @@ fn test_deposit_legacy_bool_wallet_wrong_call_set_reverts() {
 /// Regression: a wallet that rejects a mismatched signature by panicking rather than returning 0
 /// must still reach the legacy `CallSet` check.
 #[test]
-fn test_deposit_asserting_wallet_via_snip12_call_set() {
+fn test_deposit_panicking_wallet_via_snip12_call_set() {
     start_cheat_chain_id_global('TEST');
     let test: Test = Default::default();
-    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('ASSERTING_WALLET_SK');
-    let depositor = deploy_mock_asserting_account(salt: 13, public_key: key.public_key);
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 13, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
         .privacy
         .wrap_inputs_into_calls(
-            user_addr: depositor, user_private_key: 'ASSERTING_PROTOCOL_PK', :client_actions,
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
         );
 
     // The wallet signs the SNIP-12 CallSet message over exactly these calls.
@@ -6917,17 +6919,19 @@ fn test_deposit_asserting_wallet_via_snip12_call_set() {
 /// A panicking wallet whose signature matches no check must fail with the pool's
 /// `INVALID_SIGNATURE`, not with the account's own panic felt.
 #[test]
-fn test_deposit_asserting_wallet_wrong_call_set_reverts() {
+fn test_deposit_panicking_wallet_wrong_call_set_reverts() {
     start_cheat_chain_id_global('TEST');
     let test: Test = Default::default();
-    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('ASSERTING_WALLET_SK');
-    let depositor = deploy_mock_asserting_account(salt: 14, public_key: key.public_key);
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 14, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
         .privacy
         .wrap_inputs_into_calls(
-            user_addr: depositor, user_private_key: 'ASSERTING_PROTOCOL_PK', :client_actions,
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
         );
 
     // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
@@ -6940,20 +6944,24 @@ fn test_deposit_asserting_wallet_wrong_call_set_reverts() {
     stop_cheat_chain_id_global();
 }
 
+/// A panicking wallet's valid tx-hash signature must still authenticate at check II — tolerating
+/// the panic must not cost the account the check it would otherwise have passed.
 #[test]
-fn test_deposit_asserting_wallet_via_tx_hash() {
+fn test_deposit_panicking_wallet_via_tx_hash() {
     let test: Test = Default::default();
-    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('ASSERTING_WALLET_SK');
-    let depositor = deploy_mock_asserting_account(salt: 15, public_key: key.public_key);
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 15, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
         .privacy
         .wrap_inputs_into_calls(
-            user_addr: depositor, user_private_key: 'ASSERTING_PROTOCOL_PK', :client_actions,
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
         );
 
-    let tx_hash = 'ASSERTING_TX_HASH';
+    let tx_hash = 'PANICKING_TX_HASH';
     start_cheat_transaction_hash(test.privacy.address, tx_hash);
     let (r, s) = key.sign(tx_hash).unwrap();
     start_cheat_signature(test.privacy.address, array![r, s].span());

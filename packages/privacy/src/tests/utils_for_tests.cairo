@@ -44,7 +44,6 @@ use privacy::test_contracts::mock_swap_executor::{
     ISwapExecutorSafeDispatcherTrait,
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
-use privacy::tests::mock_asserting_account::MockAssertingAccount::deploy_for_test as deploy_mock_asserting_account_for_test;
 use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
 use privacy::tests::mock_invoke_returns::MockCompute::deploy_for_test as deploy_mock_compute_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeArray::deploy_for_test as deploy_mock_compute_array_for_test;
@@ -2228,9 +2227,10 @@ pub(crate) fn deploy_mock_custom_account(
 }
 
 /// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
-/// `returns_legacy_bool` selects whether it accepts with a pre-SNIP-6 boolean or with `VALIDATED`.
+/// `returns_legacy_bool` selects whether it accepts with a pre-SNIP-6 boolean or with `VALIDATED`;
+/// `panics_on_reject` selects whether it rejects by panicking instead of returning 0.
 pub(crate) fn deploy_mock_stark_account(
-    salt: felt252, public_key: felt252, returns_legacy_bool: bool,
+    salt: felt252, public_key: felt252, returns_legacy_bool: bool, panics_on_reject: bool,
 ) -> ContractAddress {
     let contract_class_hash = declare(contract: "MockStarkAccount")
         .unwrap_syscall()
@@ -2238,22 +2238,13 @@ pub(crate) fn deploy_mock_stark_account(
         .class_hash;
     let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
     let (contract_address, _) = deploy_mock_stark_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :public_key, :returns_legacy_bool,
+        class_hash: *contract_class_hash,
+        :deployment_params,
+        :public_key,
+        :returns_legacy_bool,
+        :panics_on_reject,
     )
         .expect('MockStarkAccount deploy failed');
-    contract_address
-}
-
-pub(crate) fn deploy_mock_asserting_account(salt: felt252, public_key: felt252) -> ContractAddress {
-    let contract_class_hash = declare(contract: "MockAssertingAccount")
-        .unwrap_syscall()
-        .contract_class()
-        .class_hash;
-    let deployment_params = DeploymentParams { salt, deploy_from_zero: true };
-    let (contract_address, _) = deploy_mock_asserting_account_for_test(
-        class_hash: *contract_class_hash, :deployment_params, :public_key,
-    )
-        .expect('MockAssertingAccount deploy err');
     contract_address
 }
 
