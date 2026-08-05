@@ -31,6 +31,8 @@ import type {
 import { AdvancedMap, AddressMap } from "../utils/maps.js";
 import { assert, isOpen } from "../utils/validation.js";
 import type { MockContracts, MockContract } from "./contracts.js";
+import { SCREENING_SIGNER_PUBLIC_KEY } from "./screening-signer.js";
+import { CairoCustomEnum } from "starknet";
 import {
   compute_channel_key,
   compute_channel_marker,
@@ -178,6 +180,16 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
     return 1n;
   }
 
+  get_screener_public_key(): bigint {
+    // The key whose private half the signing mock proof provider attests with.
+    return SCREENING_SIGNER_PUBLIC_KEY;
+  }
+
+  get_version(): bigint {
+    // The mock is not a versioned deployment, so it reports no version.
+    return 0n;
+  }
+
   get_fee_amount(): bigint | number {
     return 0n;
   }
@@ -188,6 +200,15 @@ export class MockPoolContract implements MockContract, PoolContractInterface {
 
   get_proof_validity_blocks(): bigint | number {
     return 450n;
+  }
+
+  get_open_note_screening_policy(_depositor: StarknetAddressBigint): CairoCustomEnum {
+    // The mock lists no depositor, so every one reads back the default policy.
+    return new CairoCustomEnum({
+      Required: {},
+      Exempt: undefined,
+      Delegated: undefined,
+    });
   }
 
   // ============ Helper Methods for Discovery ============

@@ -643,44 +643,6 @@ fn test_apply_invoke_with_computation_missing_selector() {
 }
 
 #[test]
-fn test_apply_invoke_with_computation_blocked_depositor() {
-    let mut test: Test = Default::default();
-    let token = test.new_token();
-    let token_addr = token.contract_address();
-    let echo_executor_addr = test.privacy.echo_executor;
-    let enc_recipient_addr = test.mock_new_enc_address();
-    let amount = constants::DEFAULT_AMOUNT;
-    let (note_id, _) = test.mock_new_note(:amount);
-
-    let empty_note = open_note(token: token_addr);
-    test.privacy.cheat_create_note(:note_id, note: empty_note);
-    token.supply(address: echo_executor_addr, :amount);
-    token.approve(owner: echo_executor_addr, spender: test.privacy.address, amount: amount.into());
-
-    let deposit = OpenNoteDeposit { note_id, token: token_addr, amount };
-    let actions = [
-        ServerAction::EmitOpenNoteCreated(
-            events::OpenNoteCreated { enc_recipient_addr, token: token_addr, note_id },
-        ),
-        test.privacy.invoke_with_computation_echo_deposits([deposit].span()),
-    ]
-        .span();
-
-    // The depositor is the InvokeWithComputation target (echo executor); blocking it reverts.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor_addr, blocked: true);
-    let result = test.privacy.safe_apply_actions(:actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
-
-    // Unblocking lets the same deposit land.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor_addr, blocked: false);
-    test.privacy.apply_actions(:actions);
-    let deposited_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);
-    assert_eq!(salt, OPEN_NOTE_SALT);
-    assert_eq!(stored_amount, amount);
-}
-
-#[test]
 fn test_apply_emit_open_note_created() {
     let mut test: Test = Default::default();
     let token = test.new_token();
@@ -1031,68 +993,6 @@ fn test_deposit_to_open_note() {
         expected_event_selector: @selector!("OpenNoteDeposited"),
         expected_event_name: "OpenNoteDeposited",
     );
-}
-
-#[test]
-fn test_deposit_to_open_note_blocked_depositor() {
-    let mut test: Test = Default::default();
-    let token = test.new_token();
-    let mut user = test.new_user();
-    let amount = constants::DEFAULT_AMOUNT;
-    let token_addr = token.contract_address();
-    let echo_executor = test.privacy.echo_executor;
-
-    user.set_viewing_key_e2e();
-    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
-
-    let create_note_input = user
-        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
-    token.supply(address: echo_executor, :amount);
-    token.approve(owner: echo_executor, spender: test.privacy.address, amount: amount.into());
-    let (note_id, actions) = user.create_and_deposit_to_open_note(:create_note_input, :amount);
-
-    // The depositor for echo-executor open-note deposits is the Invoke target (echo_executor).
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
-    let result = test.privacy.safe_apply_actions(:actions);
-    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
-
-    // Nothing transferred and the note is still empty (the revert undid all state).
-    assert_eq!(token.balance_of(address: echo_executor), amount.into());
-    assert_eq!(token.balance_of(address: test.privacy.address), Zero::zero());
-
-    // Unblocking lets the same deposit succeed.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: false);
-    test.privacy.apply_actions(:actions);
-
-    let deposited_note = test.privacy.get_note(:note_id);
-    let (salt, stored_amount) = unpack(packed_value: deposited_note.packed_value);
-    assert_eq!(salt, OPEN_NOTE_SALT);
-    assert_eq!(stored_amount, amount);
-    assert_eq!(token.balance_of(address: echo_executor), Zero::zero());
-    assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
-}
-
-#[test]
-fn test_invoke_from_blocked_address_without_open_note_deposit_is_allowed() {
-    let mut test: Test = Default::default();
-    let echo_executor = test.privacy.echo_executor;
-
-    // Block the echo executor — the address that would be the open-note depositor if it funded
-    // one.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
-
-    // Invoke the (blocked) echo executor but have it return NO open-note deposits.
-    let no_deposits: Span<OpenNoteDeposit> = array![].span();
-    let actions = test.privacy.invoke_external_echo_deposits(no_deposits).into_server_actions();
-
-    // The block list is only consulted when an Invoke yields open-note deposits. With none, the tx
-    // succeeds even though the Invoke target is blocked (no `OPEN_NOTE_DEPOSITOR_BLOCKED` revert).
-    test.privacy.apply_actions(:actions);
-
-    // Same for the compute-invoke path: an InvokeWithComputation that yields no deposits succeeds
-    // even though the (blocked) target is the would-be depositor.
-    let compute_actions = [test.privacy.invoke_with_computation_echo_deposits(no_deposits)].span();
-    test.privacy.apply_actions(actions: compute_actions);
 }
 
 #[test]
@@ -2800,15 +2700,14 @@ fn test_apply_actions_rejects_multiple_depositors() {
 }
 
 #[test]
-fn test_combined_regular_and_open_note_deposits_screened_independently() {
+fn test_combined_regular_and_open_note_deposits() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
 
-    // Open-note deposit: depositor is the Invoke target (echo_executor), screened by the block
-    // list — not by an attestation.
+    // The open-note deposit's depositor is the Invoke target, exempt here.
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
@@ -2834,18 +2733,7 @@ fn test_combined_regular_and_open_note_deposits_screened_independently() {
     let combined = combined.span();
     let attestation = sign_screening_attestation(depositor: depositor_a.address, issued_at: 0);
 
-    // Blocking the open-note depositor rejects the whole tx even though the regular deposit's
-    // attestation is valid — the two depositor checks are enforced independently.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: true);
-    let result = test
-        .privacy
-        .safe_apply_actions_screened(
-            actions: combined, screening: Some(attestation), caller: constants::PAYMASTER,
-        );
-    assert_panic_with_felt_error(:result, expected_error: errors::OPEN_NOTE_DEPOSITOR_BLOCKED);
-
-    // Unblocking lets both deposits land under the same valid attestation.
-    test.privacy.set_open_note_depositor_blocked(depositor: echo_executor, blocked: false);
+    // One attestation covers both: the open-note depositor adds no requirement.
     test
         .privacy
         .apply_actions_screened(

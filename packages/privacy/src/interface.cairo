@@ -1,6 +1,7 @@
 use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+    OpenNoteScreeningPolicy,
 };
 use privacy::snip12::ScreeningAttestation;
 use starknet::ContractAddress;
@@ -558,9 +559,6 @@ pub trait IServer<T> {
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
     ///   ERC20 contract).
-    ///   - [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED): Thrown if
-    ///   the Invoke returned at least one deposit and the Invoke target (the open-note depositor)
-    ///   is on the block list.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -753,14 +751,17 @@ pub trait IViews<T> {
     /// - (`u64`): The number of blocks that a proof is valid for.
     fn get_proof_validity_blocks(self: @T) -> u64;
 
-    /// Returns whether a depositor is blocked from funding open-note deposits.
+    /// Returns the screening policy that the pool applies on open-note deposits from `depositor`.
     ///
     /// #### Parameters
-    /// - `depositor` (`ContractAddress`): The depositor address to query.
+    /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract.
     ///
     /// #### Returns
-    /// - (`bool`): `true` if the depositor is blocked, `false` otherwise.
-    fn is_open_note_depositor_blocked(self: @T, depositor: ContractAddress) -> bool;
+    /// - ([`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy)): The screening
+    /// policy applied on open-note deposits from `depositor`.
+    fn get_open_note_screening_policy(
+        self: @T, depositor: ContractAddress,
+    ) -> OpenNoteScreeningPolicy;
 }
 
 #[starknet::interface]
@@ -890,29 +891,33 @@ pub trait IAdmin<T> {
     /// - Only app governor.
     fn set_proof_validity_blocks(ref self: T, proof_validity_blocks: u64);
 
-    /// Add/Remove addresses to/from the block list of depositors to open-note.
+    /// Sets the screening policy which the pool applies on open-note deposits from `depositor`.
     ///
-    /// A blocked depositor cannot fund any open note: every `_deposit_to_open_note`
-    /// originating from that depositor reverts with
-    /// [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED).
+    /// - `Required`: the depositor's own address is the address requiring screening. This is the
+    /// default policy.
+    /// - `Exempt`: the depositor's open-note deposits are exempted from screening.
+    /// - `Delegated`: providing the addresses for screening is delegated to the depositor.
     ///
     /// #### Parameters
-    /// - `depositor` (`ContractAddress`): The depositor address to block or unblock. Must be
+    /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract. Must be
     /// non-zero.
-    /// - `blocked` (`bool`): `true` to block the depositor, `false` to unblock.
+    /// - `policy` ([`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy)): The
+    /// screening policy to apply.
     ///
     /// #### Returns
     /// None
     ///
     /// #### Events Emitted
-    /// - [`OpenNoteDepositorBlockSet`](privacy::events::OpenNoteDepositorBlockSet): Emitted with
-    /// the depositor and the new block state.
+    /// - [`OpenNoteScreeningPolicySet`](privacy::events::OpenNoteScreeningPolicySet): Emitted with
+    /// the depositor and the new policy.
     ///
     /// #### Reverts
     /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if `depositor`
     /// is zero.
     ///
     /// #### Access Control
-    /// - Only security governor.
-    fn set_open_note_depositor_blocked(ref self: T, depositor: ContractAddress, blocked: bool);
+    /// - Only app governor.
+    fn set_open_note_screening_policy(
+        ref self: T, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
+    );
 }

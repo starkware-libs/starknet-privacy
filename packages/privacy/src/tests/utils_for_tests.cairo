@@ -32,7 +32,7 @@ use privacy::interface::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
-    OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
+    OpenNoteDeposit, OpenNoteScreeningPolicy, TokenBalances, TokenBalancesTrait,
 };
 use privacy::privacy::Privacy;
 use privacy::privacy::Privacy::{ClientInternalTrait, deploy_for_test as deploy_privacy_for_test};
@@ -1859,24 +1859,26 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.safe_admin.set_proof_validity_blocks(:proof_validity_blocks)
     }
 
-    fn set_open_note_depositor_blocked(
-        self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
+    fn set_open_note_screening_policy(
+        self: @PrivacyCfg, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
     ) {
         cheat_caller_address_once(
-            contract_address: *self.address, caller_address: *self.roles.security_governor,
+            contract_address: *self.address, caller_address: *self.roles.app_governor,
         );
-        self.admin.set_open_note_depositor_blocked(:depositor, :blocked);
+        self.admin.set_open_note_screening_policy(:depositor, :policy);
     }
 
     #[feature("safe_dispatcher")]
-    fn safe_set_open_note_depositor_blocked(
-        self: @PrivacyCfg, depositor: ContractAddress, blocked: bool,
+    fn safe_set_open_note_screening_policy(
+        self: @PrivacyCfg, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
     ) -> Result<(), Array<felt252>> {
-        self.safe_admin.set_open_note_depositor_blocked(:depositor, :blocked)
+        self.safe_admin.set_open_note_screening_policy(:depositor, :policy)
     }
 
-    fn is_open_note_depositor_blocked(self: @PrivacyCfg, depositor: ContractAddress) -> bool {
-        self.views.is_open_note_depositor_blocked(:depositor)
+    fn get_open_note_screening_policy(
+        self: @PrivacyCfg, depositor: ContractAddress,
+    ) -> OpenNoteScreeningPolicy {
+        self.views.get_open_note_screening_policy(:depositor)
     }
 
     fn get_fee_amount(self: @PrivacyCfg) -> u128 {
@@ -2648,6 +2650,16 @@ fn deserialize_server_actions(message: @MessageToL1) -> Span<ServerAction> {
     let mut payload = message.payload.span();
     let _ = payload.pop_front(); // Pop class hash.
     Serde::<Span<ServerAction>>::deserialize(ref payload).expect('Failed deserialize')
+}
+
+/// Every `OpenNoteScreeningPolicy`, in declaration order, so a sweep cannot miss a variant added
+/// later. The order is load-bearing: `test_screening_policy_store_index_matches_serde_index` pairs
+/// this list with the absolute indices 0, 1, 2.
+pub(crate) fn all_screening_policies() -> [OpenNoteScreeningPolicy; 3] {
+    [
+        OpenNoteScreeningPolicy::Required, OpenNoteScreeningPolicy::Exempt,
+        OpenNoteScreeningPolicy::Delegated,
+    ]
 }
 
 pub(crate) fn spy_messages_to_server_actions(ref spy: MessageToL1Spy) -> Span<ServerAction> {
