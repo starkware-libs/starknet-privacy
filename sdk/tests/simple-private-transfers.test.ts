@@ -3,11 +3,21 @@ import { createTestEnv, MockTestEnv, POOL_ADDRESS } from "./helpers/test-fixture
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
 import { debugHint, isDebugEnabled, toBigInt, toHex } from "../src/utils/index.js";
 import { MockSwapAnonymizer } from "../src/testing/contracts.js";
+import type { Mocknet } from "../src/testing/mocknet.js";
 import { All, PrivateTransfersInterface } from "../src/interfaces.js";
 
 interface SurplusCall {
   recipient: bigint;
   withdraw?: boolean;
+}
+
+interface OperationTrace {
+  /** Section boundaries in order: `build#N` when an operation starts, `submit#N` / `fail#N` when it ends. */
+  events: string[];
+  /** Note ids spent by each submitted operation, in submission order. */
+  spentNoteIds: bigint[][];
+  /** Withdrawn amounts of each submitted operation, in submission order. */
+  withdrawnAmounts: bigint[][];
 }
 
 // Spies on surplusTo to record each call's arguments while still invoking the real implementation.
@@ -29,6 +39,51 @@ function spyOnSurplusTo(transfers: PrivateTransfersInterface): SurplusCall[] {
     return builder;
   });
   return surplusCalls;
+}
+
+// Submits from inside the operation, which a real caller cannot do — `execute` hands the proof back
+// first. That makes each operation's notes land before the next builds, so the trace shows whether
+// two operations on one instance overlapped and what each spent.
+function traceSubmittedOperations(
+  transfers: PrivateTransfersInterface,
+  mocknet: Mocknet,
+  // When given, the first execution rejects with this message instead of running, standing in for a
+  // transient failure such as an unavailable prover.
+  firstExecutionError?: string
+): OperationTrace {
+  const trace: OperationTrace = { events: [], spentNoteIds: [], withdrawnAmounts: [] };
+  let numStarted = 0;
+  let numEnded = 0;
+  let numExecutions = 0;
+
+  const build = transfers.build.bind(transfers);
+  vi.spyOn(transfers, "build").mockImplementation((options) => {
+    trace.events.push(`build#${++numStarted}`);
+    return build(options);
+  });
+
+  const execute = transfers.execute.bind(transfers);
+  vi.spyOn(transfers, "execute").mockImplementation(async (actions, options) => {
+    try {
+      if (++numExecutions === 1 && firstExecutionError !== undefined) {
+        // Reject after yielding, the way a failed proving round-trip would
+        await Promise.resolve();
+        throw new Error(firstExecutionError);
+      }
+      const result = await execute(actions, options);
+      mocknet.executeOutside(result);
+      trace.events.push(`submit#${++numEnded}`);
+      // Read after execute: note selection and surplus routing fill these in during compilation.
+      trace.spentNoteIds.push((actions.useNotes ?? []).map((used) => toBigInt(used.note.id)));
+      trace.withdrawnAmounts.push((actions.withdraws ?? []).map((withdrawal) => withdrawal.amount));
+      return result;
+    } catch (error) {
+      trace.events.push(`fail#${++numEnded}`);
+      throw error;
+    }
+  });
+
+  return trace;
 }
 
 describe("SimplePrivateTransfers", () => {
@@ -196,5 +251,105 @@ describe("SimplePrivateTransfers", () => {
     expect(beeNotes.length).toBe(1);
     expect(beeNotes[0].amount).toBe(20n);
     expect(beeNotes[0].open).toBe(true);
+  });
+
+  it("operations started together on one instance run one at a time and spend different notes", async () => {
+    const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
+
+    mocknet.executeOutside(await transfers.alice.build().register().execute());
+    mocknet.executeOutside(await transfers.bob.build().register().execute());
+
+    const alice = new SimplePrivateTransfersImpl(transfers.alice);
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+
+    const trace = traceSubmittedOperations(transfers.alice, mocknet);
+
+    await Promise.all([
+      alice.withdraw(env.ace, env.alice.address, 40n),
+      alice.transfer(env.ace, env.bob.address, 30n),
+    ]);
+
+    // The property first, so any fix that preserves it still passes: the transfer spent the change
+    // note the withdrawal created, not the note the withdrawal spent.
+    expect(trace.spentNoteIds[0]).toHaveLength(1);
+    expect(trace.spentNoteIds[1]).toHaveLength(1);
+    expect(trace.spentNoteIds[1][0]).not.toBe(trace.spentNoteIds[0][0]);
+
+    // Then the mechanism: each operation ran to completion before the next started.
+    expect(trace.events).toEqual(["build#1", "submit#1", "build#2", "submit#2"]);
+
+    // State matches strictly sequential execution: 100 deposited, 40 withdrawn, 30 transferred
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([30n]);
+    const bobNotes = (await transfers.bob.discoverNotes()).notes.get(ace) ?? [];
+    expect(bobNotes.map((note) => note.amount)).toEqual([30n]);
+    expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(940n); // 1000 - 100 + 40
+  });
+
+  it("queued operations run in call order", async () => {
+    const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
+
+    mocknet.executeOutside(await transfers.alice.build().register().execute());
+
+    const alice = new SimplePrivateTransfersImpl(transfers.alice);
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+
+    const trace = traceSubmittedOperations(transfers.alice, mocknet);
+
+    const settleOrder: bigint[] = [];
+    await Promise.all(
+      [10n, 20n, 30n].map((amount) =>
+        alice.withdraw(env.ace, env.alice.address, amount).then(() => void settleOrder.push(amount))
+      )
+    );
+
+    expect(trace.events).toEqual([
+      "build#1",
+      "submit#1",
+      "build#2",
+      "submit#2",
+      "build#3",
+      "submit#3",
+    ]);
+
+    // The three withdrawals ran, and settled, in the order they were called
+    expect(trace.withdrawnAmounts).toEqual([[10n], [20n], [30n]]);
+    expect(settleOrder).toEqual([10n, 20n, 30n]);
+
+    // Every operation swept the previous change note, so no note was spent twice
+    expect(new Set(trace.spentNoteIds.flat()).size).toBe(3);
+
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([40n]); // 100 - 10 - 20 - 30
+    expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(960n); // 1000 - 100 + 60
+  });
+
+  it("a failed operation lets the operation queued behind it complete", async () => {
+    const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
+
+    mocknet.executeOutside(await transfers.alice.build().register().execute());
+
+    const alice = new SimplePrivateTransfersImpl(transfers.alice);
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+
+    const trace = traceSubmittedOperations(transfers.alice, mocknet, "prover unavailable");
+
+    const failingWithdraw = alice.withdraw(env.ace, env.alice.address, 40n);
+    const queuedWithdraw = alice.withdraw(env.ace, env.alice.address, 25n);
+
+    // The caller of the failing operation still sees its own error
+    await expect(failingWithdraw).rejects.toThrow("prover unavailable");
+    await expect(queuedWithdraw).resolves.toHaveProperty("callAndProof");
+
+    // The queued operation started only after the failure, and ran normally
+    expect(trace.events).toEqual(["build#1", "fail#1", "build#2", "submit#2"]);
+    expect(trace.withdrawnAmounts).toEqual([[25n]]);
+
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([75n]); // 100 - 25
+    expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(925n); // 1000 - 100 + 25
   });
 });
