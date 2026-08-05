@@ -4,7 +4,7 @@
  * Run: npx tsx scripts/generate-pool-interface.ts
  */
 
-import { BigNumberish } from "starknet";
+import { BigNumberish, CairoCustomEnum } from "starknet";
 
 // ============ Struct Types ============
 
@@ -57,7 +57,10 @@ export interface PoolContractInterface {
   get_public_key(userAddr: BigNumberish): BigNumberish | Promise<BigNumberish>;
   get_enc_private_key(userAddr: BigNumberish): EncPrivateKey | Promise<EncPrivateKey>;
   get_auditor_public_key(): BigNumberish | Promise<BigNumberish>;
+  get_screener_public_key(): BigNumberish | Promise<BigNumberish>;
+  get_version(): BigNumberish | Promise<BigNumberish>;
   get_fee_amount(): bigint | number | Promise<bigint | number>;
   get_fee_collector(): BigNumberish | Promise<BigNumberish>;
   get_proof_validity_blocks(): bigint | number | Promise<bigint | number>;
+  get_open_note_screening_policy(depositor: BigNumberish): CairoCustomEnum | Promise<CairoCustomEnum>;
 }
