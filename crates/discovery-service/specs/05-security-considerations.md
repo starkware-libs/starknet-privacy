@@ -59,7 +59,7 @@ The following vectors have been identified and mitigated:
 The following request fields are validated by the service:
 
 - **max_reads:** Must be within allowed bounds (default 50, max 100). Zero is currently accepted but wastes work.
-- **last_known_block:** If provided, checked for canonical status (reorg detection). Returns `BLOCK_REORGED` if no longer canonical.
+- **last_known_block:** If provided, checked for canonical status (reorg detection). Returns `BLOCK_REORGED` if no longer canonical. Canonicity means the chain still carries that exact block at that height — not merely that the node still serves the hash — so a block replaced by a competing one is also reported as reorged (see §11.1).
 - **block_ref:** If provided, used as-is for querying. No separate existence check — an invalid hash surfaces as an RPC error.
 - **cursor:** Structural validation via serde deserialization. Malformed JSON results in `INVALID_REQUEST`. **Note:** cursor HashMap sizes (`channels`, `subchannels`) are NOT validated — an attacker can submit arbitrarily large maps that spawn unbounded concurrent tasks. Size caps MUST be enforced before task spawning.
 - **recipient_address:** Accepted as a Felt value without format validation.

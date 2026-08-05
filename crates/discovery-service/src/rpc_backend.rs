@@ -9,9 +9,9 @@ use discovery_core::storage_backend::{
 };
 use serde::{de::DeserializeOwned, Serialize};
 use starknet_core::types::{
-    requests::GetStorageAtRequest, AddressFilter, BlockId, BlockTag, EmittedEvent, EventFilter,
-    Felt, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes, StarknetError, StorageKey,
-    StorageResponseFlag, StorageResult,
+    requests::GetStorageAtRequest, AddressFilter, BlockId, BlockTag, BlockWithTxHashes,
+    EmittedEvent, EventFilter, Felt, GetStorageAtResult, MaybePreConfirmedBlockWithTxHashes,
+    StarknetError, StorageKey, StorageResponseFlag, StorageResult,
 };
 use starknet_providers::{
     jsonrpc::{
@@ -457,15 +457,31 @@ impl ChainState for RpcBackend {
     }
 
     async fn is_canonical(&self, block_hash: Felt) -> Result<bool, ChainStateError> {
-        match self
-            .inner
-            .provider
-            .get_block_transaction_count(BlockId::Hash(block_hash))
-            .await
-        {
-            Ok(_) => Ok(true),
-            Err(ProviderError::StarknetError(StarknetError::BlockNotFound)) => Ok(false),
-            Err(e) => Err(ChainStateError::RpcError(e)),
+        // Two round trips: a height addresses exactly one block, so hash ->
+        // height -> hash decides canonicity where knowing the hash cannot.
+        let block_number = match self.block_by_id(BlockId::Hash(block_hash)).await? {
+            Some(block) => block.block_number,
+            None => return Ok(false),
+        };
+        Ok(self
+            .block_by_id(BlockId::Number(block_number))
+            .await?
+            .is_some_and(|block| block.block_hash == block_hash))
+    }
+}
+
+impl RpcBackend {
+    /// Fetches the accepted block `block_id` addresses, or `None` when the node
+    /// has no such block. A pre-confirmed block is `None`: it carries no hash.
+    async fn block_by_id(
+        &self,
+        block_id: BlockId,
+    ) -> Result<Option<BlockWithTxHashes>, ChainStateError> {
+        match self.inner.provider.get_block_with_tx_hashes(block_id).await {
+            Ok(MaybePreConfirmedBlockWithTxHashes::Block(block)) => Ok(Some(block)),
+            Ok(MaybePreConfirmedBlockWithTxHashes::PreConfirmedBlock(_)) => Ok(None),
+            Err(ProviderError::StarknetError(StarknetError::BlockNotFound)) => Ok(None),
+            Err(error) => Err(ChainStateError::RpcError(error)),
         }
     }
 }
