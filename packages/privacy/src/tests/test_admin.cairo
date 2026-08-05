@@ -1,13 +1,15 @@
 use core::num::traits::Zero;
 use privacy::actions::ServerAction;
-use privacy::objects::EncUserAddr;
+use privacy::objects::{EncUserAddr, OpenNoteScreeningPolicy};
 use privacy::tests::utils_for_tests::{
-    AuditorTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, _decrypt_private_key, constants,
-    screener_key_pair,
+    AuditorTrait, PrivacyCfgTrait, Test, TestTrait, UserTrait, _decrypt_private_key,
+    all_screening_policies, constants, screener_key_pair,
 };
 use privacy::utils::{ProofFacts, compute_message_hash, derive_public_key};
 use privacy::{errors, events};
-use snforge_std::{EventSpyTrait, EventsFilterTrait, TokenTrait, spy_events};
+use snforge_std::{
+    EventSpyTrait, EventsFilterTrait, TokenTrait, load, map_entry_address, spy_events,
+};
 use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::roles::errors::AccessErrors;
 use starkware_utils::errors::Describable;
@@ -442,57 +444,116 @@ fn test_set_fee_collector_assertions() {
 }
 
 #[test]
-fn test_set_open_note_depositor_blocked() {
+fn test_set_open_note_screening_policy() {
     let test: Test = Default::default();
     let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
 
-    assert!(!test.privacy.is_open_note_depositor_blocked(:depositor));
-
-    let mut spy = spy_events();
-    test.privacy.set_open_note_depositor_blocked(:depositor, blocked: true);
-    assert!(test.privacy.is_open_note_depositor_blocked(:depositor));
-    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        expected_event: events::OpenNoteDepositorBlockSet { depositor, blocked: true },
-        expected_event_selector: @selector!("OpenNoteDepositorBlockSet"),
-        expected_event_name: "OpenNoteDepositorBlockSet",
+    assert_eq!(
+        test.privacy.get_open_note_screening_policy(:depositor), OpenNoteScreeningPolicy::Required,
     );
 
-    // Unblocking clears the flag and emits with `blocked: false`.
-    let mut spy = spy_events();
-    test.privacy.set_open_note_depositor_blocked(:depositor, blocked: false);
-    assert!(!test.privacy.is_open_note_depositor_blocked(:depositor));
-    let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
-    assert_eq!(events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        expected_event: events::OpenNoteDepositorBlockSet { depositor, blocked: false },
-        expected_event_selector: @selector!("OpenNoteDepositorBlockSet"),
-        expected_event_name: "OpenNoteDepositorBlockSet",
+    // Every policy is settable, reads back, and is emitted.
+    for policy in array![
+        OpenNoteScreeningPolicy::Exempt, OpenNoteScreeningPolicy::Delegated,
+        OpenNoteScreeningPolicy::Required,
+    ] {
+        let mut spy = spy_events();
+        test.privacy.set_open_note_screening_policy(:depositor, :policy);
+        assert_eq!(test.privacy.get_open_note_screening_policy(:depositor), policy);
+        let events = spy.get_events().emitted_by(contract_address: test.privacy.address).events;
+        assert_eq!(events.len(), 1);
+        assert_expected_event_emitted(
+            spied_event: events[0],
+            expected_event: events::OpenNoteScreeningPolicySet { depositor, policy },
+            expected_event_selector: @selector!("OpenNoteScreeningPolicySet"),
+            expected_event_name: "OpenNoteScreeningPolicySet",
+        );
+    }
+}
+
+/// Storage address of `depositor`'s entry in the screening-policy map.
+fn policy_slot(depositor: ContractAddress) -> felt252 {
+    map_entry_address(
+        map_selector: selector!("open_note_depositor_screening_policies"),
+        keys: [depositor.into()].span(),
+    )
+}
+
+/// Setting `Required` must leave no entry behind, it being the policy of every unlisted address.
+#[test]
+fn test_required_open_note_screening_policy_is_never_stored() {
+    let test: Test = Default::default();
+    let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
+    test
+        .privacy
+        .set_open_note_screening_policy(:depositor, policy: OpenNoteScreeningPolicy::Delegated);
+    assert_ne!(
+        load(target: test.privacy.address, storage_address: policy_slot(:depositor), size: 1),
+        array![0],
+    );
+
+    test
+        .privacy
+        .set_open_note_screening_policy(:depositor, policy: OpenNoteScreeningPolicy::Required);
+    assert_eq!(
+        load(target: test.privacy.address, storage_address: policy_slot(:depositor), size: 1),
+        array![0],
     );
 }
 
+/// `starknet::Store` numbers the `#[default]` variant 0 and the rest in declaration order, while
+/// `Serde` — and so the ABI the SDK reads — numbers every variant in declaration order. A
+/// reorder would silently reinterpret policies already stored by a deployed class, and asserting
+/// that the two numberings merely agree would miss it, so pin each variant's absolute index.
 #[test]
-fn test_set_open_note_depositor_blocked_assertions() {
+fn test_screening_policy_store_index_matches_serde_index() {
     let test: Test = Default::default();
     let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
 
-    // Catch ONLY_SECURITY_GOVERNOR: default caller lacks the role.
-    let result = test.privacy.safe_set_open_note_depositor_blocked(:depositor, blocked: true);
-    assert_panic_with_error(
-        :result, expected_error: AccessErrors::ONLY_SECURITY_GOVERNOR.describe(),
-    );
+    let mut expected_index = 0;
+    for policy in all_screening_policies().span() {
+        let mut serde_index: Array<felt252> = array![];
+        policy.serialize(ref serde_index);
+        assert_eq!(serde_index, array![expected_index]);
+        test.privacy.set_open_note_screening_policy(:depositor, policy: *policy);
+        assert_eq!(
+            load(target: test.privacy.address, storage_address: policy_slot(:depositor), size: 1),
+            serde_index,
+        );
+        expected_index += 1;
+    }
+}
 
-    // Catch ZERO_CONTRACT_ADDRESS: the zero address cannot be blocked.
+#[test]
+fn test_set_open_note_screening_policy_assertions() {
+    let test: Test = Default::default();
+    let depositor: ContractAddress = 'DEPOSITOR'.try_into().unwrap();
+
+    // Catch ONLY_APP_GOVERNOR.
+    let result = test
+        .privacy
+        .safe_set_open_note_screening_policy(:depositor, policy: OpenNoteScreeningPolicy::Exempt);
+    assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_APP_GOVERNOR.describe());
+
+    // The security governor is not the gate either.
     cheat_caller_address_once(
         contract_address: test.privacy.address,
         caller_address: test.privacy.roles.security_governor,
     );
     let result = test
         .privacy
-        .safe_set_open_note_depositor_blocked(depositor: Zero::zero(), blocked: true);
+        .safe_set_open_note_screening_policy(:depositor, policy: OpenNoteScreeningPolicy::Exempt);
+    assert_panic_with_error(:result, expected_error: AccessErrors::ONLY_APP_GOVERNOR.describe());
+
+    // Catch ZERO_CONTRACT_ADDRESS.
+    cheat_caller_address_once(
+        contract_address: test.privacy.address, caller_address: test.privacy.roles.app_governor,
+    );
+    let result = test
+        .privacy
+        .safe_set_open_note_screening_policy(
+            depositor: Zero::zero(), policy: OpenNoteScreeningPolicy::Exempt,
+        );
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_CONTRACT_ADDRESS);
 }
 

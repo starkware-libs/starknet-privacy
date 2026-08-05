@@ -21,7 +21,7 @@ pub mod Privacy {
     use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
-        OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
+        OpenNoteDeposit, OpenNoteScreeningPolicy, TokenBalances, TokenBalancesTrait,
     };
     use privacy::snip12::{ScreeningAttestation, is_screening_attestation_valid};
     use privacy::utils::constants::{
@@ -98,8 +98,8 @@ pub mod Privacy {
         notes: Map<felt252, Note>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
-        /// Map of depositor addresses blocked from funding open-note deposits.
-        blocked_open_note_depositors: Map<ContractAddress, bool>,
+        /// Map of open-note depositor to screening policy.
+        open_note_depositor_screening_policies: Map<ContractAddress, OpenNoteScreeningPolicy>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
@@ -144,7 +144,7 @@ pub mod Privacy {
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
         ProofValidityBlocksSet: events::ProofValidityBlocksSet,
-        OpenNoteDepositorBlockSet: events::OpenNoteDepositorBlockSet,
+        OpenNoteScreeningPolicySet: events::OpenNoteScreeningPolicySet,
     }
 
     #[constructor]
@@ -991,11 +991,6 @@ pub mod Privacy {
 
             // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
             if !deposits.is_empty() {
-                assert(
-                    !self.blocked_open_note_depositors.read(contract_address),
-                    errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
-                );
-                // Apply deposits to open notes returned by Invoke.
                 for deposit in deposits {
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
@@ -1110,10 +1105,10 @@ pub mod Privacy {
             self.proof_validity_blocks.read()
         }
 
-        fn is_open_note_depositor_blocked(
+        fn get_open_note_screening_policy(
             self: @ContractState, depositor: ContractAddress,
-        ) -> bool {
-            self.blocked_open_note_depositors.read(depositor)
+        ) -> OpenNoteScreeningPolicy {
+            self.open_note_depositor_screening_policies.read(depositor)
         }
     }
 
@@ -1152,13 +1147,13 @@ pub mod Privacy {
             self._set_proof_validity_blocks(:proof_validity_blocks);
         }
 
-        fn set_open_note_depositor_blocked(
-            ref self: ContractState, depositor: ContractAddress, blocked: bool,
+        fn set_open_note_screening_policy(
+            ref self: ContractState, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
         ) {
-            self.common_roles.only_security_governor();
+            self.common_roles.only_app_governor();
             assert(depositor.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
-            self.blocked_open_note_depositors.entry(depositor).write(blocked);
-            self.emit(events::OpenNoteDepositorBlockSet { depositor, blocked });
+            self.open_note_depositor_screening_policies.entry(depositor).write(policy);
+            self.emit(events::OpenNoteScreeningPolicySet { depositor, policy });
         }
     }
 
