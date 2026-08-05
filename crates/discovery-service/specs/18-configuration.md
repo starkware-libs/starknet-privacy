@@ -63,6 +63,8 @@ server_budget = 10000
 max_request_body_bytes = 102400
 ```
 
+**Request limit validation:** `max_concurrent_requests` bounds how many JSON-RPC calls the RPC backend keeps in flight against the node; each single-method call and each batch request counts as one. It must be at least 1 — startup fails with a configuration error when it is `0`, since zero permits admit no outbound calls at all.
+
 **Budget clamping:** `server_budget` is clamped to `min_server_budget(max_note_log_index)` at startup (89 with default `max_note_log_index=30`). The minimum is computed from the costs needed to make progress through one step at each discovery level: fetch channel count, discover one channel, discover one subchannel (×2 for sentinel), probe note boundary, and scan 10 notes. Values below the minimum trigger a warning log and are raised to the minimum.
 
 ## Env Var Overrides
