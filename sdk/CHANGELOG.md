@@ -2,6 +2,32 @@
 
 ## Unreleased
 
+### Added
+
+- Regenerated `PrivacyPoolABI` and `PoolContractInterface` against the pool's single open-note
+  depositor list: `get_open_note_screening_policy` / `set_open_note_screening_policy` carry an
+  `OpenNoteScreeningPolicy` whose variants are `Required` (screen the depositor's own address — the
+  policy of every unlisted address, and never stored: setting it removes the depositor's entry),
+  `Exempt` (no screening requirement) and `Delegated` (the pool asks the depositor which addresses
+  to screen). The names are scoped to open notes because the policies govern only invoke-funded
+  open-note deposits; direct deposits always require an attestation for the depositor's own
+  address. `MockPoolContract` answers `Required`, listing no depositor.
+- `generate-pool-interface` now maps Cairo enums to the `CairoCustomEnum` type starknet.js
+  actually returns, instead of falling back to `unknown`.
+
+### Fixed
+
+- `PoolContractInterface` was missing `get_screener_public_key` and `get_version`, which the pool
+  has exposed all along; `MockPoolContract` now implements them.
+
+### Breaking
+
+- The pool's boolean depositor block list is retired outright, not replaced:
+  `is_open_note_depositor_blocked` / `set_open_note_depositor_blocked` are gone from the ABI, and
+  no policy rejects a depositor. A depositor the screener refuses gets no attestation, so the
+  default `Required` policy already turns its deposits away.
+  `MockPoolContract.is_open_note_depositor_blocked` is removed with them.
+
 ## 0.14.3-RC.5
 
 ### Fixed

@@ -99,6 +99,30 @@ pub struct Note {
     pub token: ContractAddress,
 }
 
+/// How the pool handles an open-note depositor's deposits.
+///
+/// `Required` is the policy of every address the app governor never listed, so it is never
+/// stored: writing it zeroes the storage slot, leaving an entry indistinguishable from an absent
+/// one. It requires screening of the depositor's own address — it is not a rejection. There is no
+/// "blocked" policy: a depositor the screener refuses gets no attestation, so `Required` already
+/// rejects its deposits.
+///
+/// The variants are storage-order sensitive in two different ways, so **never reorder them and
+/// never move `#[default]`**: `starknet::Store` numbers the `#[default]` variant 0 and the rest in
+/// declaration order, while `Serde` (and the ABI) numbers all of them in declaration order. The two
+/// numberings agree only as long as `#[default]` stays first, and a change reinterprets every
+/// already-stored policy on a class replacement.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy, Default)]
+pub enum OpenNoteScreeningPolicy {
+    /// The depositor's own address is the address requiring screening.
+    #[default]
+    Required,
+    /// The depositor's deposits carry no screening requirement.
+    Exempt,
+    /// The pool asks the depositor which addresses to screen.
+    Delegated,
+}
+
 /// Input for depositing to an open note (returned by invoked contract).
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenNoteDeposit {
