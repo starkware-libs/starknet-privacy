@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+### Fixed
+
+- `SimplePrivateTransfers.withdraw(token, recipient, amount)` keeps the change with the sender.
+  Withdrawing a fixed amount selects every note the sender holds for that token, and the surplus is
+  now created as a private note owned by the sender instead of the withdrawal recipient — the
+  recipient receives only the requested amount, publicly. `withdraw(token, recipient, All)` is
+  unchanged, and still moves nothing — it requests the surplus without an action to select notes
+  for the token, so no notes are selected and no withdrawal is emitted. See the `TODO` on that
+  branch in `src/simple-private-transfers.ts`.
+
 ### Breaking
 
 - Node-provider fields are named `node`, not `provider`: `SimulateOptions.provider` →
