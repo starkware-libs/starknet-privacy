@@ -583,3 +583,14 @@ pub(crate) fn assert_valid_os_call(caller_address: ContractAddress, tx_version: 
         errors::INVALID_TX_VERSION,
     );
 }
+
+/// Apply a subject address from a reference, and enforce its uniqueness across multiple
+/// applications.
+pub(crate) fn set_uniq_address(ref subject: Option<ContractAddress>, reference: ContractAddress) {
+    assert(reference.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
+    if let Some(already_set) = subject {
+        assert(already_set == reference, errors::MULTIPLE_SCREENING_SUBJECTS);
+    } else {
+        subject = Some(reference);
+    }
+}
