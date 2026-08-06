@@ -12,7 +12,6 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
     cheat_caller_address_once,
 };
-use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed;
 use sub_account_anonymizer::sub_account_anonymizer::{
     CollectPolicy, ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
     ISubAccountAnonymizerSafeDispatcherTrait, MAX_SCAN_RANGE, OpenNote, SubAccountInfo,
@@ -123,30 +122,19 @@ fn test_invoke_executes_and_collects_open_note() {
 }
 
 #[test]
-fn test_deploy_emits_sub_account_deployed_event() {
+fn test_deploy_no_sub_account_deployed_event() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
 
-    // The first invoke deploys the sub-account and emits the event.
-    let mut spy = spy_events();
-    components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer.get_sub_account(identity_commitment);
-    let expected_event = SubAccountDeployed { identity_commitment, sub_account };
-    let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
-    assert_eq!(events.len(), 1);
-    assert_expected_event_emitted(
-        spied_event: events[0],
-        :expected_event,
-        expected_event_selector: @selector!("SubAccountDeployed"),
-        expected_event_name: "SubAccountDeployed",
-    );
-
-    // A second invoke reuses the sub-account, so no new deployment event is emitted.
+    // Deploying a sub-account should NOT emit SubAccountDeployed.
+    // This event was removed because it leaked identity_commitment → sub_account linkage
+    // to off-chain observers, enabling sub-account enumeration attacks.
     let mut spy = spy_events();
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
     let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
-    assert_eq!(events.len(), 0);
+    // SubAccountDeployed is no longer emitted; sub-account is still deployed and tracked.
+    assert(events.len() == 0, 'expected no events');
 }
 
 #[test]
