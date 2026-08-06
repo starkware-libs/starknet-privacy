@@ -23,11 +23,11 @@ jobs:
     name: Format & Clippy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
         with:
           components: rustfmt, clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
       - name: Rust fmt
@@ -39,19 +39,19 @@ jobs:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           cache-on-failure: true
       - name: Install cargo-nextest
-        uses: taiki-e/install-action@nextest
+        uses: taiki-e/install-action@37ba67210166984a515120020147f0b4ae3b8667 # nextest
 
       # Regenerate Cairo reference data when Cairo/SDK files changed or on push to main (rebase)
       - name: Check for Cairo/SDK changes
         id: cairo-check
         if: github.event_name == 'pull_request'
-        uses: dorny/paths-filter@v3
+        uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         with:
           filters: |
             changed:
@@ -59,7 +59,7 @@ jobs:
               - 'sdk/**'
               - 'Scarb.toml'
               - 'Scarb.lock'
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         with:
           node-version: '20'
@@ -67,16 +67,16 @@ jobs:
           cache-dependency-path: sdk/package-lock.json
       - name: Install Scarb
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
-        uses: software-mansion/setup-scarb@v1
+        uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
           scarb-version: "2.17.0"
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
         with:
           universal-sierra-compiler-version: "v2.8.0"
       - name: Install starknet-foundry via asdf
         if: github.event_name == 'push' || steps.cairo-check.outputs.changed == 'true'
-        uses: asdf-vm/actions/install@v3
+        uses: asdf-vm/actions/install@05e0d2ed97b598bfce82fd30daf324ae0c4570e6 # v3
         with:
           asdf_branch: v0.14.1
           tool_versions: |
