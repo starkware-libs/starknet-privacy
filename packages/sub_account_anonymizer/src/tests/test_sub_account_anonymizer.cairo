@@ -576,7 +576,33 @@ fn test_collect_exact_policy() {
     assert_panic_with_felt_error(:result, expected_error: errors::INSUFFICIENT_BALANCE);
 }
 
+/// Regression test: duplicate tokens in open_notes are rejected before any state mutation.
 #[test]
+#[should_panic(expected: 'DUPLICATE_TOKEN')]
+fn test_collect_open_notes_rejects_duplicate_tokens() {
+    let components = deploy_components();
+    let token = components.token; // Token cheatcode object
+    let token_addr = token.contract_address();
+    let identity_commitment = anonymizer_disp(components.anonymizer)
+        .privacy_compute('USER', 'DAPP', 1);
+
+    let amount: u128 = 1_000_000;
+    token.supply(address: components.mock_dapp, amount: amount);
+
+    // Two OpenNote entries with the same token should be rejected.
+    components.invoke(
+        :identity_commitment,
+        calls: array![
+            transfer_to_caller_call(components.mock_dapp, token_addr, amount),
+        ],
+        open_notes: array![
+            OpenNote { note_id: 'NOTE_A', token: token_addr, collect_policy: CollectPolicy::All },
+            OpenNote { note_id: 'NOTE_B', token: token_addr, collect_policy: CollectPolicy::All },
+        ]
+            .span(),
+    );
+}
+
 #[should_panic(expected: 'AMOUNT_OVERFLOW')]
 fn test_collected_amount_overflow() {
     let components = deploy_components();

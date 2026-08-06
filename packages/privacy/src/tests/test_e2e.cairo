@@ -1995,11 +1995,14 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     assert_eq!(token.balance_of(address: sub_account_info.address), 0);
 }
 
-/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+/// E2E: two open notes on the *same* token in one sub-account interaction is
+/// rejected before any ERC20 state mutation. Previously this failed at the
+/// ERC20 transfer stage (insufficient balance/allowance); after BUG-05 fix
+/// the duplicate check runs first and returns DUPLICATE_TOKEN.
 #[test]
 #[test_case(CollectPolicy::All)]
 #[test_case(CollectPolicy::Diff)]
-#[should_panic(expected: 'ERC20: insufficient balance')]
+#[should_panic(expected: 'DUPLICATE_TOKEN')]
 fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balance(
     policy: CollectPolicy,
 ) {
@@ -2064,9 +2067,11 @@ fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balan
         );
 }
 
-/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+/// E2E: two open notes on the *same* token in one sub-account interaction is
+/// rejected before any ERC20 state mutation. Previously this failed at the
+/// ERC20 allowance stage; after BUG-05 fix the duplicate check runs first.
 #[test]
-#[should_panic(expected: "Insufficient ERC20 allowance")]
+#[should_panic(expected: 'DUPLICATE_TOKEN')]
 fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_allowance() {
     let mut test: Test = Default::default();
     let token = test.new_token();
