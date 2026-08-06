@@ -1515,20 +1515,22 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn apply_actions_as(self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress) {
+        let screening = self._auto_screening(:actions);
         self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.server.apply_actions(:actions, screening: self._auto_screening(:actions));
+        self.server.apply_actions(:actions, :screening);
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_actions_as(
         self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress,
     ) -> Result<(), Array<felt252>> {
+        let screening = self._auto_screening(:actions);
         self._fund_fee(:caller);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
+        self.safe_server.apply_actions(:actions, :screening)
     }
 
     /// Like `safe_apply_actions_as` but without auto-funding the fee.
@@ -1537,38 +1539,68 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     fn safe_apply_actions_as_unfunded(
         self: @PrivacyCfg, actions: Span<ServerAction>, caller: ContractAddress,
     ) -> Result<(), Array<felt252>> {
+        let screening = self._auto_screening(:actions);
         self.cheat_proof_facts(:actions);
         cheat_caller_address_once(contract_address: *self.address, caller_address: caller);
-        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
+        self.safe_server.apply_actions(:actions, :screening)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_actions_without_cheat(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Result<(), Array<felt252>> {
-        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
+        let screening = self._auto_screening(:actions);
+        self.safe_server.apply_actions(:actions, :screening)
     }
 
     #[feature("safe_dispatcher")]
     fn safe_apply_actions_with_proof_facts(
         self: @PrivacyCfg, actions: Span<ServerAction>, proof_facts: ProofFacts,
     ) -> Result<(), Array<felt252>> {
+        let screening = self._auto_screening(:actions);
         self._cheat_proof_facts(:proof_facts);
-        self.safe_server.apply_actions(:actions, screening: self._auto_screening(:actions))
+        self.safe_server.apply_actions(:actions, :screening)
     }
 
-    /// Auto-attaches a valid screener-signed attestation when `actions` contains a deposit
-    /// (`TransferFrom`), signing for its `from_addr` at the current block timestamp; `None`
-    /// otherwise. Keeps the bulk of the suite screening-agnostic. Screening-specific tests pass
-    /// an explicit attestation via `apply_actions_screened` / `safe_apply_actions_screened`.
+    /// Auto-attaches a valid screener-signed attestation for the address `actions` require
+    /// screening for, at the current block timestamp; `None` when they require none. Keeps the
+    /// bulk of the suite screening-agnostic. Screening-specific tests pass an explicit attestation
+    /// via `apply_actions_screened` / `safe_apply_actions_screened`.
+    ///
+    /// Call this *before* arming any cheat: it reads the policy list, and a
+    /// `CheatSpan::TargetCalls`
+    /// cheat armed first would be spent on that read instead of on `apply_actions`.
     fn _auto_screening(
         self: @PrivacyCfg, actions: Span<ServerAction>,
     ) -> Option<ScreeningAttestation> {
-        match deposit_depositor_of(:actions) {
-            Some(depositor) => Some(
-                sign_screening_attestation(:depositor, issued_at: get_block_timestamp()),
+        match self._screening_subject_of(:actions) {
+            Some(screening_subject) => Some(
+                sign_screening_attestation(
+                    depositor: screening_subject, issued_at: get_block_timestamp(),
+                ),
             ),
             None => None,
+        }
+    }
+
+    /// The address `actions` require screening for, mirroring the pool's collection: a deposit
+    /// requires its `from_addr`, and open notes created in the tx must be funded by an Invoke in
+    /// that same tx (`UNDEPOSITED_OPEN_NOTES`), so that Invoke's target is the subject unless its
+    /// policy exempts or delegates it. The deposit takes precedence so that a conflicting pair
+    /// still reaches the pool's `MULTIPLE_SCREENING_SUBJECTS`.
+    fn _screening_subject_of(
+        self: @PrivacyCfg, actions: Span<ServerAction>,
+    ) -> Option<ContractAddress> {
+        if let Some(depositor) = deposit_depositor_of(:actions) {
+            return Some(depositor);
+        }
+        if !creates_open_notes(:actions) {
+            return None;
+        }
+        let target = invoke_target_of(:actions)?;
+        match self.get_open_note_screening_policy(depositor: target) {
+            OpenNoteScreeningPolicy::Required => Some(target),
+            _ => None,
         }
     }
 
@@ -1929,12 +1961,9 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let message_hash = compute_hash_from_message(:from, :message);
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
+        let screening = self._auto_screening(actions: server_actions);
         self._cheat_proof_facts(:proof_facts);
-        self
-            .server
-            .apply_actions(
-                actions: server_actions, screening: self._auto_screening(actions: server_actions),
-            );
+        self.server.apply_actions(actions: server_actions, :screening);
     }
 
     /// Build an `InvokeExternalInput` targeting the echo executor for depositing to open notes.
@@ -2021,6 +2050,39 @@ fn deposit_depositor_of(actions: Span<ServerAction>) -> Option<ContractAddress> 
     depositor
 }
 
+/// Whether `actions` create open notes, which the pool requires to be funded by an Invoke in the
+/// same tx (`UNDEPOSITED_OPEN_NOTES`) — so that Invoke does return deposits.
+fn creates_open_notes(actions: Span<ServerAction>) -> bool {
+    let mut creates: bool = false;
+    for action in actions {
+        if let ServerAction::EmitOpenNoteCreated(_) = *action {
+            creates = true;
+            break;
+        }
+    }
+    creates
+}
+
+/// Returns the target of the first `Invoke`/`InvokeWithComputation` in `actions`, or `None` when
+/// there is none.
+fn invoke_target_of(actions: Span<ServerAction>) -> Option<ContractAddress> {
+    let mut target: Option<ContractAddress> = None;
+    for action in actions {
+        match *action {
+            ServerAction::Invoke(input) => {
+                target = Some(input.contract_address);
+                break;
+            },
+            ServerAction::InvokeWithComputation(input) => {
+                target = Some(input.contract_address);
+                break;
+            },
+            _ => {},
+        }
+    }
+    target
+}
+
 pub(crate) fn _deploy_privacy(
     governance_admin: ContractAddress,
     auditor_public_key: felt252,
@@ -2064,7 +2126,7 @@ fn deploy_privacy(
         amm_address: mock_amm, selector: selector!("swap"),
     );
     let echo_executor = deploy_mock_echo();
-    PrivacyCfg {
+    let privacy = PrivacyCfg {
         address: contract_address,
         roles,
         server: IServerDispatcher { contract_address },
@@ -2081,7 +2143,16 @@ fn deploy_privacy(
         },
         echo_executor,
         mock_amm,
-    }
+    };
+    // The swap executor stands in for the deployed swap anonymizers, which are screening-exempt:
+    // they fund open notes out of a swap the depositor already funded, so the tx screens the
+    // depositor, not the executor. The echo executor is deliberately left unlisted, so the bulk of
+    // the suite exercises the default `Required` policy of an open-note depositor.
+    privacy
+        .set_open_note_screening_policy(
+            depositor: swap_executor, policy: OpenNoteScreeningPolicy::Exempt,
+        );
+    privacy
 }
 
 /// Deploys a `ShadowAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
