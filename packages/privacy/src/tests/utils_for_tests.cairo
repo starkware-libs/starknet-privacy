@@ -1093,6 +1093,14 @@ pub(crate) impl UserImpl of UserTrait {
         token.supply(address: *self.address, :amount);
     }
 
+    /// A regular-pool deposit of `amount` from this user. Callers wrap one or more of these in a
+    /// span to build the `apply_actions` input.
+    fn deposit_action(self: @User, token: Token, amount: u128) -> ServerAction {
+        ServerAction::TransferFrom(
+            TransferFromInput { from_addr: *self.address, token: token.contract_address(), amount },
+        )
+    }
+
     fn invoke_external_mock_swap_executor_input(
         self: @User,
         in_token: ContractAddress,
@@ -1275,6 +1283,35 @@ pub(crate) struct Ekubo {
 pub(crate) impl TestImpl of TestTrait {
     fn new_user(ref self: Test) -> User {
         self.new_user_with_is_valid(is_valid: true)
+    }
+
+    /// A new user holding `amount` of `token` with the pool approved to spend exactly that much —
+    /// the starting state of a regular-pool deposit. Tests that need balance and allowance to
+    /// differ (fee and allowance failures) set them up themselves.
+    fn new_funded_user(ref self: Test, token: Token, amount: u128) -> User {
+        let user = self.new_user();
+        user.increase_token_balance(:token, :amount);
+        user.approve(:token, amount: amount.into());
+        user
+    }
+
+    /// An open note owned by a fresh user and funded by the echo executor, returned as its owner,
+    /// the note id, and the actions that create and fund it. The echo executor is the open-note
+    /// depositor, so its `OpenNoteScreeningPolicy` governs the resulting tx.
+    fn echo_funded_open_note(
+        ref self: Test, token: Token, amount: u128,
+    ) -> (User, felt252, Span<ServerAction>) {
+        let token_addr = token.contract_address();
+        let echo_executor = self.privacy.echo_executor;
+        let mut user = self.new_user();
+        user.set_viewing_key_e2e();
+        user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
+        let create_note_input = user
+            .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
+        token.supply(address: echo_executor, :amount);
+        token.approve(owner: echo_executor, spender: self.privacy.address, amount: amount.into());
+        let (note_id, actions) = user.create_and_deposit_to_open_note(:create_note_input, :amount);
+        (user, note_id, actions)
     }
 
     fn new_user_with_is_valid(ref self: Test, is_valid: bool) -> User {
@@ -1560,6 +1597,20 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let screening = self._auto_screening(:actions);
         self._cheat_proof_facts(:proof_facts);
         self.safe_server.apply_actions(:actions, :screening)
+    }
+
+    /// Applies `actions` with a caller-supplied `screening` as the paymaster and asserts the call
+    /// reverts with `expected_error`.
+    #[feature("safe_dispatcher")]
+    fn assert_apply_fails(
+        self: @PrivacyCfg,
+        actions: Span<ServerAction>,
+        screening: Option<ScreeningAttestation>,
+        expected_error: felt252,
+    ) {
+        let result = self
+            .safe_apply_actions_screened(:actions, :screening, caller: constants::PAYMASTER);
+        assert_panic_with_felt_error(:result, :expected_error);
     }
 
     /// Auto-attaches a valid screener-signed attestation for the address `actions` require
