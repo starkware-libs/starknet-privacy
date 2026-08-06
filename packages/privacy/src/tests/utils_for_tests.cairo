@@ -70,6 +70,7 @@ use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, MessageToL1, MessageToL1Spy,
     MessageToL1SpyTrait, Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare,
     declare_from_file, interact_with_state, map_entry_address, spy_messages_to_l1,
+    start_cheat_block_timestamp, stop_cheat_block_timestamp,
 };
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
@@ -1597,6 +1598,36 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let screening = self._auto_screening(:actions);
         self._cheat_proof_facts(:proof_facts);
         self.safe_server.apply_actions(:actions, :screening)
+    }
+
+    /// Applies `actions` with a caller-supplied `screening` as the paymaster, with the pool's clock
+    /// reading `now` — for exercising attestation freshness.
+    fn apply_actions_screened_at(
+        self: @PrivacyCfg,
+        now: u64,
+        actions: Span<ServerAction>,
+        screening: Option<ScreeningAttestation>,
+    ) {
+        start_cheat_block_timestamp(*self.address, now);
+        self.apply_actions_screened(:actions, :screening, caller: constants::PAYMASTER);
+        stop_cheat_block_timestamp(*self.address);
+    }
+
+    /// Like `assert_apply_fails`, with the pool's clock reading `now`. The cheat is lifted before
+    /// the assertion, so a failing expectation cannot leave the clock frozen for later calls.
+    #[feature("safe_dispatcher")]
+    fn assert_apply_fails_at(
+        self: @PrivacyCfg,
+        now: u64,
+        actions: Span<ServerAction>,
+        screening: Option<ScreeningAttestation>,
+        expected_error: felt252,
+    ) {
+        start_cheat_block_timestamp(*self.address, now);
+        let result = self
+            .safe_apply_actions_screened(:actions, :screening, caller: constants::PAYMASTER);
+        stop_cheat_block_timestamp(*self.address);
+        assert_panic_with_felt_error(:result, :expected_error);
     }
 
     /// Applies `actions` with a caller-supplied `screening` as the paymaster and asserts the call
