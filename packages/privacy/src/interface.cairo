@@ -525,8 +525,9 @@ pub trait IServer<T> {
     /// contract).
     /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance (from
     /// ERC20 contract).
-    /// - [`MULTIPLE_DEPOSITORS`](privacy::errors::internal_errors::MULTIPLE_DEPOSITORS): Thrown if
-    /// more than one distinct `from_addr` deposits in the same tx.
+    /// - [`MULTIPLE_SCREENING_SUBJECTS`](privacy::errors::MULTIPLE_SCREENING_SUBJECTS): Thrown if
+    /// more than one distinct `from_addr` deposits in the same tx — a tx screens at most one
+    /// address, and each deposit requires screening of its own depositor.
     ///
     /// **Screening errors (for the regular-pool deposit's `screening` attestation):**
     /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx contains a
