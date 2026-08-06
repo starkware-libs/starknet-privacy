@@ -2696,7 +2696,7 @@ fn test_apply_actions_rejects_multiple_depositors() {
         .safe_apply_actions_screened(
             actions: deposits, screening: Some(attestation), caller: constants::PAYMASTER,
         );
-    assert_panic_with_felt_error(:result, expected_error: internal_errors::MULTIPLE_DEPOSITORS);
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
 }
 
 #[test]

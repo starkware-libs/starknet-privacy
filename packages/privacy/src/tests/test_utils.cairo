@@ -10,7 +10,8 @@ use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     _encrypt_note_amount, compute_message_hash, decode_note_amount, decrypt_note_amount,
     derive_public_key, enc_note_packed_value, encrypt_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, open_note, pack, to_write_once_action, unpack,
+    encrypt_subchannel_info, encrypt_user_addr, open_note, pack, to_write_once_action,
+    unify_address, unpack,
 };
 use snforge_std::{get_class_hash, map_entry_address};
 use starknet::{ClassHash, ContractAddress};
@@ -258,4 +259,33 @@ fn test_compute_message_hash_depends_on_class_hash() {
 
     assert_eq!(hash_from_util, hash_manual_valid);
     assert_ne!(hash_from_util, hash_manual_invalid);
+}
+
+#[test]
+fn test_unify_address_records_first_screening_subject() {
+    let address: ContractAddress = hash(['SCREENING_SUBJECT'].span()).try_into().unwrap();
+    let mut screening_subject: Option<ContractAddress> = None;
+    unify_address(ref screening_subject, reference: address);
+    assert_eq!(screening_subject, Some(address));
+}
+
+#[test]
+fn test_unify_address_dedups_same_screening_subject() {
+    let address: ContractAddress = hash(['SCREENING_SUBJECT'].span()).try_into().unwrap();
+    let mut screening_subject: Option<ContractAddress> = None;
+    unify_address(ref screening_subject, reference: address);
+    unify_address(ref screening_subject, reference: address);
+    assert_eq!(screening_subject, Some(address));
+}
+
+#[test]
+#[should_panic(expected: 'MULTIPLE_SCREENING_SUBJECTS')]
+fn test_unify_address_rejects_distinct_screening_subject() {
+    let address: ContractAddress = hash(['SCREENING_SUBJECT'].span()).try_into().unwrap();
+    let other_address: ContractAddress = hash(['OTHER_SCREENING_SUBJECT'].span())
+        .try_into()
+        .unwrap();
+    let mut screening_subject: Option<ContractAddress> = None;
+    unify_address(ref screening_subject, reference: address);
+    unify_address(ref screening_subject, reference: other_address);
 }
