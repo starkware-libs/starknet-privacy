@@ -4,6 +4,10 @@
 
 ### Added
 
+- `exemptOpenNoteDepositor(admin, provider, pool, depositor)` in `starknet-privacy-sdk/testing`,
+  which lists a depositor as screening-exempt on a devnet pool. An Invoke target that funds open
+  notes is the transaction's screening subject unless it is listed, so a harness deploying its own
+  executor needs this or the deposit reverts with `SCREENING_REQUIRED`.
 - Regenerated `PrivacyPoolABI` and `PoolContractInterface` for the pool's open-note screening
   policies: `get_open_note_screening_policy` / `set_open_note_screening_policy`, carrying an
   `OpenNoteScreeningPolicy` of `Required` (screen the depositor, the default), `Exempt` (screening

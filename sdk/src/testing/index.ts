@@ -29,6 +29,7 @@ export {
 } from "../utils/hashes.js";
 export { CallMockProofProvider } from "../internal/mock-proving.js";
 export { ScreeningCallMockProofProvider } from "./screening-mock-proving.js";
+export { exemptOpenNoteDepositor } from "./screening-policy.js";
 export { ProvingServiceProofProvider } from "../internal/proving-service-provider.js";
 export { TracingRpcProvider, TracedRpcError, type DecodedError } from "./tracing-provider.js";
 export {
