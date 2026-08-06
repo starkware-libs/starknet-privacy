@@ -80,3 +80,10 @@ export const inFlightRequests = new Gauge({
   help: "Currently processing requests",
   registers: [registry],
 });
+
+export const processCrashesTotal = new Counter({
+  name: "proof_interceptor_process_crashes_total",
+  help: "Total uncaught errors at the process level by source",
+  labelNames: ["source"] as const,
+  registers: [registry],
+});
