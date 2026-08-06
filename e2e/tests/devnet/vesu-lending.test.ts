@@ -10,6 +10,7 @@ import {
   type VesuAddresses,
 } from "../../src/vesu-setup.js";
 import { u256Calldata } from "../../src/utils.js";
+import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 describe("Vesu lending on devnet", () => {
   let devnet: Devnet;
@@ -28,6 +29,14 @@ describe("Vesu lending on devnet", () => {
     tokens = await deployTestTokens(admin, node);
     vesu = await deployVesuInfra(admin, node, tokens);
     anonymizerAddress = await deployVesuAnonymizer(admin, node);
+    // The anonymizer funds the lending flow's open notes, so without a policy the pool would
+    // require a screening attestation naming the anonymizer itself.
+    await exemptOpenNoteDepositor(
+      admin,
+      node,
+      env.env.privacy.address,
+      anonymizerAddress,
+    );
   });
 
   afterAll(async () => {

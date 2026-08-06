@@ -19,6 +19,7 @@ import {
 } from "../../src/shadow-account-setup.js";
 import { u256Calldata } from "../../src/utils.js";
 import { E2E_TIMEOUTS } from "../../src/timeouts.js";
+import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 /**
  * End-to-end shadow account invoke through the dapp client on devnet, plus address validation.
@@ -53,6 +54,16 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       admin,
       node,
       privacy.address,
+    );
+    // Exempt the anonymizer so the devnet flow is not blocked on a screening attestation.
+    // The deployed posture is `Delegated` (the pool asks the anonymizer which shadow account to
+    // screen), which needs a mock prover able to attest that shadow account. Until that exists,
+    // `Exempt` keeps this suite exercising the shadow-account flow itself, not the screening gate.
+    await exemptOpenNoteDepositor(
+      admin,
+      node,
+      privacy.address,
+      shadowAccount.anonymizer,
     );
 
     // Fund the dapp so its `transfer_to_caller` can pay the shadow account.
