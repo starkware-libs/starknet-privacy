@@ -3,6 +3,7 @@ pub mod Privacy {
     use core::ec::EcPointTrait;
     use core::iter::Extend;
     use core::num::traits::{CheckedSub, Zero};
+    use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
@@ -877,7 +878,10 @@ pub mod Privacy {
                     ServerAction::Invoke(input) => {
                         self
                             ._apply_invoke_and_deposits(
-                                :input, selector: INVOKE_SELECTOR, ref :undeposited_open_notes,
+                                :input,
+                                selector: INVOKE_SELECTOR,
+                                ref :undeposited_open_notes,
+                                ref :screening_subject,
                             );
                     },
                     ServerAction::InvokeWithComputation(input) => {
@@ -886,6 +890,7 @@ pub mod Privacy {
                                 :input,
                                 selector: INVOKE_WITH_COMPUTATION_SELECTOR,
                                 ref :undeposited_open_notes,
+                                ref :screening_subject,
                             );
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
@@ -985,6 +990,7 @@ pub mod Privacy {
             input: InvokeInput,
             selector: felt252,
             ref undeposited_open_notes: usize,
+            ref screening_subject: Option<ContractAddress>,
         ) {
             let InvokeInput { contract_address, calldata } = input;
             let mut return_data = call_contract_syscall(
@@ -997,8 +1003,21 @@ pub mod Privacy {
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
             assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
 
-            // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
+            // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor,
+            // and its policy decides what the deposits require. An Invoke returning no deposits
+            // never consults the policy list.
             if !deposits.is_empty() {
+                match self.open_note_depositor_screening_policies.read(contract_address) {
+                    // The depositor funds open notes only under a screening attestation for its
+                    // own address.
+                    OpenNoteScreeningPolicy::Required => set_uniq_address(
+                        ref screening_subject, reference: contract_address,
+                    ),
+                    OpenNoteScreeningPolicy::Exempt => {},
+                    OpenNoteScreeningPolicy::Delegated => panic_with_felt252(
+                        errors::DELEGATED_SCREENING_UNSUPPORTED,
+                    ),
+                }
                 for deposit in deposits {
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
