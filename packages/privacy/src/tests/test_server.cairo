@@ -25,8 +25,8 @@ use privacy::{errors, events};
 use snforge_std::signature::KeyPairTrait;
 use snforge_std::signature::stark_curve::StarkCurveKeyPairImpl;
 use snforge_std::{
-    CheatSpan, EventSpyTrait, EventsFilterTrait, Token, TokenTrait, cheat_proof_facts,
-    map_entry_address, spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
+    spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
 };
 use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -398,11 +398,8 @@ fn test_apply_append() {
 fn test_apply_transfer_from() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
     // Verify balances before transfer.
     assert_eq!(token.balance_of(address: user.address), amount.into());
@@ -2395,17 +2392,10 @@ fn test_same_depositor_funds_multiple_open_notes() {
 fn test_deposit_with_valid_screening_passes() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     let attestation = sign_screening_attestation(depositor: user.address, issued_at: 0);
     test
         .privacy
@@ -2421,23 +2411,15 @@ fn test_deposit_with_valid_screening_passes() {
 fn test_deposit_without_screening_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
-    let result = test
+    let deposit = [user.deposit_action(:token, :amount)].span();
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposit, screening: None, caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            actions: deposit, screening: None, expected_error: errors::SCREENING_REQUIRED,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
 }
 
 #[test]
@@ -2446,12 +2428,13 @@ fn test_UNEXPECTED_SCREENING_fails() {
     let user = test.new_user();
 
     let attestation = sign_screening_attestation(depositor: user.address, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: [].span(), screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            actions: [].span(),
+            screening: Some(attestation),
+            expected_error: errors::UNEXPECTED_SCREENING,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::UNEXPECTED_SCREENING);
 }
 
 #[test]
@@ -2467,28 +2450,22 @@ fn test_non_deposit_without_screening_passes() {
 fn test_deposit_wrong_screener_key_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     // Signed by a key the contract was not deployed with.
     let wrong_key = KeyPairTrait::from_secret_key('WRONG_SCREENER_SK');
     let attestation = sign_screening_attestation_with(
         key_pair: wrong_key, depositor: user.address, issued_at: 0,
     );
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            actions: deposit,
+            screening: Some(attestation),
+            expected_error: errors::SCREENING_INVALID_SIGNATURE,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
 }
 
 #[test]
@@ -2501,40 +2478,27 @@ fn test_deposit_depositor_mismatch_fails() {
     depositor.increase_token_balance(:token, :amount);
     depositor.approve(:token, amount: amount.into());
 
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput {
-                from_addr: depositor.address, token: token.contract_address(), amount,
-            },
-        ),
-    ]
-        .span();
+    let deposit = [depositor.deposit_action(:token, :amount)].span();
     // Attestation signed for a different depositor than the one actually depositing.
     let attestation = sign_screening_attestation(depositor: other.address, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            actions: deposit,
+            screening: Some(attestation),
+            expected_error: errors::SCREENING_INVALID_SIGNATURE,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
 }
 
 #[test]
 fn test_deposit_stale_screening_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
     let now = 1_000_u64;
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     // One second past the max age.
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now - DEPOSITOR_VALIDATION_MAX_AGE - 1,
@@ -2553,18 +2517,11 @@ fn test_deposit_stale_screening_fails() {
 fn test_deposit_future_dated_screening_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
     let now = 1_000_u64;
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     // One second beyond the future-skew tolerance.
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE + 1,
@@ -2583,18 +2540,11 @@ fn test_deposit_future_dated_screening_fails() {
 fn test_deposit_at_max_age_boundary_passes() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
     let now = 1_000_u64;
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     // Exactly at the max age is still fresh.
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now - DEPOSITOR_VALIDATION_MAX_AGE,
@@ -2613,18 +2563,11 @@ fn test_deposit_at_max_age_boundary_passes() {
 fn test_deposit_within_future_tolerance_passes() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let user = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    user.increase_token_balance(:token, :amount);
-    user.approve(:token, amount: amount.into());
+    let user = test.new_funded_user(:token, :amount);
 
     let now = 1_000_u64;
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
+    let deposit = [user.deposit_action(:token, :amount)].span();
     // Dated in the future but within the allowed clock-skew tolerance is still accepted.
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE,
@@ -2648,15 +2591,7 @@ fn test_multiple_deposits_same_depositor_pass() {
     user.increase_token_balance(:token, amount: 2 * amount);
     user.approve(:token, amount: (2 * amount).into());
 
-    let token_addr = token.contract_address();
-    let deposits = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token_addr, amount },
-        ),
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user.address, token: token_addr, amount },
-        ),
-    ]
+    let deposits = [user.deposit_action(:token, :amount), user.deposit_action(:token, :amount)]
         .span();
     // A single attestation covers every deposit by that depositor in the tx.
     let attestation = sign_screening_attestation(depositor: user.address, issued_at: 0);
@@ -2680,23 +2615,16 @@ fn test_apply_actions_rejects_multiple_depositors() {
     user_b.increase_token_balance(:token, :amount);
     user_b.approve(:token, amount: amount.into());
 
-    let token_addr = token.contract_address();
-    let deposits = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user_a.address, token: token_addr, amount },
-        ),
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: user_b.address, token: token_addr, amount },
-        ),
-    ]
+    let deposits = [user_a.deposit_action(:token, :amount), user_b.deposit_action(:token, :amount)]
         .span();
     let attestation = sign_screening_attestation(depositor: user_a.address, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposits, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            actions: deposits,
+            screening: Some(attestation),
+            expected_error: errors::MULTIPLE_SCREENING_SUBJECTS,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
 }
 
 /// The policies govern open-note depositors only. A regular-pool deposit always requires an
@@ -2714,14 +2642,7 @@ fn test_screening_policy_does_not_affect_regular_deposits() {
     depositor.increase_token_balance(:token, amount: n_policies * amount);
     depositor.approve(:token, amount: (n_policies * amount).into());
 
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput {
-                from_addr: depositor.address, token: token.contract_address(), amount,
-            },
-        ),
-    ]
-        .span();
+    let deposit = [depositor.deposit_action(:token, :amount)].span();
     let attestation = sign_screening_attestation(depositor: depositor.address, issued_at: 0);
 
     let mut n_deposits: u128 = 0;
@@ -2732,12 +2653,11 @@ fn test_screening_policy_does_not_affect_regular_deposits() {
         );
 
         // The policy neither waives the requirement nor changes which address it covers.
-        let result = test
+        test
             .privacy
-            .safe_apply_actions_screened(
-                actions: deposit, screening: None, caller: constants::PAYMASTER,
+            .assert_apply_fails(
+                actions: deposit, screening: None, expected_error: errors::SCREENING_REQUIRED,
             );
-        assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
 
         // The depositor's own attestation still lets the deposit through.
         test
@@ -2751,23 +2671,6 @@ fn test_screening_policy_does_not_affect_regular_deposits() {
     assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
 }
 
-/// Sets up an open note funded by the echo executor, returning the actions that create and fund it
-/// plus the note id. The echo executor is the open-note depositor, so its policy governs the tx.
-fn echo_funded_open_note(
-    ref test: Test, token: Token, amount: u128,
-) -> (felt252, Span<ServerAction>) {
-    let token_addr = token.contract_address();
-    let echo_executor = test.privacy.echo_executor;
-    let mut user = test.new_user();
-    user.set_viewing_key_e2e();
-    user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
-    let create_note_input = user
-        .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
-    token.supply(address: echo_executor, :amount);
-    token.approve(owner: echo_executor, spender: test.privacy.address, amount: amount.into());
-    user.create_and_deposit_to_open_note(:create_note_input, :amount)
-}
-
 /// The default policy of an unlisted Invoke target: its open-note deposits require an attestation
 /// for the target's own address.
 #[test]
@@ -2776,7 +2679,7 @@ fn test_required_invoke_target_is_the_screening_subject() {
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
-    let (note_id, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, note_id, actions) = test.echo_funded_open_note(:token, :amount);
 
     let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
     test
@@ -2794,12 +2697,11 @@ fn test_required_invoke_target_without_screening_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
-    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, _, actions) = test.echo_funded_open_note(:token, :amount);
 
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
+        .assert_apply_fails(:actions, screening: None, expected_error: errors::SCREENING_REQUIRED);
 }
 
 /// The attestation is bound to the Invoke target, not to the user whose note is funded.
@@ -2809,15 +2711,16 @@ fn test_required_invoke_target_screening_for_other_address_fails() {
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
     let other = test.new_user();
-    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, _, actions) = test.echo_funded_open_note(:token, :amount);
 
     let attestation = sign_screening_attestation(depositor: other.address, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            :actions,
+            screening: Some(attestation),
+            expected_error: errors::SCREENING_INVALID_SIGNATURE,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
 }
 
 #[test]
@@ -2826,7 +2729,7 @@ fn test_exempt_invoke_target_needs_no_screening() {
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
-    let (note_id, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, note_id, actions) = test.echo_funded_open_note(:token, :amount);
 
     test
         .privacy
@@ -2846,7 +2749,7 @@ fn test_exempt_invoke_target_rejects_attestation() {
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
-    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, _, actions) = test.echo_funded_open_note(:token, :amount);
 
     test
         .privacy
@@ -2854,12 +2757,11 @@ fn test_exempt_invoke_target_rejects_attestation() {
             depositor: echo_executor, policy: OpenNoteScreeningPolicy::Exempt,
         );
     let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            :actions, screening: Some(attestation), expected_error: errors::UNEXPECTED_SCREENING,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::UNEXPECTED_SCREENING);
 }
 
 /// Delegated screening asks the target which address to screen; the pool cannot yet make that
@@ -2870,7 +2772,7 @@ fn test_delegated_invoke_target_is_unsupported() {
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
-    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, _, actions) = test.echo_funded_open_note(:token, :amount);
 
     test
         .privacy
@@ -2878,12 +2780,13 @@ fn test_delegated_invoke_target_is_unsupported() {
             depositor: echo_executor, policy: OpenNoteScreeningPolicy::Delegated,
         );
     let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails(
+            :actions,
+            screening: Some(attestation),
+            expected_error: errors::DELEGATED_SCREENING_UNSUPPORTED,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::DELEGATED_SCREENING_UNSUPPORTED);
 }
 
 /// Every policy is consulted only when the Invoke returns deposits: an Invoke funding nothing is
@@ -2910,36 +2813,35 @@ fn test_invoke_without_deposits_ignores_every_policy() {
 fn test_combined_regular_and_open_note_deposits_conflict_unless_target_exempt() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let token_addr = token.contract_address();
     let amount = constants::DEFAULT_AMOUNT;
     let echo_executor = test.privacy.echo_executor;
 
     // Open-note deposit: the depositor is the Invoke target (echo_executor).
-    let (note_id, open_note_actions) = echo_funded_open_note(ref test, :token, :amount);
+    let (_, note_id, open_note_actions) = test.echo_funded_open_note(:token, :amount);
 
     // Regular deposit: depositor A, screened by a signed attestation.
-    let depositor_a = test.new_user();
-    depositor_a.increase_token_balance(:token, :amount);
-    depositor_a.approve(:token, amount: amount.into());
-    let mut combined: Array<ServerAction> = array![
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: depositor_a.address, token: token_addr, amount },
-        ),
-    ];
+    let depositor_a = test.new_funded_user(:token, :amount);
+    let mut combined: Array<ServerAction> = array![depositor_a.deposit_action(:token, :amount)];
     for action in open_note_actions {
         combined.append(*action);
     }
     let combined = combined.span();
     let attestation = sign_screening_attestation(depositor: depositor_a.address, issued_at: 0);
 
-    // The target requires screening of its own address by default, which conflicts with the
-    // regular deposit's depositor.
-    let result = test
+    // The target requires screening of its own address by default, which conflicts with
+    // the regular deposit's depositor.
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: combined, screening: Some(attestation), caller: constants::PAYMASTER,
+        .set_open_note_screening_policy(
+            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Required,
         );
-    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
+    test
+        .privacy
+        .assert_apply_fails(
+            actions: combined,
+            screening: Some(attestation),
+            expected_error: errors::MULTIPLE_SCREENING_SUBJECTS,
+        );
 
     // Exempting the target leaves the regular depositor as the tx's only screening subject.
     test
