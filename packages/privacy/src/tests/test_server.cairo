@@ -26,7 +26,7 @@ use snforge_std::signature::KeyPairTrait;
 use snforge_std::signature::stark_curve::StarkCurveKeyPairImpl;
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
-    spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    spy_events,
 };
 use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -2472,11 +2472,9 @@ fn test_deposit_wrong_screener_key_fails() {
 fn test_deposit_depositor_mismatch_fails() {
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let depositor = test.new_user();
-    let other = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    depositor.increase_token_balance(:token, :amount);
-    depositor.approve(:token, amount: amount.into());
+    let depositor = test.new_funded_user(:token, :amount);
+    let other = test.new_user();
 
     let deposit = [depositor.deposit_action(:token, :amount)].span();
     // Attestation signed for a different depositor than the one actually depositing.
@@ -2503,14 +2501,14 @@ fn test_deposit_stale_screening_fails() {
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now - DEPOSITOR_VALIDATION_MAX_AGE - 1,
     );
-    start_cheat_block_timestamp(test.privacy.address, now);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails_at(
+            :now,
+            actions: deposit,
+            screening: Some(attestation),
+            expected_error: errors::SCREENING_EXPIRED,
         );
-    stop_cheat_block_timestamp(test.privacy.address);
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_EXPIRED);
 }
 
 #[test]
@@ -2526,14 +2524,14 @@ fn test_deposit_future_dated_screening_fails() {
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE + 1,
     );
-    start_cheat_block_timestamp(test.privacy.address, now);
-    let result = test
+    test
         .privacy
-        .safe_apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+        .assert_apply_fails_at(
+            :now,
+            actions: deposit,
+            screening: Some(attestation),
+            expected_error: errors::SCREENING_FUTURE_DATED,
         );
-    stop_cheat_block_timestamp(test.privacy.address);
-    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_FUTURE_DATED);
 }
 
 #[test]
@@ -2549,13 +2547,7 @@ fn test_deposit_at_max_age_boundary_passes() {
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now - DEPOSITOR_VALIDATION_MAX_AGE,
     );
-    start_cheat_block_timestamp(test.privacy.address, now);
-    test
-        .privacy
-        .apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
-        );
-    stop_cheat_block_timestamp(test.privacy.address);
+    test.privacy.apply_actions_screened_at(:now, actions: deposit, screening: Some(attestation));
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
@@ -2572,13 +2564,7 @@ fn test_deposit_within_future_tolerance_passes() {
     let attestation = sign_screening_attestation(
         depositor: user.address, issued_at: now + DEPOSITOR_VALIDATION_MAX_FUTURE,
     );
-    start_cheat_block_timestamp(test.privacy.address, now);
-    test
-        .privacy
-        .apply_actions_screened(
-            actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
-        );
-    stop_cheat_block_timestamp(test.privacy.address);
+    test.privacy.apply_actions_screened_at(:now, actions: deposit, screening: Some(attestation));
     assert_eq!(token.balance_of(address: test.privacy.address), amount.into());
 }
 
