@@ -10,6 +10,7 @@ import {
   type EkuboAddresses,
 } from "../../src/ekubo-setup.js";
 import { u256Calldata } from "../../src/utils.js";
+import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 describe("Ekubo swap on devnet", () => {
   let devnet: Devnet;
@@ -28,6 +29,14 @@ describe("Ekubo swap on devnet", () => {
     tokens = await deployTestTokens(admin, node);
     ekubo = await deployEkuboInfra(admin, node, tokens);
     executorAddress = await deployEkuboExecutor(admin, node);
+    // The executor funds the swap's open notes, so without a policy the pool would require a
+    // screening attestation naming the executor itself.
+    await exemptOpenNoteDepositor(
+      admin,
+      node,
+      env.env.privacy.address,
+      executorAddress,
+    );
   });
 
   afterAll(async () => {

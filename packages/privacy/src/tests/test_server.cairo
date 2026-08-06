@@ -5,15 +5,15 @@ use privacy::actions::{
     WriteOnceInput,
 };
 use privacy::errors::internal_errors;
-use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit};
+use privacy::objects::{EncOutgoingChannelInfo, Note, OpenNoteDeposit, OpenNoteScreeningPolicy};
 use privacy::test_contracts::mock_swap_executor::errors as mock_swap_executor_errors;
 use privacy::tests::mock_invoke_returns::MockCompute::INVOKE_PANIC;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
-    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, constants, deploy_mock_compute,
-    deploy_mock_reentrancy, deploy_mock_return_garbage, deploy_mock_return_trailing_garbage,
-    deploy_mock_swap_executor, deploy_mock_vesu_vault_noop, invoke_mock_swap_executor_input,
-    sign_screening_attestation, sign_screening_attestation_with,
+    PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, all_screening_policies, constants,
+    deploy_mock_compute, deploy_mock_reentrancy, deploy_mock_return_garbage,
+    deploy_mock_return_trailing_garbage, deploy_mock_swap_executor, deploy_mock_vesu_vault_noop,
+    invoke_mock_swap_executor_input, sign_screening_attestation, sign_screening_attestation_with,
 };
 use privacy::utils::constants::{
     DEPOSITOR_VALIDATION_MAX_AGE, DEPOSITOR_VALIDATION_MAX_FUTURE, OPEN_NOTE_SALT,
@@ -25,8 +25,8 @@ use privacy::{errors, events};
 use snforge_std::signature::KeyPairTrait;
 use snforge_std::signature::stark_curve::StarkCurveKeyPairImpl;
 use snforge_std::{
-    CheatSpan, EventSpyTrait, EventsFilterTrait, TokenTrait, cheat_proof_facts, map_entry_address,
-    spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    CheatSpan, EventSpyTrait, EventsFilterTrait, Token, TokenTrait, cheat_proof_facts,
+    map_entry_address, spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
 };
 use starknet::{ContractAddress, get_block_number};
 use starkware_utils::components::pausable::PausableComponent::Errors as PausableErrors;
@@ -2699,15 +2699,65 @@ fn test_apply_actions_rejects_multiple_depositors() {
     assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
 }
 
+/// The policies govern open-note depositors only. A regular-pool deposit always requires an
+/// attestation for its own depositor, whatever policy that address carries: `Exempt` cannot waive
+/// it and `Delegated` asks nobody. Verified per policy by
+/// applying the same deposit twice — once with no attestation, once with the depositor's own.
 #[test]
-fn test_combined_regular_and_open_note_deposits() {
+fn test_screening_policy_does_not_affect_regular_deposits() {
+    let policies = all_screening_policies();
     let mut test: Test = Default::default();
     let token = test.new_token();
-    let token_addr = token.contract_address();
+    let depositor = test.new_user();
     let amount = constants::DEFAULT_AMOUNT;
-    let echo_executor = test.privacy.echo_executor;
+    let n_policies: u128 = policies.span().len().into();
+    depositor.increase_token_balance(:token, amount: n_policies * amount);
+    depositor.approve(:token, amount: (n_policies * amount).into());
 
-    // The open-note deposit's depositor is the Invoke target, exempt here.
+    let deposit = [
+        ServerAction::TransferFrom(
+            TransferFromInput {
+                from_addr: depositor.address, token: token.contract_address(), amount,
+            },
+        ),
+    ]
+        .span();
+    let attestation = sign_screening_attestation(depositor: depositor.address, issued_at: 0);
+
+    let mut n_deposits: u128 = 0;
+    for policy in policies.span() {
+        test.privacy.set_open_note_screening_policy(depositor: depositor.address, policy: *policy);
+        assert_eq!(
+            test.privacy.get_open_note_screening_policy(depositor: depositor.address), *policy,
+        );
+
+        // The policy neither waives the requirement nor changes which address it covers.
+        let result = test
+            .privacy
+            .safe_apply_actions_screened(
+                actions: deposit, screening: None, caller: constants::PAYMASTER,
+            );
+        assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
+
+        // The depositor's own attestation still lets the deposit through.
+        test
+            .privacy
+            .apply_actions_screened(
+                actions: deposit, screening: Some(attestation), caller: constants::PAYMASTER,
+            );
+        n_deposits += 1;
+        assert_eq!(token.balance_of(address: test.privacy.address), (n_deposits * amount).into());
+    }
+    assert_eq!(token.balance_of(address: depositor.address), Zero::zero());
+}
+
+/// Sets up an open note funded by the echo executor, returning the actions that create and fund it
+/// plus the note id. The echo executor is the open-note depositor, so its policy governs the tx.
+fn echo_funded_open_note(
+    ref test: Test, token: Token, amount: u128,
+) -> (felt252, Span<ServerAction>) {
+    let token_addr = token.contract_address();
+    let echo_executor = test.privacy.echo_executor;
     let mut user = test.new_user();
     user.set_viewing_key_e2e();
     user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
@@ -2715,8 +2765,157 @@ fn test_combined_regular_and_open_note_deposits() {
         .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
     token.supply(address: echo_executor, :amount);
     token.approve(owner: echo_executor, spender: test.privacy.address, amount: amount.into());
-    let (note_id, open_note_actions) = user
-        .create_and_deposit_to_open_note(:create_note_input, :amount);
+    user.create_and_deposit_to_open_note(:create_note_input, :amount)
+}
+
+/// The default policy of an unlisted Invoke target: its open-note deposits require an attestation
+/// for the target's own address.
+#[test]
+fn test_required_invoke_target_is_the_screening_subject() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let echo_executor = test.privacy.echo_executor;
+    let (note_id, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
+    test
+        .privacy
+        .apply_actions_screened(
+            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+#[test]
+fn test_required_invoke_target_without_screening_fails() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    let result = test
+        .privacy
+        .safe_apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
+    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_REQUIRED);
+}
+
+/// The attestation is bound to the Invoke target, not to the user whose note is funded.
+#[test]
+fn test_required_invoke_target_screening_for_other_address_fails() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let other = test.new_user();
+    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    let attestation = sign_screening_attestation(depositor: other.address, issued_at: 0);
+    let result = test
+        .privacy
+        .safe_apply_actions_screened(
+            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::SCREENING_INVALID_SIGNATURE);
+}
+
+#[test]
+fn test_exempt_invoke_target_needs_no_screening() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let echo_executor = test.privacy.echo_executor;
+    let (note_id, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    test
+        .privacy
+        .set_open_note_screening_policy(
+            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Exempt,
+        );
+    test.privacy.apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+/// An exempt target raises no requirement, so an attestation for it is unexpected.
+#[test]
+fn test_exempt_invoke_target_rejects_attestation() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let echo_executor = test.privacy.echo_executor;
+    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    test
+        .privacy
+        .set_open_note_screening_policy(
+            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Exempt,
+        );
+    let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
+    let result = test
+        .privacy
+        .safe_apply_actions_screened(
+            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::UNEXPECTED_SCREENING);
+}
+
+/// Delegated screening asks the target which address to screen; the pool cannot yet make that
+/// call, so a delegated target's deposits are refused rather than screened against its own address.
+#[test]
+fn test_delegated_invoke_target_is_unsupported() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let echo_executor = test.privacy.echo_executor;
+    let (_, actions) = echo_funded_open_note(ref test, :token, :amount);
+
+    test
+        .privacy
+        .set_open_note_screening_policy(
+            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Delegated,
+        );
+    let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
+    let result = test
+        .privacy
+        .safe_apply_actions_screened(
+            :actions, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::DELEGATED_SCREENING_UNSUPPORTED);
+}
+
+/// Every policy is consulted only when the Invoke returns deposits: an Invoke funding nothing is
+/// neither screened nor refused, whatever its target's policy says.
+#[test]
+fn test_invoke_without_deposits_ignores_every_policy() {
+    let policies = all_screening_policies();
+    let mut test: Test = Default::default();
+    let echo_executor = test.privacy.echo_executor;
+    let no_deposits: Span<OpenNoteDeposit> = array![].span();
+    let actions = test.privacy.invoke_external_echo_deposits(no_deposits).into_server_actions();
+    for policy in policies.span() {
+        test.privacy.set_open_note_screening_policy(depositor: echo_executor, policy: *policy);
+        test
+            .privacy
+            .apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
+    }
+}
+
+/// A regular deposit and an open-note deposit from a `Required` Invoke target are two distinct
+/// screening subjects, which one attestation cannot cover; exempting the target leaves the
+/// depositor as the only subject, so the combined tx lands under the depositor's attestation.
+#[test]
+fn test_combined_regular_and_open_note_deposits_conflict_unless_target_exempt() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let token_addr = token.contract_address();
+    let amount = constants::DEFAULT_AMOUNT;
+    let echo_executor = test.privacy.echo_executor;
+
+    // Open-note deposit: the depositor is the Invoke target (echo_executor).
+    let (note_id, open_note_actions) = echo_funded_open_note(ref test, :token, :amount);
 
     // Regular deposit: depositor A, screened by a signed attestation.
     let depositor_a = test.new_user();
@@ -2733,7 +2932,21 @@ fn test_combined_regular_and_open_note_deposits() {
     let combined = combined.span();
     let attestation = sign_screening_attestation(depositor: depositor_a.address, issued_at: 0);
 
-    // One attestation covers both: the open-note depositor adds no requirement.
+    // The target requires screening of its own address by default, which conflicts with the
+    // regular deposit's depositor.
+    let result = test
+        .privacy
+        .safe_apply_actions_screened(
+            actions: combined, screening: Some(attestation), caller: constants::PAYMASTER,
+        );
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
+
+    // Exempting the target leaves the regular depositor as the tx's only screening subject.
+    test
+        .privacy
+        .set_open_note_screening_policy(
+            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Exempt,
+        );
     test
         .privacy
         .apply_actions_screened(
