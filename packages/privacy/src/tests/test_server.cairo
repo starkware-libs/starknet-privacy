@@ -2668,6 +2668,7 @@ fn test_multiple_deposits_same_depositor_pass() {
     assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
 }
 
+/// Two depositors in one tx are two screening subjects: one attestation cannot cover both.
 #[test]
 fn test_apply_actions_rejects_multiple_depositors() {
     let mut test: Test = Default::default();
@@ -2696,7 +2697,7 @@ fn test_apply_actions_rejects_multiple_depositors() {
         .safe_apply_actions_screened(
             actions: deposits, screening: Some(attestation), caller: constants::PAYMASTER,
         );
-    assert_panic_with_felt_error(:result, expected_error: internal_errors::MULTIPLE_DEPOSITORS);
+    assert_panic_with_felt_error(:result, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS);
 }
 
 #[test]

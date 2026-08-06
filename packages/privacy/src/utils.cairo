@@ -583,3 +583,22 @@ pub(crate) fn assert_valid_os_call(caller_address: ContractAddress, tx_version: 
         errors::INVALID_TX_VERSION,
     );
 }
+
+/// Records `screening_subject` as the address the transaction's screening attestation must cover.
+///
+/// A transaction screens at most one address, so `required_screening_subject` accumulates the
+/// requirements of all its actions: it starts as `None`, requiring the address it already holds is
+/// a no-op, and requiring a second distinct address reverts with `MULTIPLE_SCREENING_SUBJECTS`. A
+/// `None` left at the end of the transaction means nothing in it requires screening.
+pub(crate) fn require_screening_subject(
+    ref required_screening_subject: Option<ContractAddress>, screening_subject: ContractAddress,
+) {
+    if let Some(already_required_screening_subject) = required_screening_subject {
+        assert(
+            already_required_screening_subject == screening_subject,
+            errors::MULTIPLE_SCREENING_SUBJECTS,
+        );
+    } else {
+        required_screening_subject = Some(screening_subject);
+    }
+}
