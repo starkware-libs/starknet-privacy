@@ -17,6 +17,7 @@ use privacy::hashes::{
 };
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, EncUserAddr, Note,
+    OpenNoteDeposit,
 };
 use privacy::snip12::compute_call_set_hash;
 use privacy::utils::constants::{
@@ -582,6 +583,22 @@ pub(crate) fn assert_valid_os_call(caller_address: ContractAddress, tx_version: 
         tx_version == TX_V3 || tx_version == ESTIMATION_BASE_TX_VERSION + TX_V3,
         errors::INVALID_TX_VERSION,
     );
+}
+
+/// Deserializes an invoke's return data: the deposits, then — when anything follows them — the
+/// addresses those deposits are associated with, which must be the last thing returned.
+pub(crate) fn deserialize_invoke_return_data(
+    mut return_data: Span<felt252>,
+) -> (Span<OpenNoteDeposit>, Option<Span<ContractAddress>>) {
+    let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
+        .expect(errors::INVALID_INVOKE_RETURN_DATA);
+    if return_data.is_empty() {
+        return (deposits, None);
+    }
+    let associated_addresses: Span<ContractAddress> = Serde::deserialize(ref return_data)
+        .expect(errors::INVALID_ASSOCIATED_ADDRESSES);
+    assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
+    (deposits, Some(associated_addresses))
 }
 
 /// Unifies `subject` with `reference`: binds it on the first application, and requires equality on
