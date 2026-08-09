@@ -3,7 +3,6 @@ pub mod Privacy {
     use core::ec::EcPointTrait;
     use core::iter::Extend;
     use core::num::traits::{CheckedSub, Zero};
-    use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
@@ -982,7 +981,9 @@ pub mod Privacy {
 
         /// Executes the external invoke on `contract_address` with `selector`, emits an
         /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
-        /// returned open notes.
+        /// returned open notes. A depositor whose policy is `Delegated` returns the addresses its
+        /// deposits are associated with after them. The pool reads what the policy calls for and
+        /// ignores anything past it.
         /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
         /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
@@ -1001,7 +1002,6 @@ pub mod Privacy {
 
             let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
                 .expect(errors::INVALID_INVOKE_RETURN_DATA);
-            assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
 
             // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
             // Screening, if required, has its subject defined by the depositor's screening policy.
@@ -1011,9 +1011,23 @@ pub mod Privacy {
                         ref screening_subject, reference: contract_address,
                     ),
                     OpenNoteScreeningPolicy::Exempt => {},
-                    OpenNoteScreeningPolicy::Delegated => panic_with_felt252(
-                        errors::DELEGATED_SCREENING_UNSUPPORTED,
-                    ),
+                    OpenNoteScreeningPolicy::Delegated => {
+                        // Only a compute-invoke is delegated; a plain invoke is exempt.
+                        if selector == INVOKE_WITH_COMPUTATION_SELECTOR {
+                            let associated_addresses: Span<ContractAddress> = Serde::deserialize(
+                                ref return_data,
+                            )
+                                .expect(errors::INVALID_ASSOCIATED_ADDRESSES);
+                            assert(!associated_addresses.is_empty(), errors::NO_ASSOCIATED_ADDRESS);
+                            // The addresses are the last thing a delegated depositor returns.
+                            assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
+                            for associated_address in associated_addresses {
+                                unify_address(
+                                    ref screening_subject, reference: *associated_address,
+                                );
+                            }
+                        }
+                    },
                 }
                 for deposit in deposits {
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
