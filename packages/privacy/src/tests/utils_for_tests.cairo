@@ -45,6 +45,9 @@ use privacy::test_contracts::mock_swap_executor::{
 };
 use privacy::tests::mock_account::MockAccount::deploy_for_test as deploy_mock_account_for_test;
 use privacy::tests::mock_custom_account::MockCustomAccount::deploy_for_test as deploy_mock_custom_account_for_test;
+use privacy::tests::mock_delegated_screening::MockDelegatedMalformedAddresses::deploy_for_test as deploy_mock_delegated_malformed_addresses_for_test;
+use privacy::tests::mock_delegated_screening::MockDelegatedTarget::deploy_for_test as deploy_mock_delegated_target_for_test;
+use privacy::tests::mock_delegated_screening::MockDelegatedWithoutAddresses::deploy_for_test as deploy_mock_delegated_without_addresses_for_test;
 use privacy::tests::mock_invoke_returns::MockCompute::deploy_for_test as deploy_mock_compute_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeArray::deploy_for_test as deploy_mock_compute_array_for_test;
 use privacy::tests::mock_invoke_returns::MockComputeEmpty::deploy_for_test as deploy_mock_compute_empty_for_test;
@@ -697,11 +700,56 @@ pub(crate) impl UserImpl of UserTrait {
     fn create_and_deposit_to_open_note(
         self: @User, create_note_input: CreateOpenNoteInput, amount: u128,
     ) -> (felt252, Span<ServerAction>) {
+        self
+            .create_and_deposit_to_open_note_from(
+                :create_note_input, :amount, depositor: *self.privacy.echo_executor,
+            )
+    }
+
+    /// Like `create_and_deposit_to_open_note`, but funded by `depositor` — any contract echoing
+    /// the deposits its `privacy_invoke` receives. `depositor` is the Invoke target, so its
+    /// `OpenNoteScreeningPolicy` governs the resulting transaction.
+    fn create_and_deposit_to_open_note_from(
+        self: @User,
+        create_note_input: CreateOpenNoteInput,
+        amount: u128,
+        depositor: ContractAddress,
+    ) -> (felt252, Span<ServerAction>) {
         let mut client_actions = array![ClientAction::CreateOpenNote(create_note_input)];
         let (note_id, _) = self.compute_open_note(:create_note_input);
         let deposit = OpenNoteDeposit { note_id, token: create_note_input.token, amount };
-        let deposit_input = self.privacy.invoke_external_echo_deposits([deposit].span());
+        let deposit_input = self
+            .privacy
+            .invoke_external_echo_deposits_to(executor: depositor, deposits: [deposit].span());
         client_actions.append(ClientAction::InvokeExternal(deposit_input));
+        let actions = self.execute(client_actions: client_actions.span());
+        (note_id, actions)
+    }
+
+    /// Like `create_and_deposit_to_open_note_from`, but through the compute-invoke path: the
+    /// client calls `privacy_compute` on `depositor` and prepends its result to the deposits it
+    /// forwards.
+    fn create_and_deposit_to_open_note_via_compute_from(
+        self: @User,
+        create_note_input: CreateOpenNoteInput,
+        amount: u128,
+        depositor: ContractAddress,
+    ) -> (felt252, Span<ServerAction>) {
+        let mut client_actions = array![ClientAction::CreateOpenNote(create_note_input)];
+        let (note_id, _) = self.compute_open_note(:create_note_input);
+        let deposit = OpenNoteDeposit { note_id, token: create_note_input.token, amount };
+        let mut invoke_additional_data: Array<felt252> = array![];
+        [deposit].span().serialize(ref invoke_additional_data);
+        client_actions
+            .append(
+                ClientAction::ComputeAndInvoke(
+                    ComputeAndInvokeInput {
+                        contract_address: depositor,
+                        compute_additional_data: array![].span(),
+                        invoke_additional_data: invoke_additional_data.span(),
+                    },
+                ),
+            );
         let actions = self.execute(client_actions: client_actions.span());
         (note_id, actions)
     }
@@ -1302,17 +1350,90 @@ pub(crate) impl TestImpl of TestTrait {
     fn echo_funded_open_note(
         ref self: Test, token: Token, amount: u128,
     ) -> (User, felt252, Span<ServerAction>) {
+        self.funded_open_note_from(depositor: self.privacy.echo_executor, :token, :amount)
+    }
+
+    /// Like `echo_funded_open_note`, but funded by `depositor` — any contract echoing the
+    /// deposits its `privacy_invoke` receives — so a test can put a chosen policy on a chosen
+    /// depositor.
+    fn funded_open_note_from(
+        ref self: Test, depositor: ContractAddress, token: Token, amount: u128,
+    ) -> (User, felt252, Span<ServerAction>) {
+        let (mut user, create_note_input) = self.open_note_owner_for(:depositor, :token, :amount);
+        let (note_id, actions) = user
+            .create_and_deposit_to_open_note_from(:create_note_input, :amount, :depositor);
+        (user, note_id, actions)
+    }
+
+    /// Like `funded_open_note_from`, but funding through the compute-invoke path — the one the
+    /// delegated policy acts on, so every delegated fixture funds this way.
+    fn compute_funded_open_note_from(
+        ref self: Test, depositor: ContractAddress, token: Token, amount: u128,
+    ) -> (User, felt252, Span<ServerAction>) {
+        let (mut user, create_note_input) = self.open_note_owner_for(:depositor, :token, :amount);
+        let (note_id, actions) = user
+            .create_and_deposit_to_open_note_via_compute_from(
+                :create_note_input, :amount, :depositor,
+            );
+        (user, note_id, actions)
+    }
+
+    /// A fresh user with a channel and an unfunded open note, plus `depositor` funded and approved
+    /// to fill it. The setup both `funded_open_note_from` variants share.
+    fn open_note_owner_for(
+        ref self: Test, depositor: ContractAddress, token: Token, amount: u128,
+    ) -> (User, CreateOpenNoteInput) {
         let token_addr = token.contract_address();
-        let echo_executor = self.privacy.echo_executor;
         let mut user = self.new_user();
         user.set_viewing_key_e2e();
         user.open_channel_with_token_e2e(recipient: user, :token_addr, outgoing_channel_index: 0);
         let create_note_input = user
             .new_open_note_with_generated_random(recipient: user, :token_addr, index: 0);
-        token.supply(address: echo_executor, :amount);
-        token.approve(owner: echo_executor, spender: self.privacy.address, amount: amount.into());
-        let (note_id, actions) = user.create_and_deposit_to_open_note(:create_note_input, :amount);
-        (user, note_id, actions)
+        token.supply(address: depositor, :amount);
+        token.approve(owner: depositor, spender: self.privacy.address, amount: amount.into());
+        (user, create_note_input)
+    }
+
+    /// A `MockDelegatedTarget` returning `associated_addresses` after its deposits, already listed
+    /// as `Delegated` — the pair every delegated-screening test starts from.
+    fn new_delegated_target(
+        ref self: Test, associated_addresses: Array<ContractAddress>,
+    ) -> ContractAddress {
+        let delegated_target = deploy_mock_delegated_target(:associated_addresses);
+        self.delegate_screening_to(depositor: delegated_target);
+        delegated_target
+    }
+
+    /// Lists `depositor` as `Delegated`, so the pool reads the addresses to screen from the return
+    /// data of the compute-invoke that funds its open notes.
+    fn delegate_screening_to(self: @Test, depositor: ContractAddress) {
+        self
+            .privacy
+            .set_open_note_screening_policy(:depositor, policy: OpenNoteScreeningPolicy::Delegated);
+    }
+
+    /// An open note funded by a fresh `Delegated` depositor that names `associated_addresses` after
+    /// its deposits, returned as its owner, the note id, and the actions.
+    fn delegated_funded_open_note(
+        ref self: Test, token: Token, amount: u128, associated_addresses: Array<ContractAddress>,
+    ) -> (User, felt252, Span<ServerAction>) {
+        let delegated_target = self.new_delegated_target(:associated_addresses);
+        self.compute_funded_open_note_from(depositor: delegated_target, :token, :amount)
+    }
+
+    /// Asserts that funding an open note through `delegated_target` fails with `expected_error`,
+    /// listing it as `Delegated` first. Carries no attestation, since every way reading the
+    /// addresses can fail is decided while the actions are applied, before one would be verified.
+    fn assert_delegated_apply_fails(
+        ref self: Test, delegated_target: ContractAddress, expected_error: felt252,
+    ) {
+        self.delegate_screening_to(depositor: delegated_target);
+        let token = self.new_token();
+        let (_, _, actions) = self
+            .compute_funded_open_note_from(
+                depositor: delegated_target, :token, amount: constants::DEFAULT_AMOUNT,
+            );
+        self.privacy.assert_apply_fails(:actions, screening: None, :expected_error);
     }
 
     fn new_user_with_is_valid(ref self: Test, is_valid: bool) -> User {
@@ -1682,6 +1803,9 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let target = invoke_target_of(:actions)?;
         match self.get_open_note_screening_policy(depositor: target) {
             OpenNoteScreeningPolicy::Required => Some(target),
+            // A `Delegated` target's requirement is whatever address it returns after its
+            // deposits, which the harness cannot know without running the invoke; the tests that
+            // set that policy pass their attestation explicitly.
             _ => None,
         }
     }
@@ -2055,8 +2179,8 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         self.invoke_external_echo_deposits_to(executor: *self.echo_executor, :deposits)
     }
 
-    /// Like `invoke_external_echo_deposits`, but targets a caller-chosen echo executor — used to
-    /// exercise deposits originating from a second, distinct depositor.
+    /// Like `invoke_external_echo_deposits`, but targets a caller-chosen executor — any contract
+    /// echoing the deposits it receives, so a test can choose which depositor funds an open note.
     fn invoke_external_echo_deposits_to(
         self: @PrivacyCfg, executor: ContractAddress, deposits: Span<OpenNoteDeposit>,
     ) -> InvokeExternalInput {
@@ -2513,6 +2637,58 @@ pub(crate) fn deploy_mock_compute_array() -> ContractAddress {
 
 pub(crate) fn deploy_mock_echo() -> ContractAddress {
     deploy_mock_echo_with_salt(salt: 0)
+}
+
+/// Deploys a `MockDelegatedTarget`, an open-note depositor to list as `Delegated`: it funds open
+/// notes like the echo executor and returns `associated_addresses` after its deposits.
+pub(crate) fn deploy_mock_delegated_target(
+    associated_addresses: Array<ContractAddress>,
+) -> ContractAddress {
+    let class_hash = declare(contract: "MockDelegatedTarget")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_delegated_target_for_test(
+        class_hash: *class_hash,
+        :deployment_params,
+        associated_addresses: associated_addresses.span(),
+    )
+        .expect('DELEGATED_TARGET_DEPLOY_FAIL');
+    contract_address
+}
+
+/// Deploys a `MockDelegatedMalformedAddresses`, a delegated depositor whose deposits are followed
+/// by the raw felts `(addresses_length, first_felt, second_felt)` instead of a
+/// `Span<ContractAddress>`.
+pub(crate) fn deploy_mock_delegated_malformed_addresses(
+    addresses_length: felt252, first_felt: felt252, second_felt: felt252,
+) -> ContractAddress {
+    let class_hash = declare(contract: "MockDelegatedMalformedAddresses")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_delegated_malformed_addresses_for_test(
+        class_hash: *class_hash, :deployment_params, :addresses_length, :first_felt, :second_felt,
+    )
+        .expect('MALFORMED_ADDRESSES_DEPLOY_FAIL');
+    contract_address
+}
+
+/// Deploys a `MockDelegatedWithoutAddresses`, a depositor that funds open notes through the compute
+/// path but returns no addresses after its deposits.
+pub(crate) fn deploy_mock_delegated_without_addresses() -> ContractAddress {
+    let class_hash = declare(contract: "MockDelegatedWithoutAddresses")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
+    let (contract_address, _) = deploy_mock_delegated_without_addresses_for_test(
+        class_hash: *class_hash, :deployment_params,
+    )
+        .expect('WITHOUT_ADDRESSES_DEPLOY_FAIL');
+    contract_address
 }
 
 /// Deploys a `MockEcho` at a caller-chosen `salt`, so tests needing a second, distinct echo

@@ -99,7 +99,20 @@ pub struct Note {
     pub token: ContractAddress,
 }
 
-/// How the pool applies screening of open-note deposits by a depositor.
+/// How the pool applies screening of open-note deposits by a depositor, per the invoke that funded
+/// them:
+///
+/// | policy      | `privacy_invoke` | `privacy_invoke_with_computation` |
+/// |-------------|------------------|-----------------------------------|
+/// | `Required`  | screen the depositor | screen the depositor          |
+/// | `Exempt`    | no requirement   | no requirement                    |
+/// | `Delegated` | no requirement   | screen the addresses it names     |
+///
+/// A delegated depositor names those addresses in the return data following its deposits. Only
+/// `privacy_invoke_with_computation` is delegated, so only its return data is read that way and a
+/// plain `privacy_invoke` is exempt — a depositor implementing both must append addresses to the
+/// former only. A delegated contract is exempt as itself: what gets screened is the account acting
+/// through it, which is what it names.
 ///
 /// No policy rejects a depositor outright. Under the default `Required`, a depositor the screening
 /// provider refuses gets no attestation, so its deposits are blocked anyway.
@@ -113,7 +126,8 @@ pub enum OpenNoteScreeningPolicy {
     Required,
     /// The depositor's open-note deposits are exempted from screening.
     Exempt,
-    /// Providing the addresses for screening is delegated to the depositor.
+    /// Providing the addresses for screening is delegated to the depositor, which names them after
+    /// the deposits it returns.
     Delegated,
 }
 
