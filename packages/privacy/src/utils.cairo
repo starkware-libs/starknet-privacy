@@ -589,10 +589,13 @@ pub(crate) fn assert_valid_os_call(caller_address: ContractAddress, tx_version: 
 /// A transaction screens at most one address, so `required_screening_subject` accumulates the
 /// requirements of all its actions: it starts as `None`, requiring the address it already holds is
 /// a no-op, and requiring a second distinct address reverts with `MULTIPLE_SCREENING_SUBJECTS`. A
-/// `None` left at the end of the transaction means nothing in it requires screening.
+/// `None` left at the end of the transaction means nothing in it requires screening — which is
+/// why the zero address is never a screening subject: `None` already carries that meaning, and an
+/// attestation over `0x0` would attest to no one.
 pub(crate) fn require_screening_subject(
     ref required_screening_subject: Option<ContractAddress>, screening_subject: ContractAddress,
 ) {
+    assert(screening_subject.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
     if let Some(already_required_screening_subject) = required_screening_subject {
         assert(
             already_required_screening_subject == screening_subject,

@@ -278,6 +278,15 @@ fn test_require_screening_subject_dedups_same_screening_subject() {
     assert_eq!(required_screening_subject, Some(screening_subject));
 }
 
+/// The zero address already means "nothing to screen" as a `None` requirement, so it can never be
+/// a requirement itself.
+#[test]
+#[should_panic(expected: 'ZERO_CONTRACT_ADDRESS')]
+fn test_require_screening_subject_rejects_zero_screening_subject() {
+    let mut required_screening_subject: Option<ContractAddress> = None;
+    require_screening_subject(ref required_screening_subject, screening_subject: Zero::zero());
+}
+
 #[test]
 #[should_panic(expected: 'MULTIPLE_SCREENING_SUBJECTS')]
 fn test_require_screening_subject_rejects_distinct_screening_subject() {
