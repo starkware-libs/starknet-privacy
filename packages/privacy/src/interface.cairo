@@ -535,8 +535,10 @@ pub trait IServer<T> {
     /// [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) dictates.
     /// - [`MULTIPLE_SCREENING_SUBJECTS`](privacy::errors::MULTIPLE_SCREENING_SUBJECTS): Thrown if
     /// the tx's actions require screening of more than one distinct address — two deposits with
-    /// different `from_addr`, or a deposit combined with an Invoke whose target requires screening
-    /// of its own address.
+    /// different `from_addr`, a deposit combined with an Invoke whose target requires screening of
+    /// its own address, or a delegated target naming two addresses.
+    /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if a screening
+    /// subject is the zero address.
     /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx's actions
     /// require screening but `screening` is [`Option::None`].
     /// - [`UNEXPECTED_SCREENING`](privacy::errors::UNEXPECTED_SCREENING): Thrown if `screening` is
@@ -568,11 +570,18 @@ pub trait IServer<T> {
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
     ///   ERC20 contract).
-    ///   - [`DELEGATED_SCREENING_UNSUPPORTED`](privacy::errors::DELEGATED_SCREENING_UNSUPPORTED):
-    ///   Thrown if a `Delegated` target returned deposits.
     ///   - A target whose policy is `Required` (every unlisted address) makes the Invoke target
     ///   itself the tx's screening subject; a target that is `Exempt` raises no requirement. See
     ///   the screening errors above.
+    ///   - A depositor in `Delegated` mode provides the addresses associated with its deposits.
+    ///   The screening is performed on the associated addresses.
+    ///     - [`INVALID_ASSOCIATED_ADDRESSES`](privacy::errors::INVALID_ASSOCIATED_ADDRESSES):
+    ///       Thrown if no `Span<ContractAddress>` follows the deposits in the returned data, albeit
+    ///       expected. May indicate a depositor set to `Delegated` by mistake.
+    ///     - [`NO_ASSOCIATED_ADDRESS`](privacy::errors::NO_ASSOCIATED_ADDRESS):
+    ///       Thrown when an associated address is required, but an empty span was provided.
+    ///     - [`INVALID_INVOKE_RETURN_DATA`](privacy::errors::INVALID_INVOKE_RETURN_DATA):
+    ///       Thrown when the data returned from the call exceeds the expected one.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -910,8 +919,11 @@ pub trait IAdmin<T> {
     /// - `Required`: the depositor's own address is the address requiring screening. This is the
     /// default policy.
     /// - `Exempt`: the depositor's open-note deposits are exempted from screening.
-    /// - `Delegated`: providing the addresses for screening is delegated to the depositor. Not yet
-    /// operative — such deposits are refused with `DELEGATED_SCREENING_UNSUPPORTED`.
+    /// - `Delegated`: providing the addresses for screening is delegated to the depositor, which
+    /// lists them in the returned data following its deposits. The pool trusts the depositor to
+    /// report the associated addresses correctly.
+    /// See [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) for how each
+    /// policy behaves per invoke kind.
     ///
     /// #### Parameters
     /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract. Must be

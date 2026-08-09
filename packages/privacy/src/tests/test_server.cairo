@@ -11,7 +11,8 @@ use privacy::tests::mock_invoke_returns::MockCompute::INVOKE_PANIC;
 use privacy::tests::utils_for_tests::{
     CreateOpenNoteInputIntoServerActionTrait, InvokeExternalInputIntoServerActionTrait, NoteZero,
     PrivacyCfgTrait, Test, TestTrait, UserTrait, VesuTrait, all_screening_policies, constants,
-    deploy_mock_compute, deploy_mock_reentrancy, deploy_mock_return_garbage,
+    deploy_mock_compute, deploy_mock_delegated_malformed_addresses, deploy_mock_delegated_target,
+    deploy_mock_delegated_without_addresses, deploy_mock_reentrancy, deploy_mock_return_garbage,
     deploy_mock_return_trailing_garbage, deploy_mock_swap_executor, deploy_mock_vesu_vault_noop,
     invoke_mock_swap_executor_input, sign_screening_attestation, sign_screening_attestation_with,
 };
@@ -1291,22 +1292,22 @@ fn test_apply_invoke_return_deserialize_error() {
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
 }
 
+/// Anything following the deposits must be a well-formed address span, whatever the policy and
+/// under both invoke kinds: a bare trailing felt is rejected as a malformed span.
 #[test]
-fn test_apply_invoke_return_extra_data() {
+fn test_apply_invoke_return_extra_data_fails() {
     let mut test: Test = Default::default();
     let mock_return_trailing_garbage_addr = deploy_mock_return_trailing_garbage();
     let invoke_input = InvokeInput {
         contract_address: mock_return_trailing_garbage_addr, calldata: [].span(),
     };
     let result = test.privacy.safe_apply_actions([ServerAction::Invoke(invoke_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_ASSOCIATED_ADDRESSES);
 
-    // Same trailing-garbage return via the InvokeWithComputation path (the mock returns the same
-    // valid-deposits-plus-trailing-felt from its `privacy_invoke_with_computation` entry point).
     let result = test
         .privacy
         .safe_apply_actions([ServerAction::InvokeWithComputation(invoke_input)].span());
-    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_INVOKE_RETURN_DATA);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_ASSOCIATED_ADDRESSES);
 }
 
 #[test]
@@ -2750,33 +2751,252 @@ fn test_exempt_invoke_target_rejects_attestation() {
         );
 }
 
-/// Delegated screening asks the target which address to screen; the pool cannot yet make that
-/// call, so a delegated target's deposits are refused rather than screened against its own address.
+/// A delegated target names the address the pool screens, which is not its own: the attestation it
+/// would have needed under `Required` no longer satisfies the tx.
 #[test]
-fn test_delegated_invoke_target_is_unsupported() {
+fn test_delegated_target_screens_the_address_it_names() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let amount = constants::DEFAULT_AMOUNT;
-    let echo_executor = test.privacy.echo_executor;
-    let (_, _, actions) = test.echo_funded_open_note(:token, :amount);
+    let named_address = test.new_user().address;
+    let delegated_target = test.new_delegated_target(associated_addresses: array![named_address]);
+    let (_, note_id, actions) = test
+        .compute_funded_open_note_from(depositor: delegated_target, :token, :amount);
 
-    test
-        .privacy
-        .set_open_note_screening_policy(
-            depositor: echo_executor, policy: OpenNoteScreeningPolicy::Delegated,
-        );
-    let attestation = sign_screening_attestation(depositor: echo_executor, issued_at: 0);
     test
         .privacy
         .assert_apply_fails(
             :actions,
-            screening: Some(attestation),
-            expected_error: errors::DELEGATED_SCREENING_UNSUPPORTED,
+            screening: Some(sign_screening_attestation(depositor: delegated_target, issued_at: 0)),
+            expected_error: errors::SCREENING_INVALID_SIGNATURE,
+        );
+    test
+        .privacy
+        .apply_actions_screened(
+            :actions,
+            screening: Some(sign_screening_attestation(depositor: named_address, issued_at: 0)),
+            caller: constants::PAYMASTER,
+        );
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+/// A queried target must name someone: silence is not exemption.
+#[test]
+fn test_delegated_target_naming_no_address_fails() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let (_, _, actions) = test
+        .delegated_funded_open_note(:token, :amount, associated_addresses: array![]);
+
+    test
+        .privacy
+        .assert_apply_fails(
+            :actions, screening: None, expected_error: errors::NO_ASSOCIATED_ADDRESS,
         );
 }
 
+/// Naming the same address twice is one requirement, not two: the answer's addresses dedup exactly
+/// as the tx's other requirements do.
+#[test]
+fn test_delegated_target_naming_one_address_twice_dedups() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let named_address = test.new_user().address;
+    let (_, note_id, actions) = test
+        .delegated_funded_open_note(
+            :token, :amount, associated_addresses: array![named_address, named_address],
+        );
+
+    test
+        .privacy
+        .apply_actions_screened(
+            :actions,
+            screening: Some(sign_screening_attestation(depositor: named_address, issued_at: 0)),
+            caller: constants::PAYMASTER,
+        );
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+/// A tx screens at most one address, so two distinct names in one answer conflict exactly as two
+/// distinct requirements from any other pair of actions do.
+#[test]
+fn test_delegated_target_naming_two_addresses_fails() {
+    let mut test: Test = Default::default();
+    let first_named_address = test.new_user().address;
+    let second_named_address = test.new_user().address;
+
+    let delegated_target = deploy_mock_delegated_target(
+        associated_addresses: array![first_named_address, second_named_address],
+    );
+    test
+        .assert_delegated_apply_fails(
+            :delegated_target, expected_error: errors::MULTIPLE_SCREENING_SUBJECTS,
+        );
+}
+
+/// The zero-address guard sits in the accumulator so it covers every requirement source, not only
+/// the delegated answer: a regular deposit from the zero address reaches it too. Without a test
+/// driving this path, moving the guard into the query would pass the whole suite while quietly
+/// dropping it for regular deposits.
+#[test]
+fn test_regular_deposit_from_the_zero_address_fails() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let deposit = [
+        ServerAction::TransferFrom(
+            TransferFromInput { from_addr: Zero::zero(), token: token.contract_address(), amount },
+        ),
+    ]
+        .span();
+
+    test
+        .privacy
+        .assert_apply_fails(
+            actions: deposit, screening: None, expected_error: errors::ZERO_CONTRACT_ADDRESS,
+        );
+}
+
+/// The zero address is how the pool says "nothing to screen", so a target may not name it as
+/// something to screen — an attestation over `0x0` would attest to no one.
+#[test]
+fn test_delegated_target_naming_the_zero_address_fails() {
+    let mut test: Test = Default::default();
+    let delegated_target = deploy_mock_delegated_target(associated_addresses: array![Zero::zero()]);
+    test
+        .assert_delegated_apply_fails(
+            :delegated_target, expected_error: errors::ZERO_CONTRACT_ADDRESS,
+        );
+}
+
+/// A `Delegated` target funding open notes through a plain Invoke names nobody: its plain invoke
+/// returns deposits alone, so the transaction landing at all proves the pool did not go looking for
+/// addresses behind them — had it looked, the missing span would have failed the apply.
+#[test]
+fn test_delegated_target_names_no_addresses_on_a_plain_invoke() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let delegated_target = deploy_mock_delegated_target(
+        associated_addresses: array![test.new_user().address],
+    );
+    test.delegate_screening_to(depositor: delegated_target);
+    let (_, note_id, actions) = test
+        .funded_open_note_from(depositor: delegated_target, :token, :amount);
+
+    test.privacy.apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+/// Listing a depositor that names nobody as `Delegated` — the misconfiguration this policy
+/// invites — fails closed: with no address span behind its deposits there is nothing to screen,
+/// so they revert instead of going unscreened.
+#[test]
+fn test_delegated_target_returning_no_addresses_fails() {
+    let mut test: Test = Default::default();
+    let delegated_target = deploy_mock_delegated_without_addresses();
+    test
+        .assert_delegated_apply_fails(
+            :delegated_target, expected_error: errors::INVALID_ASSOCIATED_ADDRESSES,
+        );
+}
+
+/// A span promising more addresses than it carries is not a `Span<ContractAddress>` at all.
+#[test]
+fn test_delegated_addresses_shorter_than_promised_fails() {
+    let mut test: Test = Default::default();
+    let delegated_target = deploy_mock_delegated_malformed_addresses(
+        addresses_length: 5, first_felt: 0, second_felt: 0,
+    );
+    test
+        .assert_delegated_apply_fails(
+            :delegated_target, expected_error: errors::INVALID_ASSOCIATED_ADDRESSES,
+        );
+}
+
+/// Data left over after a well-formed address span is rejected rather than ignored: past the
+/// deposits, the addresses are the only thing a delegated depositor may return.
+#[test]
+fn test_delegated_addresses_with_trailing_data_fails() {
+    let mut test: Test = Default::default();
+    let delegated_target = deploy_mock_delegated_malformed_addresses(
+        addresses_length: 1, first_felt: 'AN_ADDRESS', second_felt: 'EXTRA',
+    );
+    test
+        .assert_delegated_apply_fails(
+            :delegated_target, expected_error: errors::INVALID_INVOKE_RETURN_DATA,
+        );
+}
+
+/// The addresses behind the deposits are screened only for a `Delegated` depositor: under any
+/// other policy they must still parse, but name nobody. That is what lets the shadow account
+/// anonymizer — which names its address on every interaction — fund open notes while listed
+/// `Exempt`.
+#[test]
+fn test_addresses_returned_by_a_non_delegated_target_are_ignored() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let delegated_target = deploy_mock_delegated_target(
+        associated_addresses: array![test.new_user().address],
+    );
+    let (_, note_id, actions) = test
+        .compute_funded_open_note_from(depositor: delegated_target, :token, :amount);
+
+    // The target is left unlisted, i.e. `Required`, so the address it names raises no requirement
+    // and the attestation covers the target itself.
+    test
+        .privacy
+        .apply_actions_screened(
+            :actions,
+            screening: Some(sign_screening_attestation(depositor: delegated_target, issued_at: 0)),
+            caller: constants::PAYMASTER,
+        );
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+}
+
+/// The delegated answer joins the transaction's other screening requirements rather than replacing
+/// them: naming the address a regular deposit already requires leaves one subject, which a single
+/// attestation covers.
+#[test]
+fn test_delegated_answer_naming_the_regular_depositor_dedups() {
+    let mut test: Test = Default::default();
+    let token = test.new_token();
+    let amount = constants::DEFAULT_AMOUNT;
+    let depositor = test.new_funded_user(:token, :amount);
+    let (_, note_id, open_note_actions) = test
+        .delegated_funded_open_note(
+            :token, :amount, associated_addresses: array![depositor.address],
+        );
+
+    let mut combined: Array<ServerAction> = array![depositor.deposit_action(:token, :amount)];
+    combined.append_span(open_note_actions);
+    test
+        .privacy
+        .apply_actions_screened(
+            actions: combined.span(),
+            screening: Some(sign_screening_attestation(depositor: depositor.address, issued_at: 0)),
+            caller: constants::PAYMASTER,
+        );
+
+    let (_, stored_amount) = unpack(packed_value: test.privacy.get_note(:note_id).packed_value);
+    assert_eq!(stored_amount, amount);
+    assert_eq!(token.balance_of(address: test.privacy.address), (2 * amount).into());
+}
+
 /// Every policy is consulted only when the Invoke returns deposits: an Invoke funding nothing is
-/// neither screened nor refused, whatever its target's policy says.
+/// neither screened nor refused, whatever its target's policy says. Covers the plain-Invoke path;
+/// `test_delegated_target_without_deposits_reads_no_addresses` covers the delegated one.
 #[test]
 fn test_invoke_without_deposits_ignores_every_policy() {
     let policies = all_screening_policies();
@@ -2790,6 +3010,28 @@ fn test_invoke_without_deposits_ignores_every_policy() {
             .privacy
             .apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
     }
+}
+
+/// The policy list is consulted only when an Invoke returns deposits, so a compute-invoke that
+/// funds nothing screens nobody — a delegated depositor that settles no note names no addresses.
+#[test]
+fn test_delegated_target_without_deposits_reads_no_addresses() {
+    let mut test: Test = Default::default();
+    let delegated_target = deploy_mock_delegated_without_addresses();
+    test.delegate_screening_to(depositor: delegated_target);
+
+    let mut invoke_calldata: Array<felt252> = array![];
+    let no_deposits: Span<OpenNoteDeposit> = array![].span();
+    0.serialize(ref invoke_calldata);
+    no_deposits.serialize(ref invoke_calldata);
+    let actions = [
+        ServerAction::InvokeWithComputation(
+            InvokeInput { contract_address: delegated_target, calldata: invoke_calldata.span() },
+        ),
+    ]
+        .span();
+
+    test.privacy.apply_actions_screened(:actions, screening: None, caller: constants::PAYMASTER);
 }
 
 /// A regular deposit and an open-note deposit from a `Required` Invoke target are two distinct
@@ -2808,9 +3050,7 @@ fn test_combined_regular_and_open_note_deposits_conflict_unless_target_exempt() 
     // Regular deposit: depositor A, screened by a signed attestation.
     let depositor_a = test.new_funded_user(:token, :amount);
     let mut combined: Array<ServerAction> = array![depositor_a.deposit_action(:token, :amount)];
-    for action in open_note_actions {
-        combined.append(*action);
-    }
+    combined.append_span(open_note_actions);
     let combined = combined.span();
     let attestation = sign_screening_attestation(depositor: depositor_a.address, issued_at: 0);
 

@@ -2,6 +2,7 @@ use core::num::traits::Zero;
 use core::poseidon::poseidon_hash_span;
 use privacy::actions::{ServerAction, WriteOnceInput};
 use privacy::hashes::hash;
+use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
     Test, decrypt_channel_info, decrypt_enc_user_addr, decrypt_private_key,
     decrypt_subchannel_token,
@@ -9,9 +10,9 @@ use privacy::tests::utils_for_tests::{
 use privacy::utils::constants::{OPEN_NOTE_SALT, TWO_POW_120};
 use privacy::utils::{
     _encrypt_note_amount, compute_message_hash, decode_note_amount, decrypt_note_amount,
-    derive_public_key, enc_note_packed_value, encrypt_channel_info, encrypt_private_key,
-    encrypt_subchannel_info, encrypt_user_addr, open_note, pack, to_write_once_action,
-    unify_address, unpack,
+    derive_public_key, deserialize_invoke_return_data, enc_note_packed_value, encrypt_channel_info,
+    encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr, open_note, pack,
+    to_write_once_action, unify_address, unpack,
 };
 use snforge_std::{get_class_hash, map_entry_address};
 use starknet::{ClassHash, ContractAddress};
@@ -262,6 +263,64 @@ fn test_compute_message_hash_depends_on_class_hash() {
 }
 
 #[test]
+fn test_deserialize_invoke_return_data_without_addresses() {
+    let deposits = [sample_open_note_deposit()].span();
+    let mut return_data: Array<felt252> = array![];
+    deposits.serialize(ref return_data);
+
+    let (deserialized_deposits, associated_addresses) = deserialize_invoke_return_data(
+        return_data.span(),
+    );
+    assert_eq!(deserialized_deposits, deposits);
+    assert_eq!(associated_addresses, None);
+}
+
+#[test]
+fn test_deserialize_invoke_return_data_with_addresses() {
+    let deposits = [sample_open_note_deposit()].span();
+    let addresses: Span<ContractAddress> = ['AN_ADDRESS'.try_into().unwrap()].span();
+    let mut return_data: Array<felt252> = array![];
+    deposits.serialize(ref return_data);
+    addresses.serialize(ref return_data);
+
+    let (deserialized_deposits, associated_addresses) = deserialize_invoke_return_data(
+        return_data.span(),
+    );
+    assert_eq!(deserialized_deposits, deposits);
+    assert_eq!(associated_addresses, Some(addresses));
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_ASSOCIATED_ADDRESSES')]
+fn test_deserialize_invoke_return_data_rejects_a_malformed_address_span() {
+    let deposits = [sample_open_note_deposit()].span();
+    let mut return_data: Array<felt252> = array![];
+    deposits.serialize(ref return_data);
+    // A length prefix promising more addresses than follow.
+    return_data.append(2);
+    return_data.append('AN_ADDRESS');
+
+    deserialize_invoke_return_data(return_data.span());
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_INVOKE_RETURN_DATA')]
+fn test_deserialize_invoke_return_data_rejects_data_after_the_addresses() {
+    let deposits = [sample_open_note_deposit()].span();
+    let addresses: Span<ContractAddress> = ['AN_ADDRESS'.try_into().unwrap()].span();
+    let mut return_data: Array<felt252> = array![];
+    deposits.serialize(ref return_data);
+    addresses.serialize(ref return_data);
+    return_data.append('EXTRA');
+
+    deserialize_invoke_return_data(return_data.span());
+}
+
+fn sample_open_note_deposit() -> OpenNoteDeposit {
+    OpenNoteDeposit { note_id: 'NOTE_ID', token: 'TOKEN'.try_into().unwrap(), amount: 1_000_000 }
+}
+
+#[test]
 fn test_unify_address_records_first_screening_subject() {
     let address: ContractAddress = hash(['SCREENING_SUBJECT'].span()).try_into().unwrap();
     let mut screening_subject: Option<ContractAddress> = None;
@@ -276,6 +335,15 @@ fn test_unify_address_dedups_same_screening_subject() {
     unify_address(ref screening_subject, reference: address);
     unify_address(ref screening_subject, reference: address);
     assert_eq!(screening_subject, Some(address));
+}
+
+/// The zero address already means "nothing to screen" as a `None` requirement, so it can never be
+/// a requirement itself.
+#[test]
+#[should_panic(expected: 'ZERO_CONTRACT_ADDRESS')]
+fn test_unify_address_rejects_the_zero_address() {
+    let mut screening_subject: Option<ContractAddress> = None;
+    unify_address(ref screening_subject, reference: Zero::zero());
 }
 
 #[test]

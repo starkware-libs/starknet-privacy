@@ -3,7 +3,6 @@ pub mod Privacy {
     use core::ec::EcPointTrait;
     use core::iter::Extend;
     use core::num::traits::{CheckedSub, Zero};
-    use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
@@ -32,10 +31,11 @@ pub mod Privacy {
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs, extract_server_actions_from_panic,
-        is_canonical_key, open_note, pack, panic_with_server_actions, propagate_external_panic,
+        decode_note_amount, derive_public_key, deserialize_invoke_return_data,
+        enc_note_packed_value, encrypt_channel_info, encrypt_outgoing_channel_info,
+        encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
+        extract_compile_actions_inputs, extract_server_actions_from_panic, is_canonical_key,
+        open_note, pack, panic_with_server_actions, propagate_external_panic,
         send_message_to_server, storage_path_to_felt252, to_write_once_action, unify_address,
         unpack,
     };
@@ -982,7 +982,9 @@ pub mod Privacy {
 
         /// Executes the external invoke on `contract_address` with `selector`, emits an
         /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
-        /// returned open notes.
+        /// returned open notes. The return data is the deposits, optionally followed by the
+        /// addresses they are associated with; only a `Delegated` compute-invoke's addresses are
+        /// screened, but whatever follows the deposits must be a well-formed address span.
         /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
         /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
@@ -993,15 +995,13 @@ pub mod Privacy {
             ref screening_subject: Option<ContractAddress>,
         ) {
             let InvokeInput { contract_address, calldata } = input;
-            let mut return_data = call_contract_syscall(
+            let return_data = call_contract_syscall(
                 address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
             self.emit(events::ExternalContractInvoked { contract_address, selector });
 
-            let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
-                .expect(errors::INVALID_INVOKE_RETURN_DATA);
-            assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
+            let (deposits, associated_addresses) = deserialize_invoke_return_data(return_data);
 
             // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
             // Screening, if required, has its subject defined by the depositor's screening policy.
@@ -1011,9 +1011,19 @@ pub mod Privacy {
                         ref screening_subject, reference: contract_address,
                     ),
                     OpenNoteScreeningPolicy::Exempt => {},
-                    OpenNoteScreeningPolicy::Delegated => panic_with_felt252(
-                        errors::DELEGATED_SCREENING_UNSUPPORTED,
-                    ),
+                    OpenNoteScreeningPolicy::Delegated => {
+                        // Only a compute-invoke is delegated; a plain invoke is exempt.
+                        if selector == INVOKE_WITH_COMPUTATION_SELECTOR {
+                            let associated_addresses = associated_addresses
+                                .expect(errors::INVALID_ASSOCIATED_ADDRESSES);
+                            assert(!associated_addresses.is_empty(), errors::NO_ASSOCIATED_ADDRESS);
+                            for associated_address in associated_addresses {
+                                unify_address(
+                                    ref screening_subject, reference: *associated_address,
+                                );
+                            }
+                        }
+                    },
                 }
                 for deposit in deposits {
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
