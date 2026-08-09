@@ -1,6 +1,7 @@
 pub mod generate_reference_data;
 pub mod mock_account;
 pub mod mock_custom_account;
+pub mod mock_delegated_screening;
 pub mod mock_invoke_returns;
 pub mod mock_reentrancy;
 pub mod mock_stark_account;
