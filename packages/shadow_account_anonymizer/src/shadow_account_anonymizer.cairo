@@ -120,6 +120,8 @@ pub trait IShadowAccountAnonymizer<T> {
     /// #### Returns
     /// - ([`Span<OpenNoteDeposit>`](privacy::objects::OpenNoteDeposit)) - one deposit per open
     ///   note, for the privacy contract to apply.
+    /// - (`Span<ContractAddress>`) - The address associated with the deposits,
+    ///   i.e. the address of the shadow account. Empty if no deposits.
     ///
     /// #### Preconditions
     /// - Caller must be the configured privacy contract.
@@ -140,7 +142,7 @@ pub trait IShadowAccountAnonymizer<T> {
         identity_commitment: IdentityCommitment,
         calls: Array<Call>,
         open_notes: Span<OpenNote>,
-    ) -> Span<OpenNoteDeposit>;
+    ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>);
 
     /// Resolves the shadow accounts for nonces `[start_nonce, end_nonce)` under
     /// `partial_commitment`, one [`ShadowAccountInfo`](ShadowAccountInfo) per nonce in ascending
@@ -323,7 +325,7 @@ pub mod ShadowAccountAnonymizer {
             identity_commitment: IdentityCommitment,
             calls: Array<Call>,
             open_notes: Span<OpenNote>,
-        ) -> Span<OpenNoteDeposit> {
+        ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
             assert(
                 get_caller_address() == self.privacy_contract.read(), errors::UNAUTHORIZED_CALLER,
             );
@@ -333,7 +335,13 @@ pub mod ShadowAccountAnonymizer {
                 shadow_account: shadow_account.contract_address, :open_notes,
             );
             shadow_account.execute(calls);
-            self.collect_open_notes(:shadow_account, :note_balance_snapshots)
+            let deposits = self.collect_open_notes(:shadow_account, :note_balance_snapshots);
+            let associated_addresses = if deposits.is_empty() {
+                array![]
+            } else {
+                array![shadow_account.contract_address]
+            };
+            (deposits, associated_addresses.span())
         }
 
         fn get_shadow_accounts(
