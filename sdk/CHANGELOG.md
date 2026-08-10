@@ -4,6 +4,11 @@
 
 ### Added
 
+- Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new
+  `privacy_invoke_with_computation` return shape, `(Span<OpenNoteDeposit>, Span<ContractAddress>)`:
+  the interaction now names the shadow account its deposits passed through — the address the pool
+  screens for them — after those deposits, so no separate query is needed. Calldata is unchanged, so
+  code that only builds invoke calldata is unaffected.
 - Regenerated `PrivacyPoolABI` and `PoolContractInterface` for the pool's open-note screening
   policies: `get_open_note_screening_policy` / `set_open_note_screening_policy`, carrying an
   `OpenNoteScreeningPolicy` of `Required` (screen the depositor, the default), `Exempt` (screening

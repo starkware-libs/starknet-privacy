@@ -120,6 +120,11 @@ pub trait IShadowAccountAnonymizer<T> {
     /// #### Returns
     /// - ([`Span<OpenNoteDeposit>`](privacy::objects::OpenNoteDeposit)) - one deposit per open
     ///   note, for the privacy contract to apply.
+    /// - (`Span<ContractAddress>`) - the shadow account those deposits passed through, which the
+    ///   privacy contract screens for them when this anonymizer's policy is `Delegated`. It is
+    ///   named whether or not it was already deployed, its address being deterministic. Empty only
+    ///   when there are no deposits either, since the privacy contract reads this span only after
+    ///   deposits it has to attribute.
     ///
     /// #### Preconditions
     /// - Caller must be the configured privacy contract.
@@ -140,7 +145,7 @@ pub trait IShadowAccountAnonymizer<T> {
         identity_commitment: IdentityCommitment,
         calls: Array<Call>,
         open_notes: Span<OpenNote>,
-    ) -> Span<OpenNoteDeposit>;
+    ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>);
 
     /// Resolves the shadow accounts for nonces `[start_nonce, end_nonce)` under
     /// `partial_commitment`, one [`ShadowAccountInfo`](ShadowAccountInfo) per nonce in ascending
@@ -323,7 +328,7 @@ pub mod ShadowAccountAnonymizer {
             identity_commitment: IdentityCommitment,
             calls: Array<Call>,
             open_notes: Span<OpenNote>,
-        ) -> Span<OpenNoteDeposit> {
+        ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
             assert(
                 get_caller_address() == self.privacy_contract.read(), errors::UNAUTHORIZED_CALLER,
             );
@@ -333,7 +338,16 @@ pub mod ShadowAccountAnonymizer {
                 shadow_account: shadow_account.contract_address, :open_notes,
             );
             shadow_account.execute(calls);
-            self.collect_open_notes(:shadow_account, :note_balance_snapshots)
+            let deposits = self.collect_open_notes(:shadow_account, :note_balance_snapshots);
+            // The privacy contract screens the account the funds passed through, and reads this
+            // span only behind deposits — so an interaction settling no note names nobody, which
+            // is the same thing as returning no deposits.
+            let associated_addresses = if deposits.is_empty() {
+                array![]
+            } else {
+                array![shadow_account.contract_address]
+            };
+            (deposits, associated_addresses.span())
         }
 
         fn get_shadow_accounts(
@@ -469,6 +483,7 @@ pub mod ShadowAccountAnonymizer {
             deposits.span()
         }
     }
+
 
     /// Pairs `CollectPolicy::Diff` notes with the shadow account's `token` balance before the
     /// interaction. Other policies are paired with (unused) zero.

@@ -115,6 +115,16 @@ export const ShadowAccountAnonymizerABI = [
     ],
   },
   {
+    type: "struct",
+    name: "core::array::Span::<core::starknet::contract_address::ContractAddress>",
+    members: [
+      {
+        name: "snapshot",
+        type: "@core::array::Array::<core::starknet::contract_address::ContractAddress>",
+      },
+    ],
+  },
+  {
     type: "enum",
     name: "core::bool",
     variants: [
@@ -203,7 +213,7 @@ export const ShadowAccountAnonymizerABI = [
         ],
         outputs: [
           {
-            type: "core::array::Span::<privacy::objects::OpenNoteDeposit>",
+            type: "(core::array::Span::<privacy::objects::OpenNoteDeposit>, core::array::Span::<core::starknet::contract_address::ContractAddress>)",
           },
         ],
         state_mutability: "external",
@@ -468,16 +478,6 @@ export const ShadowAccountAnonymizerABI = [
       {
         name: "SecurityGovernor",
         type: "()",
-      },
-    ],
-  },
-  {
-    type: "struct",
-    name: "core::array::Span::<core::starknet::contract_address::ContractAddress>",
-    members: [
-      {
-        name: "snapshot",
-        type: "@core::array::Array::<core::starknet::contract_address::ContractAddress>",
       },
     ],
   },
