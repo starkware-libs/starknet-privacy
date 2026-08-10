@@ -16,7 +16,8 @@ use snforge_std::{
     DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare, spy_events,
 };
 use starknet::account::Call;
-use starknet::{ContractAddress, SyscallResultTrait};
+use starknet::syscalls::call_contract_syscall;
+use starknet::{ContractAddress, SyscallResult, SyscallResultTrait};
 use starkware_accounts::shadow_account::{IShadowAccountDispatcher, IShadowAccountDispatcherTrait};
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
@@ -734,4 +735,101 @@ fn test_get_shadow_accounts_inverted_range_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
         .get_shadow_accounts(partial_commitment('USER', 'DAPP'), 5, 3, false);
+}
+
+/// A single open note collecting the shadow account's whole `token` balance.
+fn collect_all_note(token: ContractAddress) -> Span<OpenNote> {
+    array![OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All }].span()
+}
+
+/// The calldata the privacy contract calls `privacy_invoke_with_computation` with.
+fn invoke_calldata(
+    identity_commitment: felt252, calls: Array<Call>, open_notes: Span<OpenNote>,
+) -> Span<felt252> {
+    let mut calldata = array![identity_commitment];
+    calls.serialize(ref calldata);
+    open_notes.serialize(ref calldata);
+    calldata.span()
+}
+
+/// Runs the invoke over a raw syscall, the way the privacy contract does, and hands back its
+/// undecoded return data.
+fn invoke_return_data(
+    anonymizer: ContractAddress, invoke_calldata: Span<felt252>,
+) -> SyscallResult<Span<felt252>> {
+    cheat_caller_address_once(contract_address: anonymizer, caller_address: PRIVACY);
+    call_contract_syscall(
+        address: anonymizer,
+        entry_point_selector: selector!("privacy_invoke_with_computation"),
+        calldata: invoke_calldata,
+    )
+}
+
+#[test]
+fn test_invoke_returns_the_shadow_account_it_ran_through() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
+    // The address is known before the account exists, so an attestation can be minted ahead of the
+    // interaction.
+    let predicted = shadow_account_info(components.anonymizer, 1).address;
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+
+    let (deposits, associated_addresses) = components
+        .invoke_returning_addresses(
+            :identity_commitment,
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: collect_all_note(token),
+        );
+
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(associated_addresses.len(), 1);
+    // The funds passed through this account, and it is the one the prediction pointed at.
+    assert_eq!(*associated_addresses[0], anonymizer.get_shadow_account(identity_commitment));
+    assert_eq!(*associated_addresses[0], predicted);
+}
+
+#[test]
+fn test_invoke_without_open_notes_returns_no_address() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+
+    // An interaction settling no note funds no deposit, so it returns no address. The dapp call
+    // still runs, and whatever it leaves in the shadow account goes uncollected.
+    let (deposits, associated_addresses) = components
+        .invoke_returning_addresses(
+            identity_commitment: anonymizer.privacy_compute('USER', 'DAPP', 1),
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: array![].span(),
+        );
+
+    assert!(deposits.is_empty());
+    assert!(associated_addresses.is_empty());
+}
+
+#[test]
+fn test_invoke_return_data_is_the_deposits_then_the_addresses() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+    let calldata = invoke_calldata(
+        identity_commitment,
+        calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+        open_notes: collect_all_note(token),
+    );
+
+    // The privacy contract deserializes the deposits, then the addresses, and rejects anything left
+    // over. Read the raw return data in that order to pin the layout it depends on.
+    let mut return_data = invoke_return_data(components.anonymizer, calldata).unwrap_syscall();
+    let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data).unwrap();
+    let associated_addresses: Span<ContractAddress> = Serde::deserialize(ref return_data).unwrap();
+    assert!(return_data.is_empty());
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(associated_addresses.len(), 1);
+    assert_eq!(*associated_addresses[0], anonymizer.get_shadow_account(identity_commitment));
 }

@@ -4,6 +4,11 @@
 
 ### Added
 
+- Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new
+  `privacy_invoke_with_computation` return shape, `(Span<OpenNoteDeposit>, Span<ContractAddress>)`.
+  The invoke now returns the shadow account its deposits passed through, which is the address the
+  pool screens for them. Calldata is unchanged, so code that only builds invoke calldata is
+  unaffected.
 - `exemptOpenNoteDepositor(admin, provider, pool, depositor)` in `starknet-privacy-sdk/testing`,
   which lists a depositor as screening-exempt on a devnet pool. An Invoke target that funds open
   notes is the transaction's screening subject unless it is listed, so a harness deploying its own

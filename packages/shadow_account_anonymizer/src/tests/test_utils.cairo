@@ -32,12 +32,27 @@ pub struct Components {
 #[generate_trait]
 pub impl ComponentsImpl of ComponentsTrait {
     /// Calls `privacy_invoke_with_computation` cheating the caller to be the privacy contract.
+    /// Runs the invoke and returns only its deposits, which is all most tests look at.
+    /// `invoke_returning_addresses` hands back the addresses too.
     fn invoke(
         self: @Components,
         identity_commitment: felt252,
         calls: Array<Call>,
         open_notes: Span<OpenNote>,
     ) -> Span<OpenNoteDeposit> {
+        let (deposits, _) = self
+            .invoke_returning_addresses(:identity_commitment, :calls, :open_notes);
+        deposits
+    }
+
+    /// Runs the invoke and returns both halves of what it answers, the deposits and the addresses
+    /// the privacy contract screens for them.
+    fn invoke_returning_addresses(
+        self: @Components,
+        identity_commitment: felt252,
+        calls: Array<Call>,
+        open_notes: Span<OpenNote>,
+    ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
         cheat_caller_address_once(contract_address: *self.anonymizer, caller_address: PRIVACY);
         anonymizer_disp(*self.anonymizer)
             .privacy_invoke_with_computation(:identity_commitment, :calls, :open_notes)

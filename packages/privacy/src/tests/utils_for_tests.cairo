@@ -2151,6 +2151,19 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
     }
 
     fn execute_actions_e2e(self: @PrivacyCfg, user: User, client_actions: Span<ClientAction>) {
+        self.execute_actions_e2e_screened(:user, :client_actions, screening: Option::None)
+    }
+
+    /// Drives the client and server halves end to end, screening with `screening` when given and
+    /// otherwise with whatever the harness can derive. A `Delegated` depositor needs the explicit
+    /// form, since the address to attest is the one its invoke returns. Off chain a caller predicts
+    /// it with `get_shadow_accounts`.
+    fn execute_actions_e2e_screened(
+        self: @PrivacyCfg,
+        user: User,
+        client_actions: Span<ClientAction>,
+        screening: Option<ScreeningAttestation>,
+    ) {
         let calls = self
             .wrap_inputs_into_calls(
                 user_addr: user.address, user_private_key: user.private_key, :client_actions,
@@ -2167,7 +2180,10 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
         let message_hash = compute_hash_from_message(:from, :message);
         let mut proof_facts: ProofFacts = Default::default();
         proof_facts.message_to_l1_hashes = [message_hash].span();
-        let screening = self._auto_screening(actions: server_actions);
+        let screening = match screening {
+            Option::Some(attestation) => Option::Some(attestation),
+            Option::None => self._auto_screening(actions: server_actions),
+        };
         self._cheat_proof_facts(:proof_facts);
         self.server.apply_actions(actions: server_actions, :screening);
     }
