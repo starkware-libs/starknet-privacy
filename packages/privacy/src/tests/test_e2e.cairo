@@ -11,19 +11,19 @@ use privacy::actions::{
 use privacy::objects::OpenNoteDeposit;
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait,
-    build_ekubo_swap_anonymizer_calldata, deploy_sub_account_anonymizer,
-    deploy_sub_account_mock_dapp, pool_key_for_tokens,
+    build_ekubo_swap_anonymizer_calldata, deploy_shadow_account_anonymizer,
+    deploy_shadow_account_mock_dapp, pool_key_for_tokens,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
+use shadow_account_anonymizer::shadow_account_anonymizer::{
+    CollectPolicy, IShadowAccountAnonymizerDispatcher, IShadowAccountAnonymizerDispatcherTrait,
+    OpenNote, partial_commitment,
+};
 use snforge_std::TokenTrait;
 use starknet::ContractAddress;
 use starknet::account::Call;
 use starkware_utils_testing::test_utils::TokenHelperTrait;
-use sub_account_anonymizer::sub_account_anonymizer::{
-    CollectPolicy, ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait, OpenNote,
-    partial_commitment,
-};
 
 // Helper: Constants for e2e testing.
 const RANDOM: felt252 = 0x24a7f3e2b1c9d8e6f5a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9c0d1e;
@@ -1908,22 +1908,22 @@ fn test_e2e_ekubo_invoke() {
     assert_eq!(filled_note.token, output_token_addr);
 }
 
-/// E2E: drive the sub-account anonymizer through the compute-and-invoke flow. execute() runs the
-/// anonymizer's `privacy_compute` to derive the per-commitment sub-account; apply_actions then runs
-/// `privacy_invoke_with_computation`, which deploys the sub-account, has it call the dapp (funds
-/// land in the sub-account), collects them into the anonymizer, and settles them into the open note
-/// created in the same tx.
+/// E2E: drive the shadow account anonymizer through the compute-and-invoke flow. execute() runs the
+/// anonymizer's `privacy_compute` to derive the per-commitment shadow account; apply_actions then
+/// runs `privacy_invoke_with_computation`, which deploys the shadow account, has it call the dapp
+/// (funds land in the shadow account), collects them into the anonymizer, and settles them into the
+/// open note created in the same tx.
 #[test]
-fn test_e2e_sub_account_anonymizer_compute_invoke() {
+fn test_e2e_shadow_account_anonymizer_compute_invoke() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let token_addr = token.contract_address();
     let amount = 100_u128;
     let mut user = test.new_user();
 
-    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
-    let mock_dapp = deploy_sub_account_mock_dapp();
-    // Fund the dapp so its `transfer_to_caller` can transfer `amount` to the sub-account.
+    let anonymizer = deploy_shadow_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_shadow_account_mock_dapp();
+    // Fund the dapp so its `transfer_to_caller` can transfer `amount` to the shadow account.
     token.supply(address: mock_dapp, :amount);
 
     // Open note that the collected funds settle into (created in the same tx as the invoke).
@@ -1974,7 +1974,7 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
                 .span(),
         );
 
-    // The dapp payout, collected via the sub-account and anonymizer, settled into the open note.
+    // The dapp payout, collected via the shadow account and anonymizer, settled into the open note.
     let filled_note = test.privacy.get_note(:note_id);
     let (salt, filled_amount) = unpack(packed_value: filled_note.packed_value);
     assert_eq!(salt, OPEN_NOTE_SALT);
@@ -1986,21 +1986,22 @@ fn test_e2e_sub_account_anonymizer_compute_invoke() {
     assert_eq!(token.balance_of(address: mock_dapp), 0);
     assert_eq!(token.balance_of(address: anonymizer), 0);
 
-    // A sub-account was deployed for the derived commitment and holds nothing after collection.
-    let anonymizer_disp = ISubAccountAnonymizerDispatcher { contract_address: anonymizer };
+    // A shadow account was deployed for the derived commitment and holds nothing after collection.
+    let anonymizer_disp = IShadowAccountAnonymizerDispatcher { contract_address: anonymizer };
     let identity_key = user.compute_identity_key(contract_address: anonymizer);
-    let sub_account_info = *anonymizer_disp
-        .get_sub_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1, false)[0];
-    assert!(sub_account_info.is_deployed);
-    assert_eq!(token.balance_of(address: sub_account_info.address), 0);
+    let shadow_account_info = *anonymizer_disp
+        .get_shadow_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1, false)[0];
+    assert!(shadow_account_info.is_deployed);
+    assert_eq!(token.balance_of(address: shadow_account_info.address), 0);
 }
 
-/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+/// E2E: two open notes on the *same* token in one shadow account interaction is unsupported and
+/// fails.
 #[test]
 #[test_case(CollectPolicy::All)]
 #[test_case(CollectPolicy::Diff)]
 #[should_panic(expected: 'ERC20: insufficient balance')]
-fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balance(
+fn test_e2e_shadow_account_anonymizer_two_notes_same_token_fails_insufficient_balance(
     policy: CollectPolicy,
 ) {
     let mut test: Test = Default::default();
@@ -2009,9 +2010,9 @@ fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balan
     let payout = 100_u128;
     let mut user = test.new_user();
 
-    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
-    let mock_dapp = deploy_sub_account_mock_dapp();
-    // Fund the dapp so its `transfer_to_caller` pays `payout` into the sub-account.
+    let anonymizer = deploy_shadow_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_shadow_account_mock_dapp();
+    // Fund the dapp so its `transfer_to_caller` pays `payout` into the shadow account.
     token.supply(address: mock_dapp, amount: payout);
 
     // Two open notes on the same token (distinct indices), both settled in the same interaction.
@@ -2033,7 +2034,7 @@ fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balan
         calldata: array![token_addr.into(), payout.into(), 0].span(),
     };
     let calls: Array<Call> = array![transfer_to_caller];
-    // Second transfer from sub-account to anonymizer will fail with insufficient balance.
+    // Second transfer from shadow account to anonymizer will fail with insufficient balance.
     let open_notes: Span<OpenNote> = [
         OpenNote { note_id: note_id_1, token: token_addr, collect_policy: policy },
         OpenNote { note_id: note_id_2, token: token_addr, collect_policy: policy },
@@ -2064,19 +2065,20 @@ fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_balan
         );
 }
 
-/// E2E: two open notes on the *same* token in one sub-account interaction is unsupported and fails.
+/// E2E: two open notes on the *same* token in one shadow account interaction is unsupported and
+/// fails.
 #[test]
 #[should_panic(expected: "Insufficient ERC20 allowance")]
-fn test_e2e_sub_account_anonymizer_two_notes_same_token_fails_insufficient_allowance() {
+fn test_e2e_shadow_account_anonymizer_two_notes_same_token_fails_insufficient_allowance() {
     let mut test: Test = Default::default();
     let token = test.new_token();
     let token_addr = token.contract_address();
     let payout = 100_u128;
     let mut user = test.new_user();
 
-    let anonymizer = deploy_sub_account_anonymizer(privacy_address: test.privacy.address);
-    let mock_dapp = deploy_sub_account_mock_dapp();
-    // Fund the dapp so its `transfer_to_caller` pays `payout` into the sub-account.
+    let anonymizer = deploy_shadow_account_anonymizer(privacy_address: test.privacy.address);
+    let mock_dapp = deploy_shadow_account_mock_dapp();
+    // Fund the dapp so its `transfer_to_caller` pays `payout` into the shadow account.
     token.supply(address: mock_dapp, amount: payout);
 
     // Two open notes on the same token (distinct indices), both settled in the same interaction.

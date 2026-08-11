@@ -135,7 +135,7 @@ export class Mocknet {
   createPrivateTransfers(
     userAddress: bigint,
     viewingKey: ViewingKey,
-    options?: { subAccountAnonymizerAddress?: StarknetAddress }
+    options?: { shadowAccountAnonymizerAddress?: StarknetAddress }
   ): PrivateTransfers {
     const pool = this.pool;
 
@@ -150,7 +150,7 @@ export class Mocknet {
       discoveryProvider: new ContractDiscoveryProvider(pool),
       proofInvocationFactory: new MockProofInvocationFactory(),
       poolContractAddress: `0x${this.poolAddress.toString(16)}`,
-      subAccountAnonymizerAddress: options?.subAccountAnonymizerAddress,
+      shadowAccountAnonymizerAddress: options?.shadowAccountAnonymizerAddress,
     });
   }
 

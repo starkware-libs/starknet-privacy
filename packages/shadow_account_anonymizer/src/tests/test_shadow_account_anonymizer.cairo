@@ -2,6 +2,16 @@ use core::hash::HashStateTrait;
 use core::num::traits::{Bounded, Zero};
 use core::poseidon::PoseidonTrait;
 use privacy::objects::OpenNoteDeposit;
+use shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountAnonymizer::ShadowAccountDeployed;
+use shadow_account_anonymizer::shadow_account_anonymizer::{
+    CollectPolicy, IShadowAccountAnonymizerDispatcherTrait, IShadowAccountAnonymizerSafeDispatcher,
+    IShadowAccountAnonymizerSafeDispatcherTrait, MAX_SCAN_RANGE, OpenNote, ShadowAccountInfo,
+    commitment_from_partial, errors, partial_commitment,
+};
+use shadow_account_anonymizer::tests::test_utils::{
+    Components, ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components,
+    deploy_shadow_account_anonymizer, deploy_token, transfer_to_caller_call,
+};
 use snforge_std::{
     DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare, spy_events,
 };
@@ -12,50 +22,40 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
     cheat_caller_address_once,
 };
-use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed;
-use sub_account_anonymizer::sub_account_anonymizer::{
-    CollectPolicy, ISubAccountAnonymizerDispatcherTrait, ISubAccountAnonymizerSafeDispatcher,
-    ISubAccountAnonymizerSafeDispatcherTrait, MAX_SCAN_RANGE, OpenNote, SubAccountInfo,
-    commitment_from_partial, errors, partial_commitment,
-};
-use sub_account_anonymizer::tests::test_utils::{
-    Components, ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components,
-    deploy_sub_account_anonymizer, deploy_token, transfer_to_caller_call,
-};
 
 const AMOUNT: u128 = 1_000_000;
 const NOTE_ID: felt252 = 'NOTE_ID';
 
-/// Resolves the `('USER', 'DAPP', nonce)` sub-account via the range view.
-fn sub_account_info(anonymizer: ContractAddress, nonce: u64) -> SubAccountInfo {
+/// Resolves the `('USER', 'DAPP', nonce)` shadow account via the range view.
+fn shadow_account_info(anonymizer: ContractAddress, nonce: u64) -> ShadowAccountInfo {
     let infos = anonymizer_disp(anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), nonce, nonce + 1, false);
+        .get_shadow_accounts(partial_commitment('USER', 'DAPP'), nonce, nonce + 1, false);
     *infos[0]
 }
 
 #[test]
 fn test_get_privacy_contract() {
-    let anonymizer = deploy_sub_account_anonymizer();
+    let anonymizer = deploy_shadow_account_anonymizer();
     assert_eq!(anonymizer_disp(anonymizer).get_privacy_contract(), PRIVACY);
 }
 
 #[test]
-fn test_get_sub_account_class_hash() {
-    let anonymizer = deploy_sub_account_anonymizer();
+fn test_get_shadow_account_class_hash() {
+    let anonymizer = deploy_shadow_account_anonymizer();
     let expected = *declare("SubAccount").unwrap_syscall().contract_class().class_hash;
-    assert_eq!(anonymizer_disp(anonymizer).get_sub_account_class_hash(), expected);
+    assert_eq!(anonymizer_disp(anonymizer).get_shadow_account_class_hash(), expected);
 }
 
 #[test]
-fn test_get_sub_account_unknown_identity_commitment_is_zero() {
-    let anonymizer = deploy_sub_account_anonymizer();
-    assert!(anonymizer_disp(anonymizer).get_sub_account('UNKNOWN').is_zero());
+fn test_get_shadow_account_unknown_identity_commitment_is_zero() {
+    let anonymizer = deploy_shadow_account_anonymizer();
+    assert!(anonymizer_disp(anonymizer).get_shadow_account('UNKNOWN').is_zero());
 }
 
 #[test]
-fn test_undeployed_sub_account_resolves_to_computed_address() {
-    let anonymizer = deploy_sub_account_anonymizer();
-    let info = sub_account_info(anonymizer, 0);
+fn test_undeployed_shadow_account_resolves_to_computed_address() {
+    let anonymizer = deploy_shadow_account_anonymizer();
+    let info = shadow_account_info(anonymizer, 0);
     // Undeployed, but still resolves to the deterministic address it would deploy to.
     assert!(!info.is_deployed);
     assert!(info.address.is_non_zero());
@@ -63,7 +63,7 @@ fn test_undeployed_sub_account_resolves_to_computed_address() {
 
 #[test]
 fn test_privacy_compute_is_two_stage_poseidon() {
-    let anonymizer = deploy_sub_account_anonymizer();
+    let anonymizer = deploy_shadow_account_anonymizer();
     let identity_commitment = anonymizer_disp(anonymizer).privacy_compute('USER', 'DAPP', 7);
     // Two-stage: hash(hash(identity_key, dapp_name), nonce).
     let expected_partial = PoseidonTrait::new().update('USER').update('DAPP').finalize();
@@ -76,7 +76,7 @@ fn test_privacy_compute_is_two_stage_poseidon() {
 
 #[test]
 fn test_privacy_compute_is_deterministic_and_distinct() {
-    let anonymizer = anonymizer_disp(deploy_sub_account_anonymizer());
+    let anonymizer = anonymizer_disp(deploy_shadow_account_anonymizer());
     let base = anonymizer.privacy_compute('USER', 'DAPP', 1);
     // Deterministic for the same inputs.
     assert_eq!(base, anonymizer.privacy_compute('USER', 'DAPP', 1));
@@ -93,7 +93,7 @@ fn test_invoke_executes_and_collects_open_note() {
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
 
-    // Fund the dapp so the sub-account-driven call pays the sub-account `AMOUNT`.
+    // Fund the dapp so the shadow account-driven call pays the shadow account `AMOUNT`.
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
 
     let deposits = components
@@ -113,36 +113,37 @@ fn test_invoke_executes_and_collects_open_note() {
     assert_eq!(deposit_token, token);
     assert_eq!(amount, AMOUNT);
 
-    let sub_account = sub_account_info(components.anonymizer, 1).address;
-    assert!(sub_account.is_non_zero());
-    // Funds flowed dapp -> sub-account -> anonymizer, and the privacy contract is approved to pull.
+    let shadow_account = shadow_account_info(components.anonymizer, 1).address;
+    assert!(shadow_account.is_non_zero());
+    // Funds flowed dapp -> shadow account -> anonymizer, and the privacy contract is approved to
+    // pull.
     assert_eq!(components.token.balance_of(components.mock_dapp), 0);
-    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(shadow_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), AMOUNT.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
 }
 
 #[test]
-fn test_deploy_emits_sub_account_deployed_event() {
+fn test_deploy_emits_shadow_account_deployed_event() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
 
-    // The first invoke deploys the sub-account and emits the event.
+    // The first invoke deploys the shadow account and emits the event.
     let mut spy = spy_events();
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = anonymizer.get_sub_account(identity_commitment);
-    let expected_event = SubAccountDeployed { identity_commitment, sub_account };
+    let shadow_account = anonymizer.get_shadow_account(identity_commitment);
+    let expected_event = ShadowAccountDeployed { identity_commitment, shadow_account };
     let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
     assert_eq!(events.len(), 1);
     assert_expected_event_emitted(
         spied_event: events[0],
         :expected_event,
-        expected_event_selector: @selector!("SubAccountDeployed"),
-        expected_event_name: "SubAccountDeployed",
+        expected_event_selector: @selector!("ShadowAccountDeployed"),
+        expected_event_name: "ShadowAccountDeployed",
     );
 
-    // A second invoke reuses the sub-account, so no new deployment event is emitted.
+    // A second invoke reuses the shadow account, so no new deployment event is emitted.
     let mut spy = spy_events();
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
     let events = spy.get_events().emitted_by(contract_address: components.anonymizer).events;
@@ -154,7 +155,7 @@ fn test_deploy_emits_sub_account_deployed_event() {
 fn test_invoke_only_privacy_contract() {
     let components = deploy_components();
     // No caller cheat: the caller is the test contract, not the privacy contract.
-    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    let safe = IShadowAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     let result = safe
         .privacy_invoke_with_computation(
             identity_commitment: 0, calls: array![], open_notes: array![].span(),
@@ -222,7 +223,7 @@ fn test_multiple_invokes_run_in_one_call() {
     let second: u128 = 300_000;
     components.token.supply(address: components.mock_dapp, amount: first + second);
 
-    // Two calls in one interaction; both run as the sub-account and their output is combined.
+    // Two calls in one interaction; both run as the shadow account and their output is combined.
     let deposits = components
         .invoke(
             :identity_commitment,
@@ -260,26 +261,26 @@ fn test_invoke_but_not_collect() {
         );
     assert_eq!(deposits.len(), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), 0);
-    let sub_account = sub_account_info(components.anonymizer, 1).address;
-    assert_eq!(components.token.balance_of(sub_account), AMOUNT.into());
+    let shadow_account = shadow_account_info(components.anonymizer, 1).address;
+    assert_eq!(components.token.balance_of(shadow_account), AMOUNT.into());
 }
 
 #[test]
-fn test_deployed_sub_account_owned_by_anonymizer() {
+fn test_deployed_shadow_account_owned_by_anonymizer() {
     let components = deploy_components();
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
 
-    let sub_account = sub_account_info(components.anonymizer, 1).address;
-    // The anonymizer is the sub-account's deployer, so it is the only authorized controller.
+    let shadow_account = shadow_account_info(components.anonymizer, 1).address;
+    // The anonymizer is the shadow account's deployer, so it is the only authorized controller.
     assert_eq!(
-        ISubAccountDispatcher { contract_address: sub_account }.owner(), components.anonymizer,
+        ISubAccountDispatcher { contract_address: shadow_account }.owner(), components.anonymizer,
     );
 }
 
 #[test]
-fn test_sub_account_is_reused_per_identity_commitment() {
+fn test_shadow_account_is_reused_per_identity_commitment() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let identity_commitment_a = anonymizer.privacy_compute('USER', 'DAPP', 1);
@@ -288,20 +289,20 @@ fn test_sub_account_is_reused_per_identity_commitment() {
 
     components
         .invoke(identity_commitment: identity_commitment_a, calls: array![], open_notes: no_notes);
-    let sub_account_a = sub_account_info(components.anonymizer, 1);
-    assert!(sub_account_a.is_deployed);
+    let shadow_account_a = shadow_account_info(components.anonymizer, 1);
+    assert!(shadow_account_a.is_deployed);
 
-    // Same identity commitment reuses the same sub-account (no redeploy).
+    // Same identity commitment reuses the same shadow account (no redeploy).
     components
         .invoke(identity_commitment: identity_commitment_a, calls: array![], open_notes: no_notes);
-    assert_eq!(sub_account_info(components.anonymizer, 1).address, sub_account_a.address);
+    assert_eq!(shadow_account_info(components.anonymizer, 1).address, shadow_account_a.address);
 
-    // A different identity commitment gets a distinct sub-account.
+    // A different identity commitment gets a distinct shadow account.
     components
         .invoke(identity_commitment: identity_commitment_b, calls: array![], open_notes: no_notes);
-    let sub_account_b = sub_account_info(components.anonymizer, 2);
-    assert!(sub_account_b.is_deployed);
-    assert!(sub_account_b.address != sub_account_a.address);
+    let shadow_account_b = shadow_account_info(components.anonymizer, 2);
+    assert!(shadow_account_b.is_deployed);
+    assert!(shadow_account_b.address != shadow_account_a.address);
 }
 
 #[test]
@@ -311,11 +312,11 @@ fn test_collects_full_balance_including_preexisting() {
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
 
-    // Deploy the sub-account (empty invoke) so we can give it a pre-existing balance.
+    // Deploy the shadow account (empty invoke) so we can give it a pre-existing balance.
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = sub_account_info(components.anonymizer, 1).address;
+    let shadow_account = shadow_account_info(components.anonymizer, 1).address;
     let preexisting: u128 = 500_000;
-    components.token.supply(address: sub_account, amount: preexisting);
+    components.token.supply(address: shadow_account, amount: preexisting);
 
     // The interaction adds `AMOUNT` on top of the pre-existing balance.
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
@@ -337,7 +338,7 @@ fn test_collects_full_balance_including_preexisting() {
     assert_eq!(deposit_token, token);
     assert_eq!(amount, total);
     assert_eq!(components.token.balance_of(components.mock_dapp), 0);
-    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(shadow_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), total.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), total.into());
 }
@@ -349,11 +350,11 @@ fn test_zero_balance_reverts() {
     let token = components.token.contract_address();
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
-    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    let safe = IShadowAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     let open_note_all = OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All };
     let calls = array![];
 
-    // Deploy the sub-account (empty invoke) first.
+    // Deploy the shadow account (empty invoke) first.
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
 
     // All with zero balance.
@@ -374,9 +375,10 @@ fn test_zero_balance_reverts() {
     assert_panic_with_felt_error(:result, expected_error: errors::ZERO_BALANCE);
 
     // Zero diff with non-zero balance.
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let shadow_account = anonymizer_disp(components.anonymizer)
+        .get_shadow_account(identity_commitment);
     let preexisting: u128 = 500_000;
-    components.token.supply(address: sub_account, amount: preexisting);
+    components.token.supply(address: shadow_account, amount: preexisting);
     cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
     let result = safe
         .privacy_invoke_with_computation(
@@ -402,13 +404,13 @@ fn test_collects_remaining_balance_after_invoke_transfers_out() {
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
 
-    // Deploy and pre-fund the sub-account.
+    // Deploy and pre-fund the shadow account.
     components.invoke(:identity_commitment, calls: array![], open_notes: array![].span());
-    let sub_account = sub_account_info(components.anonymizer, 1).address;
+    let shadow_account = shadow_account_info(components.anonymizer, 1).address;
     let preexisting: u128 = 1_000_000;
-    components.token.supply(address: sub_account, amount: preexisting);
+    components.token.supply(address: shadow_account, amount: preexisting);
 
-    // The invoke makes the sub-account send some tokens out; only the remainder is collected.
+    // The invoke makes the shadow account send some tokens out; only the remainder is collected.
     let sink: ContractAddress = 'SINK'.try_into().unwrap();
     let sent: u128 = 300_000;
     let transfer = Call {
@@ -432,13 +434,13 @@ fn test_collects_remaining_balance_after_invoke_transfers_out() {
     assert_eq!(note_id, NOTE_ID);
     assert_eq!(deposit_token, token);
     assert_eq!(amount, remaining);
-    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(shadow_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), remaining.into());
     assert_eq!(components.token.balance_of(sink), sent.into());
 
     // Try to collect with diff policy.
-    components.token.supply(address: sub_account, amount: preexisting);
-    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    components.token.supply(address: shadow_account, amount: preexisting);
+    let safe = IShadowAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
     let result = safe
         .privacy_invoke_with_computation(
@@ -474,14 +476,15 @@ fn test_collect_diff_takes_only_interaction_gain() {
     assert_eq!(note_id, NOTE_ID);
     assert_eq!(deposit_token, token);
     assert_eq!(amount, AMOUNT);
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
-    assert_eq!(components.token.balance_of(sub_account), 0);
+    let shadow_account = anonymizer_disp(components.anonymizer)
+        .get_shadow_account(identity_commitment);
+    assert_eq!(components.token.balance_of(shadow_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), AMOUNT.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
 
-    // Fund the sub-account with a pre-existing balance that `Diff` must leave untouched.
+    // Fund the shadow account with a pre-existing balance that `Diff` must leave untouched.
     let preexisting: u128 = 500_000;
-    components.token.supply(address: sub_account, amount: preexisting);
+    components.token.supply(address: shadow_account, amount: preexisting);
 
     // The interaction adds `AMOUNT`; `Diff` collects only that gain.
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
@@ -499,8 +502,8 @@ fn test_collect_diff_takes_only_interaction_gain() {
     assert_eq!(note_id, NOTE_ID);
     assert_eq!(deposit_token, token);
     assert_eq!(amount, AMOUNT);
-    // Only the interaction gain is collected; the pre-existing balance stays in the sub-account.
-    assert_eq!(components.token.balance_of(sub_account), preexisting.into());
+    // Only the interaction gain is collected; the pre-existing balance stays in the shadow account.
+    assert_eq!(components.token.balance_of(shadow_account), preexisting.into());
     assert_eq!(components.token.balance_of(components.anonymizer), 2 * AMOUNT.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), AMOUNT.into());
 }
@@ -513,7 +516,7 @@ fn test_collect_exact_policy() {
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', 1);
 
-    // The interaction pays the sub-account `AMOUNT`; `Exact` collects only part of it.
+    // The interaction pays the shadow account `AMOUNT`; `Exact` collects only part of it.
     components.token.supply(address: components.mock_dapp, amount: AMOUNT);
     let exact: u128 = 400_000;
     let deposits = components
@@ -526,15 +529,16 @@ fn test_collect_exact_policy() {
                 .span(),
         );
 
-    let sub_account = anonymizer_disp(components.anonymizer).get_sub_account(identity_commitment);
+    let shadow_account = anonymizer_disp(components.anonymizer)
+        .get_shadow_account(identity_commitment);
     assert_eq!(deposits.len(), 1);
     let OpenNoteDeposit { note_id, token: deposit_token, amount } = *deposits[0];
     assert_eq!(note_id, NOTE_ID);
     assert_eq!(deposit_token, token);
     assert_eq!(amount, exact);
-    // Only `exact` is collected; the rest of the interaction payout stays in the sub-account.
+    // Only `exact` is collected; the rest of the interaction payout stays in the shadow account.
     let remaining = AMOUNT - exact;
-    assert_eq!(components.token.balance_of(sub_account), remaining.into());
+    assert_eq!(components.token.balance_of(shadow_account), remaining.into());
     assert_eq!(components.token.balance_of(components.anonymizer), exact.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), exact.into());
 
@@ -555,13 +559,13 @@ fn test_collect_exact_policy() {
     assert_eq!(note_id, NOTE_ID);
     assert_eq!(deposit_token, token);
     assert_eq!(amount, remaining);
-    assert_eq!(components.token.balance_of(sub_account), 0);
+    assert_eq!(components.token.balance_of(shadow_account), 0);
     assert_eq!(components.token.balance_of(components.anonymizer), remaining.into() + exact.into());
     assert_eq!(components.token.allowance(components.anonymizer, PRIVACY), remaining.into());
 
     // Try to collect exceeding balance.
     cheat_caller_address_once(contract_address: components.anonymizer, caller_address: PRIVACY);
-    let safe = ISubAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
+    let safe = IShadowAccountAnonymizerSafeDispatcher { contract_address: components.anonymizer };
     let result = safe
         .privacy_invoke_with_computation(
             :identity_commitment,
@@ -589,7 +593,8 @@ fn test_collected_amount_overflow() {
     components.token.supply(address: components.mock_dapp, amount: max);
     components.token.supply(address: components.mock_dapp, amount: 1);
 
-    // Two pay-outs add `u128::MAX + 1` to the sub-account, so the collected delta overflows u128.
+    // Two pay-outs add `u128::MAX + 1` to the shadow account, so the collected delta overflows
+    // u128.
     components
         .invoke(
             :identity_commitment,
@@ -604,7 +609,7 @@ fn test_collected_amount_overflow() {
         );
 }
 
-/// Deploys the sub-account for `('USER', 'DAPP', nonce)` via an empty invoke.
+/// Deploys the shadow account for `('USER', 'DAPP', nonce)` via an empty invoke.
 fn deploy_nonce(components: Components, nonce: u64) {
     let identity_commitment = anonymizer_disp(components.anonymizer)
         .privacy_compute('USER', 'DAPP', nonce.into());
@@ -612,7 +617,7 @@ fn deploy_nonce(components: Components, nonce: u64) {
 }
 
 #[test]
-fn test_get_sub_accounts_resolves_deployed_and_undeployed() {
+fn test_get_shadow_accounts_resolves_deployed_and_undeployed() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
@@ -620,7 +625,7 @@ fn test_get_sub_accounts_resolves_deployed_and_undeployed() {
     deploy_nonce(components, 1);
 
     // Nonce 2 is undeployed; the view resolves every nonce in range with an is_deployed flag.
-    let infos = anonymizer.get_sub_accounts(partial, 0, 3, false);
+    let infos = anonymizer.get_shadow_accounts(partial, 0, 3, false);
     assert_eq!(infos.len(), 3);
     assert_eq!((*infos[0]).nonce, 0);
     assert!((*infos[0]).is_deployed);
@@ -633,7 +638,7 @@ fn test_get_sub_accounts_resolves_deployed_and_undeployed() {
 }
 
 #[test]
-fn test_get_sub_accounts_until_undeployed_returns_deployed_prefix() {
+fn test_get_shadow_accounts_until_undeployed_returns_deployed_prefix() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
@@ -641,53 +646,53 @@ fn test_get_sub_accounts_until_undeployed_returns_deployed_prefix() {
     deploy_nonce(components, 1);
 
     // Nonce 2 is the first gap, so until_undeployed returns nonces 0 and 1 and stops there.
-    let infos = anonymizer.get_sub_accounts(partial, 0, 5, true);
+    let infos = anonymizer.get_shadow_accounts(partial, 0, 5, true);
     assert_eq!(infos.len(), 2);
     assert_eq!((*infos[0]).nonce, 0);
     assert_eq!((*infos[1]).nonce, 1);
 }
 
 #[test]
-fn test_get_sub_accounts_until_undeployed_on_leading_gap_is_empty() {
+fn test_get_shadow_accounts_until_undeployed_on_leading_gap_is_empty() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
 
     // The range's first nonce is undeployed, so the deployed prefix is empty.
-    let infos = anonymizer.get_sub_accounts(partial, 0, 5, true);
+    let infos = anonymizer.get_shadow_accounts(partial, 0, 5, true);
     assert_eq!(infos.len(), 0);
 }
 
 #[test]
-fn test_get_sub_accounts_computed_address_matches_deploy() {
+fn test_get_shadow_accounts_computed_address_matches_deploy() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
 
-    let before = *anonymizer.get_sub_accounts(partial, 0, 1, false)[0];
+    let before = *anonymizer.get_shadow_accounts(partial, 0, 1, false)[0];
     assert!(!before.is_deployed);
     deploy_nonce(components, 0);
-    let after = *anonymizer.get_sub_accounts(partial, 0, 1, false)[0];
+    let after = *anonymizer.get_shadow_accounts(partial, 0, 1, false)[0];
     assert!(after.is_deployed);
     // The address computed before deployment matches the actual on-chain deploy address.
     assert_eq!(before.address, after.address);
 }
 
 #[test]
-fn test_get_sub_accounts_scopes_by_dapp_and_nonce() {
+fn test_get_shadow_accounts_scopes_by_dapp_and_nonce() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
-    let dapp = anonymizer.get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, 2, false);
+    let dapp = anonymizer.get_shadow_accounts(partial_commitment('USER', 'DAPP'), 0, 2, false);
     let nonce0 = *dapp[0];
     let nonce1 = *dapp[1];
     let other_dapp = *anonymizer
-        .get_sub_accounts(partial_commitment('USER', 'OTHER'), 0, 1, false)[0];
+        .get_shadow_accounts(partial_commitment('USER', 'OTHER'), 0, 1, false)[0];
     assert!(nonce0.address != nonce1.address);
     assert!(nonce0.address != other_dapp.address);
 }
 
 #[test]
-fn test_get_sub_accounts_from_start_nonce() {
+fn test_get_shadow_accounts_from_start_nonce() {
     let components = deploy_components();
     let anonymizer = anonymizer_disp(components.anonymizer);
     let partial = partial_commitment('USER', 'DAPP');
@@ -695,7 +700,7 @@ fn test_get_sub_accounts_from_start_nonce() {
     deploy_nonce(components, 1);
 
     // Scanning from nonce 1 skips nonce 0; entries carry their own nonce.
-    let infos = anonymizer.get_sub_accounts(partial, 1, 3, false);
+    let infos = anonymizer.get_shadow_accounts(partial, 1, 3, false);
     assert_eq!(infos.len(), 2);
     assert_eq!((*infos[0]).nonce, 1);
     assert!((*infos[0]).is_deployed);
@@ -704,25 +709,25 @@ fn test_get_sub_accounts_from_start_nonce() {
 }
 
 #[test]
-fn test_get_sub_accounts_empty_range() {
+fn test_get_shadow_accounts_empty_range() {
     let components = deploy_components();
     let infos = anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 5, false);
+        .get_shadow_accounts(partial_commitment('USER', 'DAPP'), 5, 5, false);
     assert_eq!(infos.len(), 0);
 }
 
 #[test]
 #[should_panic(expected: 'RANGE_TOO_LARGE')]
-fn test_get_sub_accounts_range_too_large_reverts() {
+fn test_get_shadow_accounts_range_too_large_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 0, MAX_SCAN_RANGE + 1, false);
+        .get_shadow_accounts(partial_commitment('USER', 'DAPP'), 0, MAX_SCAN_RANGE + 1, false);
 }
 
 #[test]
 #[should_panic(expected: 'INVALID_RANGE')]
-fn test_get_sub_accounts_inverted_range_reverts() {
+fn test_get_shadow_accounts_inverted_range_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
-        .get_sub_accounts(partial_commitment('USER', 'DAPP'), 5, 3, false);
+        .get_shadow_accounts(partial_commitment('USER', 'DAPP'), 5, 3, false);
 }

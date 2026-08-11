@@ -1,15 +1,16 @@
 /**
- * SubAccountAnonymizer Contract ABI
+ * ShadowAccountAnonymizer Contract ABI
  *
  * This file is auto-generated from Cairo build artifacts.
  * Do not edit manually - run 'npm run generate:anonymizer-abi' to regenerate.
  */
 
-export const SubAccountAnonymizerABI = [
+export const ShadowAccountAnonymizerABI = [
   {
     type: "impl",
-    name: "SubAccountAnonymizerImpl",
-    interface_name: "sub_account_anonymizer::sub_account_anonymizer::ISubAccountAnonymizer",
+    name: "ShadowAccountAnonymizerImpl",
+    interface_name:
+      "shadow_account_anonymizer::shadow_account_anonymizer::IShadowAccountAnonymizer",
   },
   {
     type: "struct",
@@ -41,7 +42,7 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "enum",
-    name: "sub_account_anonymizer::sub_account_anonymizer::CollectPolicy",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::CollectPolicy",
     variants: [
       {
         name: "All",
@@ -59,7 +60,7 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "struct",
-    name: "sub_account_anonymizer::sub_account_anonymizer::OpenNote",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::OpenNote",
     members: [
       {
         name: "note_id",
@@ -71,17 +72,17 @@ export const SubAccountAnonymizerABI = [
       },
       {
         name: "collect_policy",
-        type: "sub_account_anonymizer::sub_account_anonymizer::CollectPolicy",
+        type: "shadow_account_anonymizer::shadow_account_anonymizer::CollectPolicy",
       },
     ],
   },
   {
     type: "struct",
-    name: "core::array::Span::<sub_account_anonymizer::sub_account_anonymizer::OpenNote>",
+    name: "core::array::Span::<shadow_account_anonymizer::shadow_account_anonymizer::OpenNote>",
     members: [
       {
         name: "snapshot",
-        type: "@core::array::Array::<sub_account_anonymizer::sub_account_anonymizer::OpenNote>",
+        type: "@core::array::Array::<shadow_account_anonymizer::shadow_account_anonymizer::OpenNote>",
       },
     ],
   },
@@ -129,7 +130,7 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "struct",
-    name: "sub_account_anonymizer::sub_account_anonymizer::SubAccountInfo",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountInfo",
     members: [
       {
         name: "nonce",
@@ -147,17 +148,17 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "struct",
-    name: "core::array::Span::<sub_account_anonymizer::sub_account_anonymizer::SubAccountInfo>",
+    name: "core::array::Span::<shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountInfo>",
     members: [
       {
         name: "snapshot",
-        type: "@core::array::Array::<sub_account_anonymizer::sub_account_anonymizer::SubAccountInfo>",
+        type: "@core::array::Array::<shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountInfo>",
       },
     ],
   },
   {
     type: "interface",
-    name: "sub_account_anonymizer::sub_account_anonymizer::ISubAccountAnonymizer",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::IShadowAccountAnonymizer",
     items: [
       {
         type: "function",
@@ -197,7 +198,7 @@ export const SubAccountAnonymizerABI = [
           },
           {
             name: "open_notes",
-            type: "core::array::Span::<sub_account_anonymizer::sub_account_anonymizer::OpenNote>",
+            type: "core::array::Span::<shadow_account_anonymizer::shadow_account_anonymizer::OpenNote>",
           },
         ],
         outputs: [
@@ -209,7 +210,7 @@ export const SubAccountAnonymizerABI = [
       },
       {
         type: "function",
-        name: "get_sub_accounts",
+        name: "get_shadow_accounts",
         inputs: [
           {
             name: "partial_commitment",
@@ -230,14 +231,14 @@ export const SubAccountAnonymizerABI = [
         ],
         outputs: [
           {
-            type: "core::array::Span::<sub_account_anonymizer::sub_account_anonymizer::SubAccountInfo>",
+            type: "core::array::Span::<shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountInfo>",
           },
         ],
         state_mutability: "view",
       },
       {
         type: "function",
-        name: "get_sub_account",
+        name: "get_shadow_account",
         inputs: [
           {
             name: "identity_commitment",
@@ -264,7 +265,7 @@ export const SubAccountAnonymizerABI = [
       },
       {
         type: "function",
-        name: "get_sub_account_class_hash",
+        name: "get_shadow_account_class_hash",
         inputs: [],
         outputs: [
           {
@@ -585,7 +586,7 @@ export const SubAccountAnonymizerABI = [
         type: "core::starknet::contract_address::ContractAddress",
       },
       {
-        name: "sub_account_class_hash",
+        name: "shadow_account_class_hash",
         type: "core::starknet::class_hash::ClassHash",
       },
       {
@@ -803,7 +804,7 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "event",
-    name: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountAnonymizer::ShadowAccountDeployed",
     kind: "struct",
     members: [
       {
@@ -812,7 +813,7 @@ export const SubAccountAnonymizerABI = [
         kind: "key",
       },
       {
-        name: "sub_account",
+        name: "shadow_account",
         type: "core::starknet::contract_address::ContractAddress",
         kind: "key",
       },
@@ -820,7 +821,7 @@ export const SubAccountAnonymizerABI = [
   },
   {
     type: "event",
-    name: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::Event",
+    name: "shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountAnonymizer::Event",
     kind: "enum",
     variants: [
       {
@@ -844,8 +845,8 @@ export const SubAccountAnonymizerABI = [
         kind: "flat",
       },
       {
-        name: "SubAccountDeployed",
-        type: "sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::SubAccountDeployed",
+        name: "ShadowAccountDeployed",
+        type: "shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountAnonymizer::ShadowAccountDeployed",
         kind: "nested",
       },
     ],

@@ -67,10 +67,10 @@ jobs:
           # previous run; a dangling fingerprint there panics scarb — see rust-ci.yaml).
           rm -rf target/dev
           scarb --profile release build -p privacy
-          scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer -p sub_account_anonymizer
+          scarb build -p privacy -p vesu_lending_anonymizer -p ekubo_swap_anonymizer -p shadow_account_anonymizer
           # SubAccount + MockDapp come from the test build (sierra only); the e2e setup
           # compiles casm with universal-sierra-compiler (set up above) at declare time.
-          scarb build -t -p sub_account_anonymizer
+          scarb build -t -p shadow_account_anonymizer
           # StarknetEth712Account (the EVM account the signing e2e deploys) is a
           # build-external-contract of the privacy test target; same sierra-only + USC-at-declare flow.
           scarb build -t -p privacy

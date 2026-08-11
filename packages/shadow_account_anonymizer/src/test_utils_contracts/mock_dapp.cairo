@@ -1,6 +1,6 @@
-//! Minimal dapp used to exercise sub_account-driven interactions: `transfer_to_caller` transfers a
-//! previously funded token balance to whoever calls it (the sub_account), modelling a dapp that
-//! returns funds to the calling account.
+//! Minimal dapp used to exercise shadow_account-driven interactions: `transfer_to_caller` transfers
+//! a previously funded token balance to whoever calls it (the shadow_account), modelling a dapp
+//! that returns funds to the calling account.
 
 use starknet::ContractAddress;
 

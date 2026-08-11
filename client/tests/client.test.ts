@@ -53,7 +53,7 @@ function client(seen: Seen = {}) {
     wallet: fakeWallet(seen),
     userAddress: "0x5e1f",
     node,
-    subAccountAnonymizerAddress: 0x2n,
+    shadowAccountAnonymizerAddress: 0x2n,
   });
 }
 
@@ -155,16 +155,16 @@ describe("client.build()", () => {
     expect(() => builder.with("0x7").createOpenNote()).toThrow(/before invoke/);
   });
 
-  it("subaccounts(dappName).invoke queues a subaccount_invoke action with the mapped calls", async () => {
+  it("shadowAccounts(dappName).invoke queues a shadow_account_invoke action with the mapped calls", async () => {
     const seen: Seen = {};
     await client(seen)
       .build()
-      .subaccounts("ekubo")
+      .shadowAccounts("ekubo")
       .invoke(3, { calls: [{ contractAddress: "0xswap", entrypoint: "swap", calldata: ["0x1"] }] })
       .submit();
     expect(seen.invoke).toEqual([
       {
-        type: "subaccount_invoke",
+        type: "shadow_account_invoke",
         dapp_name: "ekubo",
         nonce: "0x3",
         calls: [{ contract_address: "0xswap", entry_point: "swap", calldata: ["0x1"] }],

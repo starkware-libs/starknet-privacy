@@ -42,11 +42,11 @@ const h = vi.hoisted(() => {
       state.simulateArg = arg;
       return { callAndProof: coreCallAndProof, registry: {} };
     },
-    // subaccounts now hangs off the builder (core #905: transfers.build().subaccounts(...)).
-    subaccounts: (dappName: string) => ({
+    // shadowAccounts now hangs off the builder (core #905: transfers.build().shadowAccounts(...)).
+    shadowAccounts: (dappName: string) => ({
       partialCommitment: async () => (dappName === "my-dapp" ? 0xc0ffeen : 0n),
       invoke: (nonce: unknown, options: unknown) => {
-        state.ops.push({ op: "subaccountInvoke", dappName, nonce, options });
+        state.ops.push({ op: "shadowAccountsInvoke", dappName, nonce, options });
         return builder;
       },
     }),
@@ -82,7 +82,7 @@ function makeProver() {
     discovery: {} as never,
     prover: {} as never,
     poolContractAddress: "0xf001",
-    subAccountAnonymizerAddress: "0xa11",
+    shadowAccountAnonymizerAddress: "0xa11",
     storage: {
       loadRegistry: async () => loadedRegistry as never,
       saveRegistry: async (registry) => {
@@ -99,7 +99,7 @@ beforeEach(() => {
 });
 
 describe("CorePrivateTransfersProver", () => {
-  it("partialCommitment delegates to the core subaccounts builder for the dapp", async () => {
+  it("partialCommitment delegates to the core shadowAccounts builder for the dapp", async () => {
     expect(await makeProver().partialCommitment("my-dapp")).toBe(0xc0ffeen);
   });
 
@@ -192,17 +192,17 @@ describe("CorePrivateTransfersProver", () => {
     });
   });
 
-  it("maps subaccount_invoke to core build().subaccounts(dappName).invoke with camelCase calls", async () => {
+  it("maps shadow_account_invoke to core build().shadowAccounts(dappName).invoke with camelCase calls", async () => {
     await makeProver().prove([
       {
-        type: "subaccount_invoke",
+        type: "shadow_account_invoke",
         dapp_name: "ekubo",
         nonce: "0x3",
         calls: [{ contract_address: "0xswap", entry_point: "swap", calldata: ["0x1"] }],
         collect_policy: { type: "exact", amount: "0x64" },
       },
     ]);
-    const op = h.state.ops.find((entry) => entry.op === "subaccountInvoke")!;
+    const op = h.state.ops.find((entry) => entry.op === "shadowAccountsInvoke")!;
     expect(op.dappName).toBe("ekubo");
     expect(op.nonce).toBe("0x3");
     expect(op.options).toEqual({

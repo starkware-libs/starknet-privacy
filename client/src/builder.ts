@@ -17,16 +17,16 @@ import type {
   PrivacyTokenBuilder,
   Strk20Action,
   Strk20CollectPolicy,
-  SubAccountInfo,
-  SubAccountsBuilder,
+  ShadowAccountInfo,
+  ShadowAccountsBuilder,
   SubmitResult,
 } from "./interfaces.js";
 
-/** Resolves a dapp's sub-account addresses — supplied by the client (anonymizer view + partial commitment). */
+/** Resolves a dapp's shadow account addresses — supplied by the client (anonymizer view + partial commitment). */
 export type ResolveAddresses = (
   dappName: string,
   range?: AddressRange
-) => Promise<SubAccountInfo[]>;
+) => Promise<ShadowAccountInfo[]>;
 
 const toFelt = (value: BigNumberish): string => num.toHex(num.toBigInt(value));
 
@@ -36,7 +36,7 @@ const toFelt = (value: BigNumberish): string => num.toHex(num.toBigInt(value));
  *
  * Invoke call builders receive `${openNoteIds[N]}` / `${poolAddress}` placeholders the wallet
  * substitutes at proving time. `openNoteIds` is sized to the open notes created *so far*, so open
- * notes must be created before the `invoke` / `invokeWithComputation` / sub-account `invoke` that
+ * notes must be created before the `invoke` / `invokeWithComputation` / shadow account `invoke` that
  * references them — `createOpenNote` after an invoke throws.
  */
 class PrivacyBuilderImpl implements PrivacyBuilder {
@@ -54,8 +54,8 @@ class PrivacyBuilderImpl implements PrivacyBuilder {
     return new PrivacyTokenBuilderImpl(this, toFelt(token));
   }
 
-  subaccounts(dappName: string): SubAccountsBuilder {
-    return new SubAccountsBuilderImpl(this, dappName, this.resolveAddresses);
+  shadowAccounts(dappName: string): ShadowAccountsBuilder {
+    return new ShadowAccountsBuilderImpl(this, dappName, this.resolveAddresses);
   }
 
   invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder {
@@ -163,15 +163,15 @@ class PrivacyTokenBuilderImpl implements PrivacyTokenBuilder {
   }
 }
 
-/** The sub-account namespace for one dapp, opened by {@link PrivacyBuilderImpl.subaccounts}. */
-class SubAccountsBuilderImpl implements SubAccountsBuilder {
+/** The shadow account namespace for one dapp, opened by {@link PrivacyBuilderImpl.shadowAccounts}. */
+class ShadowAccountsBuilderImpl implements ShadowAccountsBuilder {
   constructor(
     private readonly builder: PrivacyBuilderImpl,
     private readonly dappName: string,
     private readonly resolveAddresses: ResolveAddresses
   ) {}
 
-  addresses(range?: AddressRange): Promise<SubAccountInfo[]> {
+  addresses(range?: AddressRange): Promise<ShadowAccountInfo[]> {
     return this.resolveAddresses(this.dappName, range);
   }
 
@@ -180,7 +180,7 @@ class SubAccountsBuilderImpl implements SubAccountsBuilder {
     { calls, collectPolicy }: { calls: Call[]; collectPolicy?: Strk20CollectPolicy }
   ): PrivacyBuilder {
     return this.builder.appendInvokePhase({
-      type: "subaccount_invoke",
+      type: "shadow_account_invoke",
       dapp_name: this.dappName,
       nonce: num.toHex(nonce),
       calls: calls.map(toStrk20Call),

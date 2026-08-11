@@ -36,7 +36,7 @@ export interface CorePrivateTransfersProverConfig {
   discovery: DiscoveryProviderInterface;
   prover: ProofProviderInterface;
   poolContractAddress: StarknetAddress;
-  subAccountAnonymizerAddress: StarknetAddress;
+  shadowAccountAnonymizerAddress: StarknetAddress;
   storage: PrivacyStorage;
 }
 
@@ -60,12 +60,12 @@ export class CorePrivateTransfersProver implements Strk20Prover {
       provingProvider: config.prover,
       discoveryProvider: config.discovery,
       poolContractAddress: config.poolContractAddress,
-      subAccountAnonymizerAddress: config.subAccountAnonymizerAddress,
+      shadowAccountAnonymizerAddress: config.shadowAccountAnonymizerAddress,
     });
   }
 
   partialCommitment(dappName: string): Promise<bigint> {
-    return this.transfers.build().subaccounts(dappName).partialCommitment();
+    return this.transfers.build().shadowAccounts(dappName).partialCommitment();
   }
 
   async prove(actions: Strk20Action[], simulate = false): Promise<STRK20_CALL_AND_PROOF> {
@@ -122,10 +122,10 @@ function translate(builder: PrivateTransfersBuilder, actions: Strk20Action[]): v
           invokeAdditionalData: action.invoke_calldata.map((item) => substitute(item, args)),
         }));
         break;
-      case "subaccount_invoke":
+      case "shadow_account_invoke":
         // Core encodes the anonymizer compute/invoke data (computeAdditionalData = [dappName, nonce],
         // invokeAdditionalData = calls via the anonymizer ABI); we hand it the calls + collect policy.
-        builder.subaccounts(action.dapp_name).invoke(action.nonce, {
+        builder.shadowAccounts(action.dapp_name).invoke(action.nonce, {
           calls: action.calls.map(toStarknetCall),
           collectPolicy:
             action.collect_policy.type === "exact"

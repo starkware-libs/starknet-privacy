@@ -1,28 +1,28 @@
 import { describe, it, expect } from "vitest";
-import { resolveSubAccounts } from "../src/index.js";
-import type { SubAccountAnonymizerContract, SubAccountInfo } from "../src/index.js";
+import { resolveShadowAccounts } from "../src/index.js";
+import type { ShadowAccountAnonymizerContract, ShadowAccountInfo } from "../src/index.js";
 
 const PARTIAL = 0x7n;
 
 /**
- * Fake anonymizer contract standing in for the typed `get_sub_accounts` view. For `[from, to)` it
- * yields one `SubAccountInfo` per nonce (a distinct address, `is_deployed` per `deployed(nonce)`),
+ * Fake anonymizer contract standing in for the typed `get_shadow_accounts` view. For `[from, to)` it
+ * yields one `ShadowAccountInfo` per nonce (a distinct address, `is_deployed` per `deployed(nonce)`),
  * replicating the Cairo `until_undeployed` behavior: when set, it stops at the first undeployed nonce and
  * returns the deployed prefix. Optionally records each call's `[from, to, untilUndeployed]`.
  */
 function mockAnonymizer(
   deployed: (nonce: number) => boolean,
   calls?: Array<[number, number, boolean]>
-): SubAccountAnonymizerContract {
+): ShadowAccountAnonymizerContract {
   return {
-    get_sub_accounts: async (
+    get_shadow_accounts: async (
       _partial: bigint,
       from: number,
       to: number,
       untilUndeployed: boolean
-    ): Promise<SubAccountInfo[]> => {
+    ): Promise<ShadowAccountInfo[]> => {
       calls?.push([from, to, untilUndeployed]);
-      const infos: SubAccountInfo[] = [];
+      const infos: ShadowAccountInfo[] = [];
       for (let nonce = from; nonce < to; nonce++) {
         if (untilUndeployed && !deployed(nonce)) break;
         // The typedv2 decoder yields bigint for the Cairo u64 nonce and ContractAddress address.
@@ -34,12 +34,12 @@ function mockAnonymizer(
       }
       return infos;
     },
-  } as unknown as SubAccountAnonymizerContract;
+  } as unknown as ShadowAccountAnonymizerContract;
 }
 
-describe("resolveSubAccounts", () => {
+describe("resolveShadowAccounts", () => {
   it("returns every nonce in [start, end) with its stored address (untilUndeployed default)", async () => {
-    const infos = await resolveSubAccounts({
+    const infos = await resolveShadowAccounts({
       anonymizer: mockAnonymizer(() => true),
       partialCommitment: PARTIAL,
       range: { end: 3 },
@@ -50,7 +50,7 @@ describe("resolveSubAccounts", () => {
   });
 
   it("honors start and marks undeployed nonces", async () => {
-    const infos = await resolveSubAccounts({
+    const infos = await resolveShadowAccounts({
       anonymizer: mockAnonymizer(() => false),
       partialCommitment: PARTIAL,
       range: { start: 5, end: 7 },
@@ -60,7 +60,7 @@ describe("resolveSubAccounts", () => {
   });
 
   it("defaults end to start + DEFAULT_ADDRESS_RANGE_END", async () => {
-    const fromZero = await resolveSubAccounts({
+    const fromZero = await resolveShadowAccounts({
       anonymizer: mockAnonymizer(() => false),
       partialCommitment: PARTIAL,
       range: {},
@@ -68,7 +68,7 @@ describe("resolveSubAccounts", () => {
     expect(fromZero.map((info) => info.nonce)).toEqual([...Array(100).keys()].map(BigInt));
 
     // A non-zero start shifts the whole window instead of shrinking it: [10, 110).
-    const fromTen = await resolveSubAccounts({
+    const fromTen = await resolveShadowAccounts({
       anonymizer: mockAnonymizer(() => false),
       partialCommitment: PARTIAL,
       range: { start: 10 },
@@ -80,7 +80,7 @@ describe("resolveSubAccounts", () => {
 
   it("paginates across MAX_SCAN_RANGE windows", async () => {
     const calls: Array<[number, number, boolean]> = [];
-    const infos = await resolveSubAccounts({
+    const infos = await resolveShadowAccounts({
       anonymizer: mockAnonymizer(() => true, calls),
       partialCommitment: PARTIAL,
       range: { end: 1025 },
@@ -94,7 +94,7 @@ describe("resolveSubAccounts", () => {
   });
 
   it("untilUndeployed:true returns the deployed prefix and stops at the first gap", async () => {
-    const infos = await resolveSubAccounts({
+    const infos = await resolveShadowAccounts({
       anonymizer: mockAnonymizer((nonce) => nonce < 3), // nonces 0,1,2 deployed
       partialCommitment: PARTIAL,
       range: { end: 50, untilUndeployed: true },
@@ -105,7 +105,7 @@ describe("resolveSubAccounts", () => {
 
   it("untilUndeployed:true stops paginating once a window comes back short", async () => {
     const calls: Array<[number, number, boolean]> = [];
-    const infos = await resolveSubAccounts({
+    const infos = await resolveShadowAccounts({
       anonymizer: mockAnonymizer((nonce) => nonce < 1030, calls),
       partialCommitment: PARTIAL,
       range: { end: 4096, untilUndeployed: true },

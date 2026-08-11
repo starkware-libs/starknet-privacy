@@ -29,7 +29,7 @@ import {
   type Amount,
   type InvokeCalldataBuilderArgs,
   type SimulateOptions,
-  type SubAccountsBuilder,
+  type ShadowAccountsBuilder,
   type ViewingKey,
   Open,
   PrivateTransfersInterface,
@@ -37,7 +37,7 @@ import {
 import { AddressMap, toBigInt } from "../utils/index.js";
 import { debugLog } from "../utils/logging.js";
 import { isOpenNote } from "../utils/validation.js";
-import { SubAccountsBuilderImpl } from "./sub-accounts.js";
+import { ShadowAccountsBuilderImpl } from "./shadow-accounts.js";
 import type { BigNumberish, CallDetails } from "starknet";
 
 // ============ Token Operations Builder ============
@@ -177,7 +177,7 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     private transfers: PrivateTransfersInterface,
     public readonly userAddress: StarknetAddress,
     options?: ExecuteOptions,
-    private subAccountDeps?: {
+    private shadowAccountDeps?: {
       anonymizerAddress?: StarknetAddress;
       getViewingKey: () => Promise<ViewingKey>;
     }
@@ -223,17 +223,17 @@ export class PrivateTransfersBuilderImpl implements PrivateTransfersBuilder {
     }
   }
 
-  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder {
-    const deps = this.subAccountDeps;
+  shadowAccounts(dappName: string | BigNumberish): ShadowAccountsBuilder {
+    const deps = this.shadowAccountDeps;
     if (deps?.anonymizerAddress === undefined) {
       throw new Error(
-        "subaccounts(...) requires `subAccountAnonymizerAddress` in the createPrivateTransfers config."
+        "shadowAccounts(...) requires `shadowAccountAnonymizerAddress` in the createPrivateTransfers config."
       );
     }
-    return new SubAccountsBuilderImpl({
+    return new ShadowAccountsBuilderImpl({
       builder: this,
       dappName,
-      subAccountAnonymizerAddress: deps.anonymizerAddress,
+      shadowAccountAnonymizerAddress: deps.anonymizerAddress,
       user: toBigInt(this.userAddress),
       getViewingKey: deps.getViewingKey,
     });

@@ -1,7 +1,7 @@
 {
   "name": "@starkware-libs/starknet-privacy-client",
   "version": "0.1.0",
-  "description": "Dapp client for Starknet privacy — resolve sub-accounts, sign via Starknet/EVM wallets, and build privacy operations over the privacy SDK",
+  "description": "Dapp client for Starknet privacy — resolve shadow accounts, sign via Starknet/EVM wallets, and build privacy operations over the privacy SDK",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/starkware-libs/starknet-privacy.git",

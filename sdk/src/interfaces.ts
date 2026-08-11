@@ -515,22 +515,22 @@ export interface PrivateTransfersInterface {
   build(options?: ExecuteOptions): PrivateTransfersBuilder;
 }
 
-/** A sub-account: its `nonce` for the dapp and the deployed `address`. */
-export type SubAccount = { nonce: number; address: StarknetAddressBigint };
+/** A shadow account: its `nonce` for the dapp and the deployed `address`. */
+export type ShadowAccount = { nonce: number; address: StarknetAddressBigint };
 
 /**
- * How much of the sub-account's balance a settled open note collects, per the anonymizer's
- * `CollectPolicy`: `all` — the sub-account's entire token balance; `diff` — only the balance gained
+ * How much of the shadow account's balance a settled open note collects, per the anonymizer's
+ * `CollectPolicy`: `all` — the shadow account's entire token balance; `diff` — only the balance gained
  * during this interaction; `exact` — the given amount. A single policy applies to every open note
- * settled by a {@link SubAccountsBuilder.invoke}.
+ * settled by a {@link ShadowAccountsBuilder.invoke}.
  */
 export type CollectPolicy = { type: "all" } | { type: "diff" } | { type: "exact"; amount: Amount };
 
 /**
- * Sub-account operations for one user + dapp, driven through the sub-account anonymizer contract.
- * Each `nonce` maps to a distinct, deterministic sub-account address.
+ * Shadow account operations for one user + dapp, driven through the shadow account anonymizer contract.
+ * Each `nonce` maps to a distinct, deterministic shadow account address.
  */
-export interface SubAccountsBuilder {
+export interface ShadowAccountsBuilder {
   /**
    * Return the nonce-independent commitment for this user + dapp:
    * `hash(identity_key, dappName)`.
@@ -540,7 +540,7 @@ export interface SubAccountsBuilder {
   partialCommitment(): Promise<bigint>;
 
   /**
-   * Return the full sub-account commitment for `nonce`:
+   * Return the full shadow account commitment for `nonce`:
    * `hash(partialCommitment(), nonce)`.
    *
    * Computed locally in TypeScript; does not call the anonymizer contract.
@@ -548,10 +548,10 @@ export interface SubAccountsBuilder {
   commitment(nonce: BigNumberish): Promise<bigint>;
 
   /**
-   * Queue a `computeAndInvoke` against the sub-account for `nonce`: run `calls` through it and
+   * Queue a `computeAndInvoke` against the shadow account for `nonce`: run `calls` through it and
    * settle the proceeds into the open notes created in the same transaction. `collectPolicy` (one
    * policy for all of the transaction's open notes; default `{ type: "all" }`) selects how much of
-   * the sub-account's balance each note collects. Returns the builder so the caller can add the
+   * the shadow account's balance each note collects. Returns the builder so the caller can add the
    * open-note creation (e.g. `.with(token).transfer({ recipient, amount: Open })`) and `.execute()`.
    */
   invoke(
@@ -717,13 +717,13 @@ export interface PrivateTransfersBuilder {
   computeAndInvoke(callBuilder: (args: InvokeCalldataBuilderArgs) => ComputeAndInvokeDetails): this;
 
   /**
-   * Sub-account operations scoped to a single dapp.
+   * Shadow account operations scoped to a single dapp.
    *
-   * `dappName` scopes the derived sub-accounts to one dapp (a felt; a plain string is encoded as a
-   * Cairo short string). Requires `subAccountAnonymizerAddress` in the factory config; throws
+   * `dappName` scopes the derived shadow accounts to one dapp (a felt; a plain string is encoded as a
+   * Cairo short string). Requires `shadowAccountAnonymizerAddress` in the factory config; throws
    * otherwise.
    */
-  subaccounts(dappName: string | BigNumberish): SubAccountsBuilder;
+  shadowAccounts(dappName: string | BigNumberish): ShadowAccountsBuilder;
 
   /**
    * Set the default recipient for any surplus across all tokens.

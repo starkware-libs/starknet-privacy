@@ -10,16 +10,16 @@ import {
   repoRoot,
 } from "./utils.js";
 
-// `scarb build -t -p sub_account_anonymizer` emits these external contracts (sierra only) via the
+// `scarb build -t -p shadow_account_anonymizer` emits these external contracts (sierra only) via the
 // package's `[[test]] build-external-contracts`. Sourcing them from the workspace test build means
 // no separate Scarb project, no duplicated `starkware_utils` rev pin, and no `MockDapp` mirror.
 const TEST_BUILD_DIR = join(repoRoot(), "target/dev");
-const TEST_TARGET_PREFIX = "sub_account_anonymizer_unittest";
+const TEST_TARGET_PREFIX = "shadow_account_anonymizer_unittest";
 
-export interface SubAccountAddresses {
-  /** The SubAccountAnonymizer driven via the privacy pool's compute-and-invoke flow. */
+export interface ShadowAccountAddresses {
+  /** The ShadowAccountAnonymizer driven via the privacy pool's compute-and-invoke flow. */
   anonymizer: string;
-  /** The dapp the deployed sub-account calls; `transfer_to_caller` returns funds to the sub-account. */
+  /** The dapp the deployed shadow account calls; `transfer_to_caller` returns funds to the shadow account. */
   mockDapp: string;
   /** The anonymizer's ABI, for compiling `privacy_invoke_with_computation` calldata. */
   anonymizerAbi: Abi;
@@ -40,7 +40,7 @@ async function declareTestBuildContract(
     `${TEST_TARGET_PREFIX}_${contractName}.test.contract_class.json`,
   );
   const casmPath = join(
-    mkdtempSync(join(tmpdir(), "sub-account-casm-")),
+    mkdtempSync(join(tmpdir(), "shadow-account-casm-")),
     `${contractName}.casm.json`,
   );
   execFileSync("universal-sierra-compiler", [
@@ -55,19 +55,21 @@ async function declareTestBuildContract(
 
 /**
  * Declare + deploy the contracts the compute-and-invoke flow needs on devnet:
- * - `SubAccount` (workspace test build) — the class the anonymizer deploys per commitment.
- * - `SubAccountAnonymizer` (workspace build) — constructed with the privacy pool address, the
- *   SubAccount class hash, and `admin` as upgrade owner.
- * - `MockDapp` (workspace test build) — the target dapp the sub-account invokes.
+ * - `SubAccount` (workspace test build) — the class the anonymizer deploys per commitment. It keeps
+ *   that name because it lives in the `starkware-starknet-utils` git dependency
+ *   (`starkware_accounts::sub_account::SubAccount`), outside this repo's rename.
+ * - `ShadowAccountAnonymizer` (workspace build) — constructed with the privacy pool address, the
+ *   deployed-account class hash, and `admin` as upgrade owner.
+ * - `MockDapp` (workspace test build) — the target dapp the shadow account invokes.
  *
  * Idempotent on the class declarations (see `declareClass`); deploys use distinct salts.
  */
-export async function deploySubAccountAnonymizer(
+export async function deployShadowAccountAnonymizer(
   admin: Account,
   node: RpcProvider,
   privacyAddress: string,
-): Promise<SubAccountAddresses> {
-  const subAccountClassHash = await declareTestBuildContract(
+): Promise<ShadowAccountAddresses> {
+  const shadowAccountClassHash = await declareTestBuildContract(
     admin,
     node,
     "SubAccount",
@@ -75,8 +77,8 @@ export async function deploySubAccountAnonymizer(
 
   const anonymizerArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
-    "sub_account_anonymizer",
-    "SubAccountAnonymizer",
+    "shadow_account_anonymizer",
+    "ShadowAccountAnonymizer",
   );
   const anonymizerClassHash = await declareClass(
     admin,
@@ -87,12 +89,12 @@ export async function deploySubAccountAnonymizer(
   const anonymizerAbi: Abi = JSON.parse(
     readFileSync(anonymizerArtifact.classPath, "utf8"),
   ).abi;
-  // constructor(privacy_contract, sub_account_class_hash, governance_admin)
+  // constructor(privacy_contract, shadow_account_class_hash, governance_admin)
   const anonymizer = await deployContract(
     admin,
     node,
     anonymizerClassHash,
-    [privacyAddress, subAccountClassHash, admin.address],
+    [privacyAddress, shadowAccountClassHash, admin.address],
     "0x900",
   );
 

@@ -68,7 +68,7 @@ function harness() {
     wallet,
     userAddress: USER,
     node,
-    subAccountAnonymizerAddress: "0xa11",
+    shadowAccountAnonymizerAddress: "0xa11",
   });
   return { client, prover, paymaster, signed };
 }
@@ -159,10 +159,10 @@ describe("integration: build → submit", () => {
     ).rejects.toThrow(/not yet implemented/);
   });
 
-  it("subaccounts(dappName).addresses resolves via the anonymizer keyed by the wallet's partial commitment", async () => {
+  it("shadowAccounts(dappName).addresses resolves via the anonymizer keyed by the wallet's partial commitment", async () => {
     const seenDapp: string[] = [];
     const viewCalldata: string[][] = [];
-    // the node answers the anonymizer get_sub_accounts view: [len, (nonce, address, is_deployed)…]
+    // the node answers the anonymizer get_shadow_accounts view: [len, (nonce, address, is_deployed)…]
     const anonymizerNode = {
       callContract: async (call: { calldata: string[] }) => {
         viewCalldata.push(call.calldata);
@@ -186,10 +186,10 @@ describe("integration: build → submit", () => {
       wallet,
       userAddress: USER,
       node: anonymizerNode,
-      subAccountAnonymizerAddress: "0xa11",
+      shadowAccountAnonymizerAddress: "0xa11",
     });
 
-    const infos = await client.build().subaccounts("my-dapp").addresses({ end: 1 });
+    const infos = await client.build().shadowAccounts("my-dapp").addresses({ end: 1 });
 
     expect(seenDapp).toEqual(["my-dapp"]);
     expect(infos).toEqual([{ nonce: 0n, address: 0x1000n, is_deployed: true }]);

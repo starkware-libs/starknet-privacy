@@ -24,7 +24,7 @@ import type {
 } from "@starkware-libs/starknet-privacy-client";
 
 /**
- * Shared devnet plumbing for the client-driven signing/sub-account tests: the identical
+ * Shared devnet plumbing for the client-driven signing/shadow account tests: the identical
  * `CorePrivateTransfersProver` construction, an `SdkWallet`-backed client, a token-balance read, and
  * the `executeOutside` broadcast of a proven `apply_actions`. Only the signer and the paymaster/wallet
  * seam differ between tests, so those stay in each test.
@@ -39,8 +39,8 @@ export interface CoreProverParams {
   node: ProviderInterface;
   indexerApiUrl: string;
   poolAddress: string;
-  /** Only needed when the flow calls `subaccounts(...)`; unused otherwise. */
-  subAccountAnonymizerAddress?: string;
+  /** Only needed when the flow calls `shadowAccounts(...)`; unused otherwise. */
+  shadowAccountAnonymizerAddress?: string;
 }
 
 /** The `CorePrivateTransfersProver` every client test builds (mock prover, indexer discovery). */
@@ -58,7 +58,8 @@ export function makeCoreProver(
     ),
     prover: new ScreeningCallMockProofProvider(params.node, CHAIN_ID),
     poolContractAddress: params.poolAddress,
-    subAccountAnonymizerAddress: params.subAccountAnonymizerAddress ?? "0x1",
+    shadowAccountAnonymizerAddress:
+      params.shadowAccountAnonymizerAddress ?? "0x1",
     storage: {
       loadRegistry: async () => createEmptyRegistry(),
       saveRegistry: async () => {},
@@ -82,7 +83,8 @@ export function makeSdkWalletClient(
     wallet,
     userAddress: params.address,
     node: params.node,
-    subAccountAnonymizerAddress: params.subAccountAnonymizerAddress ?? "0x1",
+    shadowAccountAnonymizerAddress:
+      params.shadowAccountAnonymizerAddress ?? "0x1",
   });
 }
 

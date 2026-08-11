@@ -1,7 +1,7 @@
 # @starkware-libs/starknet-privacy-client
 
 Dapp client for Starknet privacy. A thin, dapp-facing layer over
-[`@starkware-libs/starknet-privacy-sdk`](../sdk) that resolves sub-account addresses, bridges
+[`@starkware-libs/starknet-privacy-sdk`](../sdk) that resolves shadow account addresses, bridges
 Starknet/EVM wallet signing (SNIP-12 / EIP-712 CallSet signers), and builds privacy operations.
 
 This package is under active development; the public API is being added incrementally. See the

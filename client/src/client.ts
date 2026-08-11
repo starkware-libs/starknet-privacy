@@ -1,10 +1,10 @@
 import { Contract, num } from "starknet";
 import type { Call, EstimateFeeResponseOverhead } from "starknet";
-import { SubAccountAnonymizerABI } from "@starkware-libs/starknet-privacy-sdk";
+import { ShadowAccountAnonymizerABI } from "@starkware-libs/starknet-privacy-sdk";
 import { createPrivacyBuilder } from "./builder.js";
 import { toStarknetCall } from "./calls.js";
-import { resolveSubAccounts } from "./sub-accounts.js";
-import type { SubAccountAnonymizerContract } from "./sub-accounts.js";
+import { resolveShadowAccounts } from "./shadow-accounts.js";
+import type { ShadowAccountAnonymizerContract } from "./shadow-accounts.js";
 import type {
   PrivacyBuilder,
   PrivacyClient,
@@ -15,21 +15,21 @@ import type {
 } from "./interfaces.js";
 
 /**
- * The dapp client. Holds the injected wallet + read context (node + sub-account anonymizer) and
+ * The dapp client. Holds the injected wallet + read context (node + shadow account anonymizer) and
  * drives the wallet seam. A native get-starknet v6 wallet satisfies {@link PrivacyWallet} directly,
  * so `submit` passes straight through to its strk20 methods; an `SdkWallet` (upstack) makes the same
  * seam calls but proves + submits through the core SDK + paymaster. The operation builder is added
  * upstack over this low-level entry point.
  */
 class PrivacyClientImpl implements PrivacyClient {
-  private readonly anonymizer: SubAccountAnonymizerContract;
+  private readonly anonymizer: ShadowAccountAnonymizerContract;
 
   constructor(private readonly config: PrivacyClientConfig) {
     this.anonymizer = new Contract({
-      abi: SubAccountAnonymizerABI,
-      address: num.toHex(config.subAccountAnonymizerAddress),
+      abi: ShadowAccountAnonymizerABI,
+      address: num.toHex(config.shadowAccountAnonymizerAddress),
       providerOrAccount: config.node,
-    }).typedv2(SubAccountAnonymizerABI);
+    }).typedv2(ShadowAccountAnonymizerABI);
   }
 
   submit(
@@ -62,12 +62,12 @@ class PrivacyClientImpl implements PrivacyClient {
     return createPrivacyBuilder(
       this.config.userAddress,
       this.submit.bind(this),
-      (dappName, range) => this.resolveSubAccounts(dappName, range)
+      (dappName, range) => this.resolveShadowAccounts(dappName, range)
     );
   }
 
-  private async resolveSubAccounts(dappName: string, range = {}) {
-    return resolveSubAccounts({
+  private async resolveShadowAccounts(dappName: string, range = {}) {
+    return resolveShadowAccounts({
       anonymizer: this.anonymizer,
       partialCommitment: await this.config.wallet.partialCommitment(dappName),
       range,

@@ -14,28 +14,28 @@ import {
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
 import {
-  deploySubAccountAnonymizer,
-  type SubAccountAddresses,
-} from "../../src/sub-account-setup.js";
+  deployShadowAccountAnonymizer,
+  type ShadowAccountAddresses,
+} from "../../src/shadow-account-setup.js";
 import { u256Calldata } from "../../src/utils.js";
 import { E2E_TIMEOUTS } from "../../src/timeouts.js";
 
 /**
- * End-to-end sub-account invoke through the dapp client on devnet, plus address validation.
+ * End-to-end shadow account invoke through the dapp client on devnet, plus address validation.
  *
- * `client.build().with(token).createOpenNote().subaccounts(dappName).invoke(nonce, { calls })` runs
- * the dapp `calls` through the user's sub-account (deploying it) and settles the payout into the open
+ * `client.build().with(token).createOpenNote().shadowAccounts(dappName).invoke(nonce, { calls })` runs
+ * the dapp `calls` through the user's shadow account (deploying it) and settles the payout into the open
  * note — the same roundtrip as the Cairo/core tests, but driven by the client. There is no paymaster:
  * the injected wallet proves via the SDK prover and broadcasts the proven call with an ordinary
  * account (`devnet.executeOutside`), which is all AVNU does in production. Afterwards
- * `build().subaccounts(dappName).addresses()` must report the now-deployed sub-account at the address
+ * `build().shadowAccounts(dappName).addresses()` must report the now-deployed shadow account at the address
  * a `SubAccount` contract is actually deployed to.
  */
-describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () => {
+describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", () => {
   let devnet: Devnet;
   let env: E2eTestEnv;
   let tokens: TokenAddresses;
-  let subAccount: SubAccountAddresses;
+  let shadowAccount: ShadowAccountAddresses;
   let client: PrivacyClient;
 
   const DAPP = "DAPP";
@@ -45,17 +45,21 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
   beforeAll(async () => {
     devnet = new Devnet();
     env = await createE2eTestEnv(devnet, {
-      indexer: { logFile: "sub-account-invoke-client-indexer.log" },
+      indexer: { logFile: "shadow-account-invoke-client-indexer.log" },
     });
     const { admin, alice, node, privacy } = env.env;
     tokens = await deployTestTokens(admin, node);
-    subAccount = await deploySubAccountAnonymizer(admin, node, privacy.address);
+    shadowAccount = await deployShadowAccountAnonymizer(
+      admin,
+      node,
+      privacy.address,
+    );
 
-    // Fund the dapp so its `transfer_to_caller` can pay the sub-account.
+    // Fund the dapp so its `transfer_to_caller` can pay the shadow account.
     const mintTx = await admin.execute({
       contractAddress: tokens.usdToken,
       entrypoint: "mint",
-      calldata: [subAccount.mockDapp, ...u256Calldata(payoutAmount)],
+      calldata: [shadowAccount.mockDapp, ...u256Calldata(payoutAmount)],
     });
     await node.waitForTransaction(mintTx.transaction_hash);
 
@@ -68,7 +72,7 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
       node: node,
       indexerApiUrl: env.indexer.apiUrl,
       poolAddress: privacy.address,
-      subAccountAnonymizerAddress: subAccount.anonymizer,
+      shadowAccountAnonymizerAddress: shadowAccount.anonymizer,
     });
     const wallet = {
       partialCommitment: (dappName: string) =>
@@ -103,7 +107,7 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
       wallet,
       userAddress: alice.address,
       node: node,
-      subAccountAnonymizerAddress: subAccount.anonymizer,
+      shadowAccountAnonymizerAddress: shadowAccount.anonymizer,
     });
   }, E2E_TIMEOUTS.hook);
 
@@ -113,20 +117,20 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
   });
 
   it(
-    "runs a sub-account invoke (deploying the sub-account) and reports it via addresses()",
+    "runs a shadow account invoke (deploying the shadow account) and reports it via addresses()",
     async () => {
       // Roundtrip: create the open note the payout settles into, then run the dapp payout through
-      // the sub-account at nonce 0. Broadcasts (executeOutside) without reverting iff the invoke +
+      // the shadow account at nonce 0. Broadcasts (executeOutside) without reverting iff the invoke +
       // settlement succeed on-chain.
       await client
         .build()
         .with(tokens.usdToken)
         .createOpenNote()
-        .subaccounts(DAPP)
+        .shadowAccounts(DAPP)
         .invoke(0, {
           calls: [
             {
-              contractAddress: subAccount.mockDapp,
+              contractAddress: shadowAccount.mockDapp,
               entrypoint: "transfer_to_caller",
               calldata: CallData.compile([
                 tokens.usdToken,
@@ -138,10 +142,10 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
         .submit();
       await env.indexer.waitForBlock(devnet.url);
 
-      // The invoke deployed nonce 0's sub-account; nonces 1 and 2 remain undeployed.
+      // The invoke deployed nonce 0's shadow account; nonces 1 and 2 remain undeployed.
       const infos = await client
         .build()
-        .subaccounts(DAPP)
+        .shadowAccounts(DAPP)
         .addresses({ end: 3 });
       expect(infos.map((info) => Number(info.nonce))).toEqual([0, 1, 2]);
       expect(infos[0].is_deployed).toBe(true);
@@ -151,8 +155,8 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
       // The reported address is correct: a SubAccount contract of the anonymizer's class is actually
       // deployed there.
       const [expectedClassHash] = await env.env.node.callContract({
-        contractAddress: subAccount.anonymizer,
-        entrypoint: "get_sub_account_class_hash",
+        contractAddress: shadowAccount.anonymizer,
+        entrypoint: "get_shadow_account_class_hash",
         calldata: [],
       });
       const deployedClassHash = await env.env.node.getClassHashAt(
@@ -170,7 +174,7 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
     async () => {
       const infos = await client
         .build()
-        .subaccounts(DAPP)
+        .shadowAccounts(DAPP)
         .addresses({ end: 5, untilUndeployed: true });
       expect(infos.map((info) => Number(info.nonce))).toEqual([0]);
       expect(infos[0].is_deployed).toBe(true);
@@ -179,12 +183,12 @@ describe("dapp client: subaccounts(dappName).invoke + addresses on devnet", () =
   );
 
   it(
-    "dappName scopes the sub-accounts — a different dapp has none deployed",
+    "dappName scopes the shadow accounts — a different dapp has none deployed",
     async () => {
       const other = shortString.encodeShortString("OTHER");
       const infos = await client
         .build()
-        .subaccounts(other)
+        .shadowAccounts(other)
         .addresses({ end: 3 });
       expect(infos.every((info) => info.is_deployed === false)).toBe(true);
     },

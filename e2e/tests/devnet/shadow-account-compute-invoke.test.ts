@@ -5,26 +5,30 @@ import { CairoCustomEnum, CallData, cairo, hash, shortString } from "starknet";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
 import {
-  deploySubAccountAnonymizer,
-  type SubAccountAddresses,
-} from "../../src/sub-account-setup.js";
+  deployShadowAccountAnonymizer,
+  type ShadowAccountAddresses,
+} from "../../src/shadow-account-setup.js";
 import { u256Calldata } from "../../src/utils.js";
 
-describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
+describe("shadow account anonymizer compute-and-invoke on devnet", () => {
   let devnet: Devnet;
   let env: E2eTestEnv;
   let tokens: TokenAddresses;
-  let subAccount: SubAccountAddresses;
+  let shadowAccount: ShadowAccountAddresses;
 
   beforeAll(async () => {
     devnet = new Devnet();
     env = await createE2eTestEnv(devnet, {
-      indexer: { logFile: "sub-account-compute-invoke-indexer.log" },
+      indexer: { logFile: "shadow-account-compute-invoke-indexer.log" },
     });
 
     const { admin, node, privacy } = env.env;
     tokens = await deployTestTokens(admin, node);
-    subAccount = await deploySubAccountAnonymizer(admin, node, privacy.address);
+    shadowAccount = await deployShadowAccountAnonymizer(
+      admin,
+      node,
+      privacy.address,
+    );
   });
 
   afterAll(async () => {
@@ -32,7 +36,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
     await devnet?.cleanup();
   });
 
-  it("dapp payout collected via the sub-account settles into an open note", async () => {
+  it("dapp payout collected via the shadow account settles into an open note", async () => {
     const { env: de, transfers } = env;
     const ONE_TOKEN = 10n ** 18n;
     const payoutAmount = 100n * ONE_TOKEN;
@@ -46,16 +50,16 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
       return BigInt(result[0]) + (BigInt(result[1]) << 128n);
     };
 
-    // Fund the dapp so its `transfer_to_caller` can transfer the payout to the sub-account.
+    // Fund the dapp so its `transfer_to_caller` can transfer the payout to the shadow account.
     const mintTx = await de.admin.execute({
       contractAddress: tokens.usdToken,
       entrypoint: "mint",
-      calldata: [subAccount.mockDapp, ...u256Calldata(payoutAmount)],
+      calldata: [shadowAccount.mockDapp, ...u256Calldata(payoutAmount)],
     });
     await de.node.waitForTransaction(mintTx.transaction_hash);
 
     // `compute_data` feeds privacy_compute(identity_key, dapp_name, nonce); the pool prepends
-    // the derived identity key. The commitment it returns selects the per-commitment sub-account.
+    // the derived identity key. The commitment it returns selects the per-commitment shadow account.
     const dappName = BigInt(shortString.encodeShortString("DAPP"));
     const seqNonce = 0n;
     const transferToCallerSelector = BigInt(
@@ -82,12 +86,12 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
         // identity_commitment, which the pool prepends from the privacy_compute result. Compile
         // (calls, open_notes) via the anonymizer ABI and drop the leading commitment felt, so the
         // Array<Call>/Span lengths come from the ABI rather than hand-counted offsets.
-        const invokeAdditionalData = new CallData(subAccount.anonymizerAbi)
+        const invokeAdditionalData = new CallData(shadowAccount.anonymizerAbi)
           .compile("privacy_invoke_with_computation", [
             0n, // identity_commitment placeholder — prepended by the pool; sliced off below
             [
               {
-                to: subAccount.mockDapp,
+                to: shadowAccount.mockDapp,
                 selector: transferToCallerSelector,
                 calldata: CallData.compile([
                   usdToken,
@@ -99,7 +103,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
               {
                 note_id: openNote.noteId,
                 token: usdToken,
-                // Collect the sub-account's entire token balance into the open note.
+                // Collect the shadow account's entire token balance into the open note.
                 collect_policy: new CairoCustomEnum({ All: {} }),
               },
             ],
@@ -107,7 +111,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
           .slice(1)
           .map((felt) => BigInt(felt));
         return {
-          contractAddress: subAccount.anonymizer,
+          contractAddress: shadowAccount.anonymizer,
           computeAdditionalData: [dappName, seqNonce],
           invokeAdditionalData,
         };
@@ -116,7 +120,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
     await devnet.executeOutside(callAndProof);
     await env.indexer.waitForBlock(devnet.url);
 
-    // The open note was filled with the dapp payout the sub-account collected.
+    // The open note was filled with the dapp payout the shadow account collected.
     const { notes } = await transfers.alice.discoverNotes();
     const usdNotes = notes.get(usdToken) ?? [];
     expect(usdNotes).toHaveLength(1);
@@ -125,7 +129,7 @@ describe("SubAccount anonymizer compute-and-invoke on devnet", () => {
     // Funds ended in the privacy pool; the dapp and anonymizer hold nothing.
     const poolBalanceAfter = await balanceOf(de.privacy.address);
     expect(poolBalanceAfter - poolBalanceBefore).toBe(payoutAmount);
-    expect(await balanceOf(subAccount.mockDapp)).toBe(0n);
-    expect(await balanceOf(subAccount.anonymizer)).toBe(0n);
+    expect(await balanceOf(shadowAccount.mockDapp)).toBe(0n);
+    expect(await balanceOf(shadowAccount.anonymizer)).toBe(0n);
   });
 });

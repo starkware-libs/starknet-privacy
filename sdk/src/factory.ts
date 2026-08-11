@@ -48,10 +48,10 @@ export interface CreatePrivateTransfersParams {
   discoveryProvider: DiscoveryProviderInterface | DiscoveryProviderConfig;
   poolContractAddress: StarknetAddress;
   /**
-   * Sub-account anonymizer contract address. Required for `subaccounts(...)`: the contract the
-   * `ComputeAndInvoke` flow targets and whose views resolve sub-account addresses.
+   * Shadow account anonymizer contract address. Required for `shadowAccounts(...)`: the contract the
+   * `ComputeAndInvoke` flow targets and whose views resolve shadow account addresses.
    */
-  subAccountAnonymizerAddress?: StarknetAddress;
+  shadowAccountAnonymizerAddress?: StarknetAddress;
 }
 
 /**
@@ -115,6 +115,6 @@ export function createPrivateTransfers(
     discoveryProvider,
     proofInvocationFactory: params.proofInvocationFactory ?? new ProofInvocationFactory(),
     poolContractAddress: params.poolContractAddress,
-    subAccountAnonymizerAddress: params.subAccountAnonymizerAddress,
+    shadowAccountAnonymizerAddress: params.shadowAccountAnonymizerAddress,
   });
 }

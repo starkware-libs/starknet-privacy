@@ -61,6 +61,7 @@ use privacy::utils::{
     encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
     is_canonical_key, pack, to_write_once_action,
 };
+use shadow_account_anonymizer::shadow_account_anonymizer::ShadowAccountAnonymizer::deploy_for_test as deploy_shadow_account_anonymizer_for_test;
 use snforge_std::signature::stark_curve::{
     StarkCurveKeyPair, StarkCurveKeyPairImpl, StarkCurveSignerImpl,
 };
@@ -86,7 +87,6 @@ use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_panic_with_felt_error, cheat_caller_address_once,
     deploy_mock_erc20_token,
 };
-use sub_account_anonymizer::sub_account_anonymizer::SubAccountAnonymizer::deploy_for_test as deploy_sub_account_anonymizer_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVault::deploy_for_test as deploy_mock_vesu_vault_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultNoop::deploy_for_test as deploy_mock_vesu_vault_noop_for_test;
 use vesu_lending_anonymizer::test_utils_contracts::mock_vesu_vault::MockVesuVaultOverflow::deploy_for_test as deploy_mock_vesu_vault_overflow_for_test;
@@ -2082,30 +2082,32 @@ fn deploy_privacy(
     }
 }
 
-/// Deploys a `SubAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
+/// Deploys a `ShadowAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
 /// `SubAccount` class it deploys per commitment.
-pub(crate) fn deploy_sub_account_anonymizer(privacy_address: ContractAddress) -> ContractAddress {
-    let sub_account_class_hash: ClassHash = *declare(contract: "SubAccount")
+pub(crate) fn deploy_shadow_account_anonymizer(
+    privacy_address: ContractAddress,
+) -> ContractAddress {
+    let shadow_account_class_hash: ClassHash = *declare(contract: "SubAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
-    let class_hash = declare(contract: "SubAccountAnonymizer")
+    let class_hash = declare(contract: "ShadowAccountAnonymizer")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
     let deployment_params = DeploymentParams { salt: 0, deploy_from_zero: true };
-    let (address, _) = deploy_sub_account_anonymizer_for_test(
+    let (address, _) = deploy_shadow_account_anonymizer_for_test(
         class_hash: *class_hash,
         :deployment_params,
         privacy_contract: privacy_address,
-        :sub_account_class_hash,
+        :shadow_account_class_hash,
         governance_admin: 'GOVERNANCE_ADMIN'.try_into().unwrap(),
     )
         .expect('SUB_ACCT_ANON_DEPLOY_FAIL');
     address
 }
 
-pub(crate) fn deploy_sub_account_mock_dapp() -> ContractAddress {
+pub(crate) fn deploy_shadow_account_mock_dapp() -> ContractAddress {
     let contract = declare(contract: "MockDapp").unwrap_syscall().contract_class();
     let (address, _) = contract.deploy(constructor_calldata: @array![]).unwrap_syscall();
     address

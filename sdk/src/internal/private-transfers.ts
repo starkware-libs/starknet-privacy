@@ -38,14 +38,14 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
       discoveryProvider: DiscoveryProviderInterface;
       proofInvocationFactory: ProofInvocationFactoryInterface;
       poolContractAddress: StarknetAddress;
-      subAccountAnonymizerAddress?: StarknetAddress;
+      shadowAccountAnonymizerAddress?: StarknetAddress;
     }
   ) {
     super(
       params.account.address,
       params.viewingKeyProvider,
       params.discoveryProvider,
-      params.subAccountAnonymizerAddress
+      params.shadowAccountAnonymizerAddress
     );
   }
 

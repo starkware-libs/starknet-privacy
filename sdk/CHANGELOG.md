@@ -14,6 +14,23 @@
 
 ### Breaking
 
+- Sub-accounts are called **shadow accounts** across the TypeScript surface. `SubAccount` →
+  `ShadowAccount`, `SubAccountsBuilder` → `ShadowAccountsBuilder`, `SubAccountAnonymizerABI` →
+  `ShadowAccountAnonymizerABI`, the `createPrivateTransfers` config key
+  `subAccountAnonymizerAddress` → `shadowAccountAnonymizerAddress`, and the builder namespace
+  `build().subaccounts(dappName)` → `build().shadowAccounts(dappName)` (also now camelCase).
+
+- The Cairo contract is renamed to match: package `sub_account_anonymizer` →
+  `shadow_account_anonymizer`, contract `SubAccountAnonymizer` → `ShadowAccountAnonymizer`, views
+  `get_sub_accounts` / `get_sub_account` / `get_sub_account_class_hash` → `get_shadow_accounts` /
+  `get_shadow_account` / `get_shadow_account_class_hash`, struct `SubAccountInfo` →
+  `ShadowAccountInfo`, event `SubAccountDeployed` → `ShadowAccountDeployed`. **The renamed views
+  and event change their selectors and event keys**, so this SDK requires an anonymizer upgraded to
+  the new class; it cannot read a pre-upgrade instance. `privacy_compute` and
+  `privacy_invoke_with_computation` are unchanged — the privacy pool dispatches those by hardcoded
+  selector. Historical `SubAccountDeployed` events keep the old key, so indexers reading across the
+  upgrade must match both.
+
 - Node-provider fields are named `node`, not `provider`: `SimulateOptions.provider` →
   `SimulateOptions.node` (`builder.simulate({ node })`) and `DevnetEnvironment.provider` →
   `DevnetEnvironment.node` (`env.node`) on the `/testing` surface. `provider` is reserved for the
