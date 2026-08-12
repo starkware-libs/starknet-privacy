@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.3-RC.5
+
 ### Fixed
 
 - `SimplePrivateTransfers.withdraw(token, recipient, amount)` keeps the change with the sender.
@@ -36,12 +38,29 @@
   `DevnetEnvironment.node` (`env.node`) on the `/testing` surface. `provider` is reserved for the
   proving / discovery / viewing-key providers, so a bare `provider` no longer means the node.
 
+### Added
+
+- `get_shadow_accounts` takes a trailing `until_undeployed: bool`: when true the view stops at the
+  first undeployed nonce and returns only the contiguous deployed prefix, when false it resolves
+  every nonce in the range.
+
 ### Changed
 
 - `starknet` dependency pinned to 10.5.0 (was `^10.0.0-beta.6`), matching the version the client
   package needs for its `STRK20_*` wallet-api types. With one version across sdk/client/e2e their
   `ProviderInterface` declarations line up, so a node can be passed between the packages without a
   cast.
+- Testing: `CallMockProofProvider` now compiles a signed invocation by simulating it as a real
+  `__execute__` invoke and reading the server actions out of the L2-to-L1 message the pool emits,
+  instead of calling the `compile_actions` view and validating the signature itself with a
+  tx-hash-only `is_valid_signature` call. The pool therefore runs `assert_valid_signature`, so every
+  accepted signature form (custom validation / SN tx hash / SNIP-12 `CallSet` hash) is honored exactly
+  as on-chain and CallSet or custom-signature accounts (e.g. `Snip12CallSetSigner`,
+  `Eip712CallSetSigner`) prove correctly against a devnet pool. This also removes the hand-rolled
+  transaction-hash reconstruction, since the node now computes it. Fee simulation
+  (`validateSignature: false`) and unsigned mock invocations still use the plain `compile_actions`
+  view, which performs no signature check. Requires a node whose channel supports
+  `simulateTransaction`.
 
 ## 0.14.3-RC.4
 
@@ -49,9 +68,6 @@
 
 - Exported `SubAccountAnonymizerABI` from the package entry point, so downstream packages can
   read the anonymizer (e.g. its `get_sub_accounts` view) against a single generated ABI source.
-  `get_sub_accounts` takes a trailing `until_undeployed: bool`: when true the view stops at the
-  first undeployed nonce and returns only the contiguous deployed prefix, when false it resolves
-  every nonce in the range.
 - Sub-accounts: `transfers.build().subaccounts(dappName)` returns a `SubAccountsBuilder` (hung off the
   builder so a sub-account `invoke` shares the builder's `ExecuteOptions`/context). `invoke(nonce, { calls })`
   queues a `ComputeAndInvoke` against the sub-account anonymizer — `computeAdditionalData = [dappName, nonce]`
@@ -77,20 +93,6 @@
   before — which only compiled because the committed `SubAccountAnonymizerABI` was stale (missing
   `collect_policy`), and would have produced calldata the anonymizer rejects. The ABI is regenerated
   to include `collect_policy`.
-
-### Changed
-
-- Testing: `CallMockProofProvider` now compiles a signed invocation by simulating it as a real
-  `__execute__` invoke and reading the server actions out of the L2-to-L1 message the pool emits,
-  instead of calling the `compile_actions` view and validating the signature itself with a
-  tx-hash-only `is_valid_signature` call. The pool therefore runs `assert_valid_signature`, so every
-  accepted signature form (custom validation / SN tx hash / SNIP-12 `CallSet` hash) is honored exactly
-  as on-chain and CallSet or custom-signature accounts (e.g. `Snip12CallSetSigner`,
-  `Eip712CallSetSigner`) prove correctly against a devnet pool. This also removes the hand-rolled
-  transaction-hash reconstruction, since the node now computes it. Fee simulation
-  (`validateSignature: false`) and unsigned mock invocations still use the plain `compile_actions`
-  view, which performs no signature check. Requires a node whose channel supports
-  `simulateTransaction`.
 
 ## 0.14.3-RC.3
 
@@ -202,7 +204,7 @@
   original rather than mislabeling a transient fault as terminal.
 - Screening v2: `apply_actions` calldata carries the screening attestation as a
   trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
-sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
   Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
   optional `additionalData` relaying the prove response's `additional_data`.
   Emitted **only against a screening-capable pool**, identified with zero RPC
