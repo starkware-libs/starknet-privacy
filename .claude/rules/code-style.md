@@ -77,6 +77,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - If `None` just means a default value, consider using a plain type instead
 - *Example:* `start_index: u64` with default 0 is simpler than `Option<u64>` where `None` means 0
 
+### Mirror storage by name when writing into another contract's storage
+- Code executed inside a foreign storage context (Cairo EICs invoked via `library_call`, delegate-call style upgrades) addresses variables by the hash of their declared name, so every mirrored variable must repeat the target's name and type exactly — a rename silently writes to an unrelated slot
+- Declare only the variables the write needs, and document at the mirror that its names are load-bearing
+- *Example:* an EIC replacing `shadow_account_class_hash` declares a one-field storage struct with that exact name; calling it `new_class_hash` would leave the anonymizer untouched and corrupt a different slot
+
 ### Prefer defensive arithmetic
 - Use operations that handle edge cases gracefully, even if guards exist
 - *Example:* `saturating_sub` instead of subtraction that could underflow if guards are later refactored

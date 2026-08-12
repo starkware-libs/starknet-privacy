@@ -32,6 +32,7 @@ build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "starkware_accounts::sub_account::SubAccount",
     "shadow_account_anonymizer::test_utils_contracts::mock_dapp::MockDapp",
+    "shadow_account_anonymizer::test_utils_contracts::shadow_account_registry_mock::ShadowAccountRegistryMock",
 ]
 
 [scripts]
