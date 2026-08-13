@@ -7,7 +7,7 @@ import {
   type HistoryAction,
   type HistoryTransaction,
 } from "starknet-sdk";
-import type { RpcProvider } from "starknet";
+import type { BlockIdentifier, RpcProvider } from "starknet";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { createDiscoveryProvider } from "../starknet.ts";
 import { formatTokenAmount, truncateAddress } from "../format.ts";
@@ -270,6 +270,18 @@ async function resolveTimestamps(
   }));
 }
 
+/** Transactions to collect before handing control back to the reader. */
+const TRANSACTIONS_PER_FETCH = 5;
+
+/**
+ * Pages to walk per fetch. A page legitimately comes back with zero
+ * transactions: the withdrawal scan over the gap between note blocks is
+ * budget-bounded, so an account idle for a long stretch spends an entire page
+ * covering empty range and reports `historyComplete: false` with an advanced
+ * cursor. Stopping after one page strands such an account on an empty list.
+ */
+const MAX_PAGES_PER_FETCH = 5;
+
 export function useHistory(
   provider: RpcProvider | undefined,
   poolAddress: string,
@@ -284,7 +296,7 @@ export function useHistory(
   const [historyComplete, setHistoryComplete] = useState(false);
 
   const historyCursorRef = useRef<HistoryCursor | undefined>(undefined);
-  const blockRefValue = useRef<string | undefined>(undefined);
+  const blockRefValue = useRef<BlockIdentifier | undefined>(undefined);
   const loadingRef = useRef(false);
 
   const autoFetchedRef = useRef(false);
@@ -313,44 +325,54 @@ export function useHistory(
 
     try {
       const indexer = createDiscoveryProvider(config, poolAddress);
-      const page = await indexer.fetchHistory(
-        BigInt(account.address),
-        registry.cursor,
-        { channels: registry.channels },
-        {
-          maxTransactions: 5,
-          historyCursor: historyCursorRef.current,
-          blockRef: blockRefValue.current,
-        }
-      );
-
-      historyCursorRef.current = page.cursor;
-      blockRefValue.current = page.blockRef;
-      setHistoryComplete(page.cursor.historyComplete);
-
       const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } =
         buildDisplayMaps(account, allAccounts, config);
-      let newTransactions = toDisplayTransactions(
-        page.transactions,
-        BigInt(account.address),
-        nameByAddress,
-        tokenNameByAddress,
-        tokenDecimalsByAddress,
-        executorNames,
-        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
-      );
-      if (provider) {
-        newTransactions = await resolveTimestamps(provider, newTransactions);
-      }
 
-      setTransactions((previous) => [...previous, ...newTransactions]);
+      let numCollectedTransactions = 0;
+      for (let pageNumber = 0; pageNumber < MAX_PAGES_PER_FETCH; pageNumber += 1) {
+        const page = await indexer.fetchHistory(
+          BigInt(account.address),
+          registry.cursor,
+          { channels: registry.channels },
+          {
+            maxTransactions: TRANSACTIONS_PER_FETCH,
+            historyCursor: historyCursorRef.current,
+            blockIdentifier: blockRefValue.current,
+          }
+        );
+
+        historyCursorRef.current = page.cursor;
+        blockRefValue.current = page.blockRef;
+        setHistoryComplete(page.cursor.historyComplete);
+
+        let newTransactions = toDisplayTransactions(
+          page.transactions,
+          BigInt(account.address),
+          nameByAddress,
+          tokenNameByAddress,
+          tokenDecimalsByAddress,
+          executorNames,
+          config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
+        );
+        if (provider) {
+          newTransactions = await resolveTimestamps(provider, newTransactions);
+        }
+
+        if (newTransactions.length > 0) {
+          setTransactions((previous) => [...previous, ...newTransactions]);
+          numCollectedTransactions += newTransactions.length;
+        }
+
+        if (page.cursor.historyComplete) break;
+        if (numCollectedTransactions >= TRANSACTIONS_PER_FETCH) break;
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [account, registry, config, poolAddress, allAccounts]);
+  }, [account, registry, config, poolAddress, allAccounts, provider]);
 
   // Fetch the latest transaction (no pagination cursor) and prepend if new.
   // Intended to be called after state refresh so cursors are up to date.

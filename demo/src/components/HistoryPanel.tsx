@@ -171,7 +171,9 @@ export function HistoryPanel({
 
       {loading && <p className="empty">Loading...</p>}
 
-      {!historyComplete && !loading && transactions.length > 0 && (
+      {/* Offered even on an empty list: a page that returned no transactions
+          can still have range left to scan, and this is the only way forward. */}
+      {!historyComplete && !loading && (
         <button className="load-more" onClick={onFetchMore}>
           Load More
         </button>
