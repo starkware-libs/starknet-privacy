@@ -17,7 +17,7 @@ use snforge_std::{
 };
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
+use starkware_accounts::shadow_account::{IShadowAccountDispatcher, IShadowAccountDispatcherTrait};
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
     cheat_caller_address_once,
@@ -42,7 +42,7 @@ fn test_get_privacy_contract() {
 #[test]
 fn test_get_shadow_account_class_hash() {
     let anonymizer = deploy_shadow_account_anonymizer();
-    let expected = *declare("SubAccount").unwrap_syscall().contract_class().class_hash;
+    let expected = *declare("ShadowAccount").unwrap_syscall().contract_class().class_hash;
     assert_eq!(anonymizer_disp(anonymizer).get_shadow_account_class_hash(), expected);
 }
 
@@ -275,7 +275,8 @@ fn test_deployed_shadow_account_owned_by_anonymizer() {
     let shadow_account = shadow_account_info(components.anonymizer, 1).address;
     // The anonymizer is the shadow account's deployer, so it is the only authorized controller.
     assert_eq!(
-        ISubAccountDispatcher { contract_address: shadow_account }.owner(), components.anonymizer,
+        IShadowAccountDispatcher { contract_address: shadow_account }.owner(),
+        components.anonymizer,
     );
 }
 

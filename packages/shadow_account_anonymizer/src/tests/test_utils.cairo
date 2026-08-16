@@ -61,7 +61,11 @@ pub fn transfer_to_caller_call(
 }
 
 pub fn deploy_shadow_account_anonymizer() -> ContractAddress {
-    let shadow_account_class_hash = *declare("SubAccount")
+    // The anonymizer deploys shadow accounts from `PRIMER_CLASS_HASH`, a compile-time constant it
+    // never receives as an argument, so nothing else in a test declares that class. Declaring it
+    // here stands in for it being declared on-chain in production.
+    declare("PrimerMock").unwrap_syscall();
+    let shadow_account_class_hash = *declare("ShadowAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;

@@ -2083,11 +2083,11 @@ fn deploy_privacy(
 }
 
 /// Deploys a `ShadowAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
-/// `SubAccount` class it deploys per commitment.
+/// `ShadowAccount` class it deploys per commitment.
 pub(crate) fn deploy_shadow_account_anonymizer(
     privacy_address: ContractAddress,
 ) -> ContractAddress {
-    let shadow_account_class_hash: ClassHash = *declare(contract: "SubAccount")
+    let shadow_account_class_hash: ClassHash = *declare(contract: "ShadowAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
