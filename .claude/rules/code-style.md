@@ -81,6 +81,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Use operations that handle edge cases gracefully, even if guards exist
 - *Example:* `saturating_sub` instead of subtraction that could underflow if guards are later refactored
 
+### Class replacement does not run constructors
+- `replace_class_syscall` swaps code, not state: any invariant a contract establishes in its `#[constructor]` is simply absent when that class is reached by replacement instead of deployment. Before routing a contract through a deploy-then-replace flow, check what its constructor writes and provide an explicit initializer for it
+- The failure is silent at deploy time and only surfaces later, when an access check reads the never-written slot
+- *Example:* deploying a shadow account via a Primer leaves `owner` zero, so every `execute` reverts with `NOT OWNER` and the account can never move the funds it holds
+
 ---
 
 ## Brevity

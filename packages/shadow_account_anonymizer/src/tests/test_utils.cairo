@@ -1,8 +1,11 @@
 use privacy::objects::OpenNoteDeposit;
 use shadow_account_anonymizer::shadow_account_anonymizer::{
     IShadowAccountAnonymizerDispatcher, IShadowAccountAnonymizerDispatcherTrait, OpenNote,
+    PRIMER_CLASS_HASH,
 };
-use snforge_std::{ContractClassTrait, DeclareResultTrait, Token, declare};
+use snforge_std::{
+    ContractClass, ContractClassTrait, DeclareResultTrait, Token, declare, declare_from_file,
+};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils_testing::test_utils::{cheat_caller_address_once, deploy_mock_erc20_token};
@@ -60,8 +63,24 @@ pub fn transfer_to_caller_call(
     }
 }
 
+/// Declares the `Primer` class the anonymizer deploys shadow accounts from. It is loaded from the
+/// pre-compiled artifact rather than built from source, because its class hash is cemented on-chain
+/// and only reproducible under the toolchain it was originally built with; recompiling it here
+/// would yield a different hash than [`PRIMER_CLASS_HASH`].
+pub fn declare_primer() -> ContractClass {
+    let primer = *declare_from_file("../../artifacts/Primer.contract_class.json")
+        .unwrap_syscall()
+        .contract_class();
+    assert!(
+        primer.class_hash == PRIMER_CLASS_HASH,
+        "vendored Primer artifact is not the cemented class",
+    );
+    primer
+}
+
 pub fn deploy_shadow_account_anonymizer() -> ContractAddress {
-    let shadow_account_class_hash = *declare("SubAccount")
+    declare_primer();
+    let shadow_account_class_hash = *declare("ShadowAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;

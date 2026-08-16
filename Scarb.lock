@@ -185,15 +185,15 @@ dependencies = [
 
 [[package]]
 name = "snforge_scarb_plugin"
-version = "0.59.0"
+version = "0.63.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:871fba677c03b66a1bf40815dac0ab1b385eb1b9be6e6c3cf2ad9788eeb2b6bb"
+checksum = "sha256:05f937b499ddaf534271de8766d8e2a17dd5675776c5a5db3dd769cdfe7be6d2"
 
 [[package]]
 name = "snforge_std"
-version = "0.59.0"
+version = "0.63.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:3620924fa08bd2d740b2b5b01ef86c8dab3d4b9c2206387c8dbdc8d2ec15133e"
+checksum = "sha256:8b0efc66fc4275dde83b79bfe5b0ff6b486d16dd559e0e3c9077afb21760c939"
 dependencies = [
  "snforge_scarb_plugin",
 ]
@@ -201,7 +201,7 @@ dependencies = [
 [[package]]
 name = "starkware_accounts"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=853eeb715444d6d3481e781f62108edae4473836#853eeb715444d6d3481e781f62108edae4473836"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18#3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18"
 dependencies = [
  "openzeppelin",
  "starkware_utils",
@@ -210,7 +210,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=853eeb715444d6d3481e781f62108edae4473836#853eeb715444d6d3481e781f62108edae4473836"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18#3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18"
 dependencies = [
  "openzeppelin",
 ]
@@ -218,7 +218,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=853eeb715444d6d3481e781f62108edae4473836#853eeb715444d6d3481e781f62108edae4473836"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?rev=3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18#3e2fd53d99e16c87f6cf2ced53b8c842a2d54a18"
 dependencies = [
  "openzeppelin",
  "snforge_std",
