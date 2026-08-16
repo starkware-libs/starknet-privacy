@@ -1,7 +1,7 @@
 //! Shadow account anonymizer for privacy-preserving dapp interactions.
 //!
 //! Runs arbitrary dapp calls on behalf of the privacy contract through per-identity-commitment
-//! [`SubAccount`](starkware_accounts::sub_account::SubAccount) contracts. Each identity
+//! [`ShadowAccount`](starkware_accounts::shadow_account::ShadowAccount) contracts. Each identity
 //! commitment maps to a dedicated shadow account that performs the dapp calls and holds the
 //! resulting funds; the anonymizer then collects those funds into itself and approves the privacy
 //! contract to pull them into open notes. Driving interactions is restricted to the configured
@@ -44,6 +44,15 @@ pub enum CollectPolicy {
 /// Upper bound on the nonce range a single [`get_shadow_accounts`] call may resolve, so a view call
 /// can never be driven into an unbounded loop by a caller-supplied range.
 pub const MAX_SCAN_RANGE: u64 = 1024;
+
+/// Cemented class hash of the `Primer` contract.
+/// Every shadow account is deployed from Primer,
+/// before being replaced with the class in `shadow_account_class_hash`.
+/// This allows robust consistent shadow account address calculation.
+pub const PRIMER_CLASS_HASH: ClassHash =
+    0x00123e6bc1c14ae9934e933d3f64916a6116dd6b036a922b2b1f0815e0d1d300
+    .try_into()
+    .unwrap();
 
 /// Computes the [`PartialCommitment`](PartialCommitment) `hash(identity_key, dapp_name)`.
 pub fn partial_commitment(identity_key: felt252, dapp_name: felt252) -> PartialCommitment {
@@ -181,7 +190,7 @@ pub trait IShadowAccountAnonymizer<T> {
     /// - (`ContractAddress`) - The address of the authorized privacy contract.
     fn get_privacy_contract(self: @T) -> ContractAddress;
 
-    /// Returns the class hash of the `SubAccount` contract deployed per identity commitment.
+    /// Returns the class hash of the `ShadowAccount` contract deployed per identity commitment.
     ///
     /// #### Returns
     /// - (`ClassHash`) - The class hash used when deploying a shadow account.
@@ -218,7 +227,10 @@ pub mod ShadowAccountAnonymizer {
     use starknet::{
         ClassHash, ContractAddress, SyscallResultTrait, get_caller_address, get_contract_address,
     };
-    use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
+    use starkware_accounts::account_factory::{IPrimerDispatcher, IPrimerDispatcherTrait};
+    use starkware_accounts::shadow_account::{
+        IShadowAccountDispatcher, IShadowAccountDispatcherTrait,
+    };
     use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::common_roles::CommonRolesComponent::InternalTrait as CommonRolesInternalTrait;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -228,7 +240,8 @@ pub mod ShadowAccountAnonymizer {
     };
     use super::{
         CollectPolicy, IShadowAccountAnonymizer, IdentityCommitment, MAX_SCAN_RANGE, OpenNote,
-        PartialCommitment, ShadowAccountInfo, commitment_from_partial, errors, partial_commitment,
+        PRIMER_CLASS_HASH, PartialCommitment, ShadowAccountInfo, commitment_from_partial, errors,
+        partial_commitment,
     };
 
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
@@ -254,7 +267,7 @@ pub mod ShadowAccountAnonymizer {
         src5: SRC5Component::Storage,
         /// Address of the authorized privacy contract.
         privacy_contract: ContractAddress,
-        /// Class hash of the `SubAccount` contract deployed per identity commitment.
+        /// Class hash of the `ShadowAccount` contract deployed per identity commitment.
         shadow_account_class_hash: ClassHash,
         /// Maps an identity commitment to the shadow account deployed for it.
         shadow_accounts: IterableMap<IdentityCommitment, ContractAddress>,
@@ -334,7 +347,6 @@ pub mod ShadowAccountAnonymizer {
             assert(
                 end_nonce.saturating_sub(start_nonce) <= MAX_SCAN_RANGE, errors::RANGE_TOO_LARGE,
             );
-            let class_hash = self.shadow_account_class_hash.read();
             let deployer_address = get_contract_address();
             let mut shadow_accounts: Array<ShadowAccountInfo> = array![];
             for nonce in start_nonce..end_nonce {
@@ -351,7 +363,7 @@ pub mod ShadowAccountAnonymizer {
                 } else {
                     calculate_contract_address_from_deploy_syscall(
                         salt: commitment,
-                        :class_hash,
+                        class_hash: PRIMER_CLASS_HASH,
                         constructor_calldata: array![].span(),
                         :deployer_address,
                     )
@@ -378,17 +390,25 @@ pub mod ShadowAccountAnonymizer {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        /// Returns the shadow account bound to `identity_commitment`, deploying a fresh one on
-        /// first use. The commitment is the deployment salt, so each one maps to a deterministic
-        /// address, and the deployed `SubAccount` records this anonymizer (its deployer) as owner.
+        /// Returns the shadow account bound to `identity_commitment`.
+        /// deploying a fresh one on first use.
+        /// The identity_commitment is the deployment salt, so each one maps to a deterministic
+        /// address.
+        ///
+        /// Deployment runs the Primer pattern:
+        /// - deploy a [`PRIMER_CLASS_HASH`] contract
+        /// - replace its class with `shadow_account_class_hash`
+        /// - then initialize it, as ShadowAccount constructor is skipped.
+        /// The address therefore depends on the primer's class hash rather than the account's,
+        /// making it resilient to changes to `shadow_account_class_hash`.
         fn get_or_deploy_shadow_account(
             ref self: ContractState, identity_commitment: IdentityCommitment,
-        ) -> ISubAccountDispatcher {
+        ) -> IShadowAccountDispatcher {
             if let Some(shadow_account_addr) = self.shadow_accounts.read(identity_commitment) {
-                return ISubAccountDispatcher { contract_address: shadow_account_addr };
+                return IShadowAccountDispatcher { contract_address: shadow_account_addr };
             }
             let (shadow_account, _) = deploy_syscall(
-                class_hash: self.shadow_account_class_hash.read(),
+                class_hash: PRIMER_CLASS_HASH,
                 contract_address_salt: identity_commitment,
                 calldata: array![].span(),
                 deploy_from_zero: false,
@@ -396,9 +416,12 @@ pub mod ShadowAccountAnonymizer {
                 .unwrap_syscall();
             // Sanity check: deployed address cannot be zero.
             assert(shadow_account.is_non_zero(), errors::ZERO_ADDRESS);
+            IPrimerDispatcher { contract_address: shadow_account }
+                .set_class_hash(new_class_hash: self.shadow_account_class_hash.read());
+            IShadowAccountDispatcher { contract_address: shadow_account }.initialize();
             self.shadow_accounts.write(identity_commitment, shadow_account);
             self.emit(ShadowAccountDeployed { identity_commitment, shadow_account });
-            ISubAccountDispatcher { contract_address: shadow_account }
+            IShadowAccountDispatcher { contract_address: shadow_account }
         }
 
         /// Settles each note, returning one [`OpenNoteDeposit`] per note.
@@ -407,7 +430,7 @@ pub mod ShadowAccountAnonymizer {
         /// it.
         fn collect_open_notes(
             self: @ContractState,
-            shadow_account: ISubAccountDispatcher,
+            shadow_account: IShadowAccountDispatcher,
             note_balance_snapshots: Array<(OpenNote, u256)>,
         ) -> Span<OpenNoteDeposit> {
             let anonymizer = get_contract_address();

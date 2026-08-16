@@ -55,9 +55,13 @@ async function declareTestBuildContract(
 
 /**
  * Declare + deploy the contracts the compute-and-invoke flow needs on devnet:
- * - `SubAccount` (workspace test build) — the class the anonymizer deploys per commitment. It keeps
+ * - `ShadowAccount` (workspace test build) — the class the anonymizer replaces each primer with. It
  *   that name because it lives in the `starkware-starknet-utils` git dependency
- *   (`starkware_accounts::sub_account::SubAccount`), outside this repo's rename.
+ *   lives in `starkware_accounts::shadow_account::ShadowAccount`, outside this repo.
+ * - `Primer` (pre-compiled artifact in `artifacts/`) — every shadow account is deployed from this
+ *   cemented class and then replaced, so its address does not depend on the shadow account class.
+ *   It is declared from the committed artifact because its class hash is only reproducible under the
+ *   toolchain it was originally built with.
  * - `ShadowAccountAnonymizer` (workspace build) — constructed with the privacy pool address, the
  *   deployed-account class hash, and `admin` as upgrade owner.
  * - `MockDapp` (workspace test build) — the target dapp the shadow account invokes.
@@ -69,10 +73,18 @@ export async function deployShadowAccountAnonymizer(
   node: RpcProvider,
   privacyAddress: string,
 ): Promise<ShadowAccountAddresses> {
+  const primerDirectory = join(repoRoot(), "artifacts");
+  await declareClass(
+    admin,
+    node,
+    join(primerDirectory, "Primer.contract_class.json"),
+    join(primerDirectory, "Primer.compiled_contract_class.json"),
+  );
+
   const shadowAccountClassHash = await declareTestBuildContract(
     admin,
     node,
-    "SubAccount",
+    "ShadowAccount",
   );
 
   const anonymizerArtifact = artifactPair(

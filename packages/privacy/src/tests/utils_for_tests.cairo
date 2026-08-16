@@ -69,7 +69,7 @@ use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, MessageToL1, MessageToL1Spy,
     MessageToL1SpyTrait, Token, TokenTrait, cheat_proof_facts, cheat_resource_bounds, declare,
-    interact_with_state, map_entry_address, spy_messages_to_l1,
+    declare_from_file, interact_with_state, map_entry_address, spy_messages_to_l1,
 };
 use starknet::account::Call;
 use starknet::deployment::DeploymentParams;
@@ -2083,11 +2083,15 @@ fn deploy_privacy(
 }
 
 /// Deploys a `ShadowAccountAnonymizer` authorized to be driven by `privacy_address`, declaring the
-/// `SubAccount` class it deploys per commitment.
+/// `ShadowAccount` class it deploys per commitment and the `Primer` class it deploys them from.
 pub(crate) fn deploy_shadow_account_anonymizer(
     privacy_address: ContractAddress,
 ) -> ContractAddress {
-    let shadow_account_class_hash: ClassHash = *declare(contract: "SubAccount")
+    // The anonymizer deploys every shadow account from the cemented `Primer` class, which is loaded
+    // from the pre-compiled artifact because its class hash is only reproducible under the
+    // toolchain it was originally built with.
+    declare_from_file("../../artifacts/Primer.contract_class.json").unwrap_syscall();
+    let shadow_account_class_hash: ClassHash = *declare(contract: "ShadowAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;

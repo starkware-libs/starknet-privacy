@@ -29,7 +29,7 @@ import { E2E_TIMEOUTS } from "../../src/timeouts.js";
  * the injected wallet proves via the SDK prover and broadcasts the proven call with an ordinary
  * account (`devnet.executeOutside`), which is all AVNU does in production. Afterwards
  * `build().shadowAccounts(dappName).addresses()` must report the now-deployed shadow account at the address
- * a `SubAccount` contract is actually deployed to.
+ * a `ShadowAccount` contract is actually deployed to.
  */
 describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", () => {
   let devnet: Devnet;
@@ -152,7 +152,7 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       expect(infos[1].is_deployed).toBe(false);
       expect(infos[2].is_deployed).toBe(false);
 
-      // The reported address is correct: a SubAccount contract of the anonymizer's class is actually
+      // The reported address is correct: a ShadowAccount of the anonymizer's class is actually
       // deployed there.
       const [expectedClassHash] = await env.env.node.callContract({
         contractAddress: shadowAccount.anonymizer,
