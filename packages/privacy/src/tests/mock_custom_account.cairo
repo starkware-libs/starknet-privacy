@@ -1,6 +1,7 @@
 /// A mock depositor account that advertises the custom-signature-validation interface (SRC5) and
-/// answers `is_custom_signature_valid` with a constructor-configured verdict. Used to exercise the
-/// pool's custom-validation path (`assert_valid_signature`).
+/// answers `is_custom_signature_valid` with the constructor-configured `custom_result` felt. Used
+/// to exercise the pool's custom-validation path (`assert_valid_signature`), including verdict
+/// felts the pool must NOT treat as acceptance.
 ///
 /// `is_valid_signature` verifies a STARK-curve signature against the constructor `public_key`
 /// (like a real SNIP-6 account), or — when `public_key` is 0 — always returns 0. The latter
@@ -15,21 +16,28 @@ pub mod MockCustomAccount {
     use starknet::account::Call;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
 
+    pub const CUSTOM_INVALID_SIG: felt252 = 'CUSTOM_INVALID_SIG';
+
     #[storage]
     struct Storage {
-        // Felt the custom EP returns: `VALIDATED` when the configured verdict is "valid", else 0.
+        // Verdict felt the custom EP returns; only `VALIDATED` counts as acceptance to the pool.
         custom_result: felt252,
+        // Whether the custom EP reports a non-`VALIDATED` verdict by panicking instead of
+        // returning it.
+        panics_on_reject: bool,
         // Key that `is_valid_signature` verifies against; 0 disables the raw-hash path.
         public_key: felt252,
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, is_valid: bool, public_key: felt252) {
-        if is_valid {
-            self.custom_result.write(VALIDATED);
-        } else {
-            self.custom_result.write(Zero::zero());
-        }
+    fn constructor(
+        ref self: ContractState,
+        custom_result: felt252,
+        panics_on_reject: bool,
+        public_key: felt252,
+    ) {
+        self.custom_result.write(custom_result);
+        self.panics_on_reject.write(panics_on_reject);
         self.public_key.write(public_key);
     }
 
@@ -48,7 +56,9 @@ pub mod MockCustomAccount {
             additional_data: Span<felt252>,
             signature: Span<felt252>,
         ) -> felt252 {
-            self.custom_result.read()
+            let custom_result = self.custom_result.read();
+            assert(custom_result == VALIDATED || !self.panics_on_reject.read(), CUSTOM_INVALID_SIG);
+            custom_result
         }
     }
 

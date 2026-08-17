@@ -2,12 +2,65 @@
 
 ## Unreleased
 
+## 0.14.3-RC.5
+
+### Fixed
+
+- `SimplePrivateTransfers.withdraw(token, recipient, amount)` keeps the change with the sender.
+  Withdrawing a fixed amount selects every note the sender holds for that token, and the surplus is
+  now created as a private note owned by the sender instead of the withdrawal recipient — the
+  recipient receives only the requested amount, publicly. `withdraw(token, recipient, All)` is
+  unchanged, and still moves nothing — it requests the surplus without an action to select notes
+  for the token, so no notes are selected and no withdrawal is emitted. See the `TODO` on that
+  branch in `src/simple-private-transfers.ts`.
+
 ### Breaking
+
+- Sub-accounts are called **shadow accounts** across the TypeScript surface. `SubAccount` →
+  `ShadowAccount`, `SubAccountsBuilder` → `ShadowAccountsBuilder`, `SubAccountAnonymizerABI` →
+  `ShadowAccountAnonymizerABI`, the `createPrivateTransfers` config key
+  `subAccountAnonymizerAddress` → `shadowAccountAnonymizerAddress`, and the builder namespace
+  `build().subaccounts(dappName)` → `build().shadowAccounts(dappName)` (also now camelCase).
+
+- The Cairo contract is renamed to match: package `sub_account_anonymizer` →
+  `shadow_account_anonymizer`, contract `SubAccountAnonymizer` → `ShadowAccountAnonymizer`, views
+  `get_sub_accounts` / `get_sub_account` / `get_sub_account_class_hash` → `get_shadow_accounts` /
+  `get_shadow_account` / `get_shadow_account_class_hash`, struct `SubAccountInfo` →
+  `ShadowAccountInfo`, event `SubAccountDeployed` → `ShadowAccountDeployed`. **The renamed views
+  and event change their selectors and event keys**, so this SDK requires an anonymizer upgraded to
+  the new class; it cannot read a pre-upgrade instance. `privacy_compute` and
+  `privacy_invoke_with_computation` are unchanged — the privacy pool dispatches those by hardcoded
+  selector. Historical `SubAccountDeployed` events keep the old key, so indexers reading across the
+  upgrade must match both.
 
 - Node-provider fields are named `node`, not `provider`: `SimulateOptions.provider` →
   `SimulateOptions.node` (`builder.simulate({ node })`) and `DevnetEnvironment.provider` →
   `DevnetEnvironment.node` (`env.node`) on the `/testing` surface. `provider` is reserved for the
   proving / discovery / viewing-key providers, so a bare `provider` no longer means the node.
+
+### Added
+
+- `get_shadow_accounts` takes a trailing `until_undeployed: bool`: when true the view stops at the
+  first undeployed nonce and returns only the contiguous deployed prefix, when false it resolves
+  every nonce in the range.
+
+### Changed
+
+- `starknet` dependency pinned to 10.5.0 (was `^10.0.0-beta.6`), matching the version the client
+  package needs for its `STRK20_*` wallet-api types. With one version across sdk/client/e2e their
+  `ProviderInterface` declarations line up, so a node can be passed between the packages without a
+  cast.
+- Testing: `CallMockProofProvider` now compiles a signed invocation by simulating it as a real
+  `__execute__` invoke and reading the server actions out of the L2-to-L1 message the pool emits,
+  instead of calling the `compile_actions` view and validating the signature itself with a
+  tx-hash-only `is_valid_signature` call. The pool therefore runs `assert_valid_signature`, so every
+  accepted signature form (custom validation / SN tx hash / SNIP-12 `CallSet` hash) is honored exactly
+  as on-chain and CallSet or custom-signature accounts (e.g. `Snip12CallSetSigner`,
+  `Eip712CallSetSigner`) prove correctly against a devnet pool. This also removes the hand-rolled
+  transaction-hash reconstruction, since the node now computes it. Fee simulation
+  (`validateSignature: false`) and unsigned mock invocations still use the plain `compile_actions`
+  view, which performs no signature check. Requires a node whose channel supports
+  `simulateTransaction`.
 
 ## 0.14.3-RC.4
 

@@ -20,8 +20,8 @@ use privacy::objects::{
 };
 use privacy::snip12::compute_call_set_hash;
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, ERR_WRAPPER, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT,
-    TWO_POW_120,
+    ENTRYPOINT_FAILED, ERR_WRAPPER, HALF_ORDER, LEGACY_VALIDATED, OK_WRAPPER,
+    OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -59,6 +59,10 @@ pub mod constants {
     pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
+    /// Acceptance felt of a pre-SNIP-6 wallet, which answers `is_valid_signature` with a boolean
+    /// rather than the [`VALIDATED`](starknet::VALIDATED) short string. SNIP-6 tells consumers to
+    /// honor both while such wallets remain in circulation.
+    pub const LEGACY_VALIDATED: felt252 = 1;
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     /// Brackets panic data propagated from an external contract call made during client
     /// compilation. Distinct from `OK_WRAPPER` so that a panicking external contract cannot forge
@@ -380,43 +384,42 @@ pub(crate) fn extract_compile_actions_inputs(
 ///    `is_valid_signature` accepts the signature over the SN tx hash.
 /// III. **Legacy SN Wallet:**
 ///    `is_valid_signature` accepts the signature over the SNIP-12 `CallSet` hash of `calls`.
+#[feature("safe_dispatcher")]
 pub(crate) fn assert_valid_signature(
     user_addr: ContractAddress, calls: Span<Call>, tx_info: Box<TxInfo>,
 ) {
-    // I. Custom validation, if the account advertises it.
-    if custom_signature_valid(user_addr, calls, tx_info.signature) {
+    // I. Custom validation, if the account advertises it. The SRC5 gate keeps an account that
+    // doesn't advertise from being credited with custom validation at all.
+    // The pool binds no extra data, so `additional_data` is empty.
+    if supports_custom_validation(user_addr)
+        && signature_accepted(
+            ICustomSignatureValidationSafeDispatcher { contract_address: user_addr }
+                .is_custom_signature_valid(calls, array![].span(), tx_info.signature),
+        ) {
         return;
     }
-    let user_account = IAccountDispatcher { contract_address: user_addr };
+    let user_account = IAccountSafeDispatcher { contract_address: user_addr };
     // II. Standard SN wallet: signature over the tx hash.
-    if user_account
-        .is_valid_signature(
-            hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
-        ) == VALIDATED {
+    if signature_accepted(
+        user_account
+            .is_valid_signature(
+                hash: tx_info.transaction_hash, signature: tx_info.signature.into(),
+            ),
+    ) {
         return;
     }
     // III. Legacy SN wallet: signature over the SNIP-12 `CallSet` hash of `calls`.
     // The pool binds no extra data, so `additional_data` is empty.
-    if user_account
-        .is_valid_signature(
-            hash: compute_call_set_hash(user_addr, calls, array![].span()),
-            signature: tx_info.signature.into(),
-        ) == VALIDATED {
+    if signature_accepted(
+        user_account
+            .is_valid_signature(
+                hash: compute_call_set_hash(user_addr, calls, array![].span()),
+                signature: tx_info.signature.into(),
+            ),
+    ) {
         return;
     }
     panic_with_felt252(errors::INVALID_SIGNATURE);
-}
-
-/// Returns whether `user_addr`'s custom validator accepts `signature` over `calls`.
-/// False when the account doesn't advertise custom validation — so the (reverting) custom
-/// dispatcher is never invoked on an account that doesn't implement it.
-/// The pool binds no extra data, so `additional_data` is passed empty.
-fn custom_signature_valid(
-    user_addr: ContractAddress, calls: Span<Call>, signature: Span<felt252>,
-) -> bool {
-    supports_custom_validation(user_addr)
-        && ICustomSignatureValidationDispatcher { contract_address: user_addr }
-            .is_custom_signature_valid(calls, array![].span(), signature) == VALIDATED
 }
 
 /// Returns whether `user_addr` advertises SRC5 `ICUSTOM_SIGNATURE_VALIDATION_ID`.
@@ -427,6 +430,11 @@ fn supports_custom_validation(user_addr: ContractAddress) -> bool {
     ISRC5SafeDispatcher { contract_address: user_addr }
         .supports_interface(ICUSTOM_SIGNATURE_VALIDATION_ID)
         .unwrap_or(false)
+}
+
+
+fn signature_accepted(validation_result: Result<felt252, Array<felt252>>) -> bool {
+    validation_result == Result::Ok(VALIDATED) || validation_result == Result::Ok(LEGACY_VALIDATED)
 }
 
 /// Sends server actions to L1.

@@ -1,5 +1,5 @@
 [package]
-name = "sub_account_anonymizer"
+name = "shadow_account_anonymizer"
 readme = "README.md"
 version.workspace = true
 edition.workspace = true
@@ -27,11 +27,11 @@ test_utils = []
 [lib]
 
 [[test]]
-name = "sub_account_anonymizer_unittest"
+name = "shadow_account_anonymizer_unittest"
 build-external-contracts = [
     "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "starkware_accounts::sub_account::SubAccount",
-    "sub_account_anonymizer::test_utils_contracts::mock_dapp::MockDapp",
+    "shadow_account_anonymizer::test_utils_contracts::mock_dapp::MockDapp",
 ]
 
 [scripts]

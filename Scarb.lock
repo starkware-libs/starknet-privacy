@@ -163,12 +163,24 @@ dependencies = [
  "ekubo",
  "ekubo_swap_anonymizer",
  "openzeppelin",
+ "shadow_account_anonymizer",
  "snforge_std",
  "starkware_accounts",
  "starkware_utils",
  "starkware_utils_testing",
- "sub_account_anonymizer",
  "vesu_lending_anonymizer",
+]
+
+[[package]]
+name = "shadow_account_anonymizer"
+version = "0.1.0"
+dependencies = [
+ "openzeppelin",
+ "privacy",
+ "snforge_std",
+ "starkware_accounts",
+ "starkware_utils",
+ "starkware_utils_testing",
 ]
 
 [[package]]
@@ -211,18 +223,6 @@ dependencies = [
  "openzeppelin",
  "snforge_std",
  "starkware_utils",
-]
-
-[[package]]
-name = "sub_account_anonymizer"
-version = "0.1.0"
-dependencies = [
- "openzeppelin",
- "privacy",
- "snforge_std",
- "starkware_accounts",
- "starkware_utils",
- "starkware_utils_testing",
 ]
 
 [[package]]

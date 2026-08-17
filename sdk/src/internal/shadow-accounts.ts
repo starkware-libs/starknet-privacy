@@ -5,10 +5,10 @@ import type {
   InvokeCalldataBuilderArgs,
   PrivateTransfersBuilder,
   StarknetAddress,
-  SubAccountsBuilder,
+  ShadowAccountsBuilder,
   ViewingKey,
 } from "../interfaces.js";
-import { SubAccountAnonymizerABI } from "./anonymizer-abi.js";
+import { ShadowAccountAnonymizerABI } from "./anonymizer-abi.js";
 import { hash as poseidonHash, toBigInt, toHex } from "../utils/index.js";
 import { compute_identity_key } from "../utils/hashes.js";
 
@@ -19,28 +19,28 @@ function encodeDappName(dappName: string | BigNumberish): bigint {
     : toBigInt(dappName);
 }
 
-export class SubAccountsBuilderImpl implements SubAccountsBuilder {
+export class ShadowAccountsBuilderImpl implements ShadowAccountsBuilder {
   private readonly dappName: bigint;
-  private readonly subAccountAnonymizerAddress: bigint;
+  private readonly shadowAccountAnonymizerAddress: bigint;
 
   constructor(
     private readonly params: {
       builder: PrivateTransfersBuilder;
       dappName: string | BigNumberish;
-      subAccountAnonymizerAddress: StarknetAddress;
+      shadowAccountAnonymizerAddress: StarknetAddress;
       user: bigint;
       getViewingKey: () => Promise<ViewingKey>;
     }
   ) {
     this.dappName = encodeDappName(params.dappName);
-    this.subAccountAnonymizerAddress = toBigInt(params.subAccountAnonymizerAddress);
+    this.shadowAccountAnonymizerAddress = toBigInt(params.shadowAccountAnonymizerAddress);
   }
 
   invoke(
     nonce: BigNumberish,
     options: { calls: Call[]; collectPolicy?: CollectPolicy }
   ): PrivateTransfersBuilder {
-    const { dappName, subAccountAnonymizerAddress } = this;
+    const { dappName, shadowAccountAnonymizerAddress } = this;
     const nonceFelt = toBigInt(nonce);
     // The anonymizer's `privacy_invoke_with_computation` takes Cairo `Call`s (to/selector/calldata).
     const anonymizerCalls = options.calls.map((call) => ({
@@ -60,12 +60,12 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
         }));
         // Compile (calls, open_notes) via the ABI and drop the leading identity_commitment felt,
         // which the pool prepends from the privacy_compute result.
-        const invokeAdditionalData = new CallData(SubAccountAnonymizerABI)
+        const invokeAdditionalData = new CallData(ShadowAccountAnonymizerABI)
           .compile("privacy_invoke_with_computation", [0n, anonymizerCalls, openNotes])
           .slice(1)
           .map(toBigInt);
         return {
-          contractAddress: toHex(subAccountAnonymizerAddress),
+          contractAddress: toHex(shadowAccountAnonymizerAddress),
           computeAdditionalData: [dappName, nonceFelt],
           invokeAdditionalData,
         };
@@ -78,7 +78,7 @@ export class SubAccountsBuilderImpl implements SubAccountsBuilder {
     const identityKey = compute_identity_key(
       this.params.user,
       toBigInt(viewingKey),
-      this.subAccountAnonymizerAddress
+      this.shadowAccountAnonymizerAddress
     );
     return poseidonHash(identityKey, this.dappName);
   }

@@ -14,6 +14,7 @@ import {
   type HistoryTransaction,
 } from "@starkware-libs/starknet-privacy-sdk";
 import { declarePoolClass } from "../../src/harness.js";
+import { accountOn } from "../../src/utils.js";
 
 function requireEnv(name: string): string {
   const value = process.env[name];
@@ -55,21 +56,19 @@ const alice = findAccount("alice");
 
 describe("Privacy StarkNet integration", () => {
   let discovery: IndexerDiscoveryProvider;
-  let provider: RpcProvider;
+  let node: RpcProvider;
   let adminAccount: Account;
   let aliceAccount: Account;
   let poolAddress: string;
 
   beforeAll(async () => {
-    provider = new RpcProvider({ nodeUrl: RPC });
-    adminAccount = new Account({
-      provider,
+    node = new RpcProvider({ nodeUrl: RPC });
+    adminAccount = accountOn(node, {
       address: admin.address,
       signer: admin.privateKey,
       cairoVersion: "1",
     });
-    aliceAccount = new Account({
-      provider,
+    aliceAccount = accountOn(node, {
       address: alice.address,
       signer: alice.privateKey,
       cairoVersion: "1",
@@ -78,7 +77,7 @@ describe("Privacy StarkNet integration", () => {
     // Verify RPC connectivity before proceeding
     console.log("[debug] RPC endpoint:", RPC);
     try {
-      const chainId = await provider.getChainId();
+      const chainId = await node.getChainId();
       console.log("[debug] RPC connected, chain:", chainId);
     } catch (error) {
       console.error("[debug] RPC connectivity failed:", RPC, error);
@@ -115,7 +114,7 @@ describe("Privacy StarkNet integration", () => {
     );
     console.log("[debug] deploy tx submitted:", deployResult.transaction_hash);
     console.log("[debug] waiting for deploy receipt...");
-    const deployReceipt = await provider.waitForTransaction(
+    const deployReceipt = await node.waitForTransaction(
       deployResult.transaction_hash,
     );
     if (!deployReceipt.isSuccess()) {
@@ -181,9 +180,7 @@ describe("Privacy StarkNet integration", () => {
       resourceBounds: mintFee.resourceBounds,
     });
     log(`mint tx: ${mintTx.transaction_hash}, waiting...`);
-    const mintReceipt = await provider.waitForTransaction(
-      mintTx.transaction_hash,
-    );
+    const mintReceipt = await node.waitForTransaction(mintTx.transaction_hash);
     log(`mint ${mintReceipt.isSuccess() ? "OK" : "FAILED"}`);
 
     // Approve pool to spend Alice's tokens
@@ -200,13 +197,13 @@ describe("Privacy StarkNet integration", () => {
       resourceBounds: approveFee.resourceBounds,
     });
     log(`approve tx: ${approveTx.transaction_hash}, waiting...`);
-    const approveReceipt = await provider.waitForTransaction(
+    const approveReceipt = await node.waitForTransaction(
       approveTx.transaction_hash,
     );
     log(`approve ${approveReceipt.isSuccess() ? "OK" : "FAILED"}`);
 
     // Deposit 100 tokens — SDK checks state internally and registers if needed
-    const latestBlockNumber = await provider.getBlockNumber();
+    const latestBlockNumber = await node.getBlockNumber();
     const provingBlockId = latestBlockNumber - 10;
     log(
       `building deposit: block=${latestBlockNumber}, provingBlock=${provingBlockId}`,
@@ -266,9 +263,7 @@ describe("Privacy StarkNet integration", () => {
       },
     );
     log(`executeFromOutside tx: ${executeTx.transaction_hash}, waiting...`);
-    const receipt = await provider.waitForTransaction(
-      executeTx.transaction_hash,
-    );
+    const receipt = await node.waitForTransaction(executeTx.transaction_hash);
     log(`receipt: ${receipt.isSuccess() ? "SUCCESS" : "REVERTED"}`);
     if (!receipt.isSuccess()) {
       console.error("Transaction reverted:", JSON.stringify(receipt, null, 2));

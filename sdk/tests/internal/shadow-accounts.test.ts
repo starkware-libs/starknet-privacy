@@ -1,5 +1,5 @@
 /**
- * Tests for SubAccountsBuilder.invoke: it builds a `computeAndInvoke` against the anonymizer with
+ * Tests for ShadowAccountsBuilder.invoke: it builds a `computeAndInvoke` against the anonymizer with
  * `computeAdditionalData = [dappName, nonce]` and `invokeAdditionalData` compiled from the dapp calls via the anonymizer
  * ABI. The MockPoolContract simulate flow forwards these to the target's `privacy_compute` /
  * `privacy_invoke_with_computation`, mirroring Cairo.
@@ -10,7 +10,7 @@ import { Mocknet } from "../../src/testing/mocknet.js";
 import { MockContract } from "../../src/testing/contracts.js";
 import { compute_identity_key } from "../../src/utils/hashes.js";
 import { hash as poseidonHash } from "../../src/utils/crypto.js";
-import { SubAccountAnonymizerABI } from "../../src/internal/anonymizer-abi.js";
+import { ShadowAccountAnonymizerABI } from "../../src/internal/anonymizer-abi.js";
 import { toBigInt } from "../../src/utils/index.js";
 import { Open, StarknetAddress, type CollectPolicy } from "../../src/interfaces.js";
 
@@ -35,7 +35,7 @@ class MockComputeContract implements MockContract {
   }
 }
 
-describe("SubAccountsBuilder.invoke", () => {
+describe("ShadowAccountsBuilder.invoke", () => {
   it("queues a computeAndInvoke with [dappName, nonce] and ABI-compiled calls", async () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
@@ -43,7 +43,7 @@ describe("SubAccountsBuilder.invoke", () => {
     mocknet.contracts.register(anonymizer);
 
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-      subAccountAnonymizerAddress: ANONYMIZER,
+      shadowAccountAnonymizerAddress: ANONYMIZER,
     });
     mocknet.executeOutside(await transfers.build().register().execute());
 
@@ -51,7 +51,7 @@ describe("SubAccountsBuilder.invoke", () => {
     const nonce = 3n;
     const calls = [{ contractAddress: "0xda99", entrypoint: "pay_out", calldata: [0x1234n, 0n] }];
     mocknet.executeOutside(
-      await transfers.build().subaccounts(dappName).invoke(nonce, { calls }).execute()
+      await transfers.build().shadowAccounts(dappName).invoke(nonce, { calls }).execute()
     );
 
     const identityKey = compute_identity_key(
@@ -63,7 +63,7 @@ describe("SubAccountsBuilder.invoke", () => {
     expect(anonymizer.computeCalls).toEqual([[identityKey, dappFelt, nonce]]);
 
     // No open note was created, so open_notes is empty and invokeAdditionalData is fully determined by calls.
-    const expectedInvokeData = new CallData(SubAccountAnonymizerABI)
+    const expectedInvokeData = new CallData(ShadowAccountAnonymizerABI)
       .compile("privacy_invoke_with_computation", [
         0n,
         [
@@ -98,7 +98,7 @@ describe("SubAccountsBuilder.invoke", () => {
       const anonymizer = new MockComputeContract(ANONYMIZER);
       mocknet.contracts.register(anonymizer);
       const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-        subAccountAnonymizerAddress: ANONYMIZER,
+        shadowAccountAnonymizerAddress: ANONYMIZER,
       });
       const token = toBigInt(env.ace);
 
@@ -109,7 +109,7 @@ describe("SubAccountsBuilder.invoke", () => {
           .with(token)
           .transfer({ recipient: env.alice.address, amount: Open })
           .done()
-          .subaccounts(dappName)
+          .shadowAccounts(dappName)
           .invoke(1n, { calls, collectPolicy })
           .execute()
       );
@@ -141,32 +141,34 @@ describe("SubAccountsBuilder.invoke", () => {
     const anonymizer = new MockComputeContract(ANONYMIZER);
     mocknet.contracts.register(anonymizer);
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-      subAccountAnonymizerAddress: ANONYMIZER,
+      shadowAccountAnonymizerAddress: ANONYMIZER,
     });
     mocknet.executeOutside(await transfers.build().register().execute());
 
     const dappFelt = toBigInt(shortString.encodeShortString("DAPP"));
     mocknet.executeOutside(
-      await transfers.build().subaccounts(dappFelt).invoke(0n, { calls: [] }).execute()
+      await transfers.build().shadowAccounts(dappFelt).invoke(0n, { calls: [] }).execute()
     );
 
     expect(anonymizer.computeCalls[0]?.slice(1)).toEqual([dappFelt, 0n]);
   });
 
-  it("throws when sub-account config is missing", () => {
+  it("throws when shadow account config is missing", () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey);
-    expect(() => transfers.build().subaccounts("DAPP")).toThrow(/subAccountAnonymizerAddress/);
+    expect(() => transfers.build().shadowAccounts("DAPP")).toThrow(
+      /shadowAccountAnonymizerAddress/
+    );
   });
 });
 
-describe("SubAccountsBuilder commitments", () => {
+describe("ShadowAccountsBuilder commitments", () => {
   it("derives partialCommitment = hash(identity_key, dappName) locally", async () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-      subAccountAnonymizerAddress: ANONYMIZER,
+      shadowAccountAnonymizerAddress: ANONYMIZER,
     });
 
     const identityKey = compute_identity_key(
@@ -179,7 +181,7 @@ describe("SubAccountsBuilder commitments", () => {
       toBigInt(shortString.encodeShortString("DAPP"))
     );
 
-    await expect(transfers.build().subaccounts("DAPP").partialCommitment()).resolves.toBe(
+    await expect(transfers.build().shadowAccounts("DAPP").partialCommitment()).resolves.toBe(
       partialCommitment
     );
   });
@@ -188,7 +190,7 @@ describe("SubAccountsBuilder commitments", () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-      subAccountAnonymizerAddress: ANONYMIZER,
+      shadowAccountAnonymizerAddress: ANONYMIZER,
     });
 
     const identityKey = compute_identity_key(
@@ -201,7 +203,7 @@ describe("SubAccountsBuilder commitments", () => {
       toBigInt(shortString.encodeShortString("DAPP"))
     );
 
-    await expect(transfers.build().subaccounts("DAPP").commitment(7n)).resolves.toBe(
+    await expect(transfers.build().shadowAccounts("DAPP").commitment(7n)).resolves.toBe(
       poseidonHash(partialCommitment, 7n)
     );
   });
@@ -210,12 +212,12 @@ describe("SubAccountsBuilder commitments", () => {
     const mocknet = new Mocknet({ poolAddress: 0x1n });
     const env = mocknet.initialize();
     const transfers = mocknet.createPrivateTransfers(env.alice.address, env.alice.privateKey, {
-      subAccountAnonymizerAddress: ANONYMIZER,
+      shadowAccountAnonymizerAddress: ANONYMIZER,
     });
 
     const dappFelt = toBigInt(shortString.encodeShortString("DAPP"));
-    await expect(transfers.build().subaccounts(dappFelt).partialCommitment()).resolves.toBe(
-      await transfers.build().subaccounts("DAPP").partialCommitment()
+    await expect(transfers.build().shadowAccounts(dappFelt).partialCommitment()).resolves.toBe(
+      await transfers.build().shadowAccounts("DAPP").partialCommitment()
     );
   });
 });

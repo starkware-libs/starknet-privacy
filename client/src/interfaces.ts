@@ -25,14 +25,57 @@ export interface STRK20_COMPUTE_AND_INVOKE_ACTION {
   invoke_calldata: STRK20_CALLDATA_ITEM[];
 }
 
+/** A Starknet call in the strk20 wire shape (the wallet-api `INVOKE_CALL`: snake_case, full call). */
+export interface Strk20Call {
+  contract_address: string;
+  entry_point: string;
+  calldata: STRK20_CALLDATA_ITEM[];
+}
+
+/**
+ * LOCAL SHIM for the wallet-api `CollectPolicy` (not yet in `@starknet-io/starknet-types`; TODO:
+ * remove when starknet.js ships it). How much of the shadow account's balance a settled open note
+ * collects: `all` — its full token balance; `diff` — only the balance gained this interaction;
+ * `exact` — the given amount.
+ */
+export type Strk20CollectPolicy =
+  { type: "all" } | { type: "diff" } | { type: "exact"; amount: string };
+
+/**
+ * LOCAL SHIM mirroring the wallet-api `STRK20_SHADOW_ACCOUNT_INVOKE_ACTION` (not yet in
+ * `@starknet-io/starknet-types`; vendor-then-reconcile, like {@link STRK20_COMPUTE_AND_INVOKE_ACTION}).
+ * Runs `calls` through the user's shadow account selected by `(dapp_name, nonce)`, routed via the
+ * anonymizer. `nonce` is a FELT and `calls` is a non-empty `INVOKE_CALL[]`. The calls' proceeds settle
+ * into the open notes created by `transfer` actions with amount `"OPEN"` in the same transaction, so
+ * the number of open notes filled here must match the number created in the transaction.
+ *
+ * The SDK adapter maps it to core's `build().shadowAccounts(dappName).invoke(nonce, { calls })` (a
+ * `ComputeAndInvoke` against the anonymizer).
+ *
+ * The `shadow_account_invoke` discriminant and this type's name are the wallet-api spelling, not this
+ * package's own: they are the wire contract with the wallet, so they track upstream. Both were renamed
+ * from `subaccount_invoke` / `STRK20_SUBACCOUNT_INVOKE_ACTION` in starknet-specs#406, so a wallet
+ * implementing an earlier spec revision will not recognize actions built here.
+ */
+export interface STRK20_SHADOW_ACCOUNT_INVOKE_ACTION {
+  type: "shadow_account_invoke";
+  dapp_name: string;
+  nonce: string;
+  calls: Strk20Call[];
+  /** One policy applied to every open note the invoke settles. */
+  collect_policy: Strk20CollectPolicy;
+}
+
 /**
  * The privacy-action currency at the wallet seam: the starknet.js wallet-api `STRK20_ACTION` union
- * widened with the {@link STRK20_COMPUTE_AND_INVOKE_ACTION} shim. Both invoke variants carry
- * placeholder-capable calldata (`STRK20_CALLDATA_ITEM = FELT | placeholder string`), so the builder
- * emits `${openNoteIds[N]}` / `${poolAddress}` placeholders for every wallet, and whoever proves +
- * submits substitutes them (the native wallet at assembly; the SDK adapter before proving).
+ * widened with the {@link STRK20_COMPUTE_AND_INVOKE_ACTION} and {@link STRK20_SHADOW_ACCOUNT_INVOKE_ACTION}
+ * shims. The invoke variants carry placeholder-capable calldata (`STRK20_CALLDATA_ITEM = FELT |
+ * placeholder string`), so the builder emits `${openNoteIds[N]}` / `${poolAddress}` placeholders for
+ * every wallet, and whoever proves + submits substitutes them (the native wallet at assembly; the SDK
+ * adapter before proving).
  */
-export type Strk20Action = STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION;
+export type Strk20Action =
+  STRK20_ACTION | STRK20_COMPUTE_AND_INVOKE_ACTION | STRK20_SHADOW_ACCOUNT_INVOKE_ACTION;
 
 /**
  * Proves {@link Strk20Action}s into a submittable `{ call, proof }` and resolves the user's partial
@@ -66,7 +109,7 @@ export interface PrivacyStorage {
  * constructs the implementation it wants.
  */
 export interface PrivacyWallet {
-  /** The nonce-independent commitment `hash(identity_key, dappName)`, for sub-account resolution. */
+  /** The nonce-independent commitment `hash(identity_key, dappName)`, for shadow account resolution. */
   partialCommitment(dappName: string): Promise<bigint>;
   /** Prove actions into a submittable `{ call, proof }` (`simulate` ⇒ empty proof); does not broadcast. */
   strk20PrepareInvoke(actions: Strk20Action[], simulate?: boolean): Promise<STRK20_CALL_AND_PROOF>;
@@ -84,18 +127,18 @@ export interface PrivacyWallet {
 /**
  * Dependencies for {@link createPrivacyClient}. The dapp constructs the {@link PrivacyWallet} it wants
  * (a get-starknet v6 wallet directly, or — upstack — an `SdkWallet` over a signer). `node` +
- * `subAccountAnonymizerAddress` are the client's read context: it queries the anonymizer view (through
- * the node) with `wallet.partialCommitment(dappName)` to resolve sub-account addresses.
+ * `shadowAccountAnonymizerAddress` are the client's read context: it queries the anonymizer view (through
+ * the node) with `wallet.partialCommitment(dappName)` to resolve shadow account addresses.
  */
 export interface PrivacyClientConfig {
   /** The wallet — signs, proves, and submits privacy operations. */
   wallet: PrivacyWallet;
   /** The user's Starknet account address — the default recipient for self-directed ops (open notes). */
   userAddress: StarknetAddress;
-  /** Node the sub-account anonymizer view call is read from. */
+  /** Node the shadow account anonymizer view call is read from. */
   node: ProviderInterface;
-  /** The sub-account anonymizer contract the client queries for sub-account addresses. */
-  subAccountAnonymizerAddress: StarknetAddress;
+  /** The shadow account anonymizer contract the client queries for shadow account addresses. */
+  shadowAccountAnonymizerAddress: StarknetAddress;
 }
 
 /** The result of broadcasting a transaction: the Starknet transaction hash. */
@@ -115,7 +158,7 @@ export interface SubmitOptions {
 /**
  * A dapp client for Starknet privacy. It drives the injected {@link PrivacyWallet} — for a native
  * get-starknet v6 wallet that is a direct pass-through; for an `SdkWallet` (upstack) it routes
- * through the core SDK + paymaster. The ergonomic operation builder (`build()`) and sub-account
+ * through the core SDK + paymaster. The ergonomic operation builder (`build()`) and shadow account
  * reads (`addresses()`) are layered on top of this low-level entry point in later changesets.
  */
 export interface PrivacyClient {
@@ -163,6 +206,48 @@ export type PrivacyComputeInvokeCallBuilder = (
   args: PrivacyInvokeArgs
 ) => PrivacyComputeInvokeDetails;
 
+/**
+ * A shadow account as resolved by the anonymizer's `get_shadow_accounts` view — the decoded Cairo struct in
+ * the contract's field names (no camelCase copy). `is_deployed` is false when the account is not yet
+ * deployed, in which case `address` is the deterministic address it would deploy to.
+ */
+export interface ShadowAccountInfo {
+  nonce: bigint;
+  address: bigint;
+  is_deployed: boolean;
+}
+
+/**
+ * The nonce window for {@link ShadowAccountsBuilder.addresses}, resolved as `[start, end)`. `start`
+ * defaults to 0 and `end` to `start + DEFAULT_ADDRESS_RANGE_END`. `untilUndeployed` (default false)
+ * returns every nonce in the window; `untilUndeployed: true` stops at the first undeployed nonce and
+ * returns only the contiguous deployed prefix (the view's `until_undeployed` flag).
+ */
+export interface AddressRange {
+  start?: number;
+  end?: number;
+  untilUndeployed?: boolean;
+}
+
+/**
+ * The shadow account namespace for one user + dapp, opened by {@link PrivacyBuilder.shadowAccounts}.
+ * `addresses` is a read (resolved immediately via the anonymizer view). `invoke` queues running
+ * `calls` through the shadow account `nonce` — it may deposit into the pool, nothing, or several things;
+ * pair it with `createOpenNote` only if the interaction settles proceeds into a note.
+ */
+export interface ShadowAccountsBuilder {
+  addresses(range?: AddressRange): Promise<ShadowAccountInfo[]>;
+  /**
+   * Queue running `calls` through the shadow account `nonce` (a compute-and-invoke against the
+   * anonymizer). `collectPolicy` (one policy for all of the transaction's open notes; default
+   * `{ type: "all" }`) selects how much of the shadow account's balance each note collects.
+   */
+  invoke(
+    nonce: BigNumberish,
+    options: { calls: Call[]; collectPolicy?: Strk20CollectPolicy }
+  ): PrivacyBuilder;
+}
+
 /** Token-scoped operations, opened by {@link PrivacyBuilder.with}. Each queues an action + chains. */
 export interface PrivacyTokenBuilder {
   /** Deposit `amount` of the token from the user's public balance into the pool (always to self). */
@@ -184,6 +269,8 @@ export interface PrivacyTokenBuilder {
 export interface PrivacyBuilder {
   /** Open token-scoped operations for `token`. */
   with(token: StarknetAddress): PrivacyTokenBuilder;
+  /** Open the shadow account namespace for `dappName` (currently `addresses`, a read). */
+  shadowAccounts(dappName: string): ShadowAccountsBuilder;
   /** Queue a contract invocation that runs after the private operations. */
   invoke(callBuilder: PrivacyInvokeCallBuilder): PrivacyBuilder;
   /** Queue a two-stage compute-and-invoke that runs after the private operations. */

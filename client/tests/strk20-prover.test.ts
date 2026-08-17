@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 // Capture the operations the prover replays onto the core builder by faking createPrivateTransfers.
 const h = vi.hoisted(() => {
   const coreCallAndProof = {
-    call: { contractAddress: "0xpool", entrypoint: "apply", calldata: ["0x1"] },
+    call: { contractAddress: "0xf001", entrypoint: "apply", calldata: ["0x1"] },
     proof: { data: "0xdata", output: ["0x2"], proofFacts: ["0x3"] },
   };
   const state: {
@@ -42,9 +42,13 @@ const h = vi.hoisted(() => {
       state.simulateArg = arg;
       return { callAndProof: coreCallAndProof, registry: {} };
     },
-    // subaccounts now hangs off the builder (core #905: transfers.build().subaccounts(...)).
-    subaccounts: (dappName: string) => ({
+    // shadowAccounts now hangs off the builder (core #905: transfers.build().shadowAccounts(...)).
+    shadowAccounts: (dappName: string) => ({
       partialCommitment: async () => (dappName === "my-dapp" ? 0xc0ffeen : 0n),
+      invoke: (nonce: unknown, options: unknown) => {
+        state.ops.push({ op: "shadowAccountsInvoke", dappName, nonce, options });
+        return builder;
+      },
     }),
   };
   const transfers = {
@@ -77,8 +81,8 @@ function makeProver() {
     node: {} as never,
     discovery: {} as never,
     prover: {} as never,
-    poolContractAddress: "0xpool",
-    subAccountAnonymizerAddress: "0xanon",
+    poolContractAddress: "0xf001",
+    shadowAccountAnonymizerAddress: "0xa11",
     storage: {
       loadRegistry: async () => loadedRegistry as never,
       saveRegistry: async (registry) => {
@@ -95,7 +99,7 @@ beforeEach(() => {
 });
 
 describe("CorePrivateTransfersProver", () => {
-  it("partialCommitment delegates to the core subaccounts builder for the dapp", async () => {
+  it("partialCommitment delegates to the core shadowAccounts builder for the dapp", async () => {
     expect(await makeProver().partialCommitment("my-dapp")).toBe(0xc0ffeen);
   });
 
@@ -116,7 +120,7 @@ describe("CorePrivateTransfersProver", () => {
     ]);
     // core CallAndProof (camelCase) → strk20 RPC shape (snake_case, proof_facts).
     expect(result).toEqual({
-      call: { contract_address: "0xpool", entry_point: "apply", calldata: ["0x1"] },
+      call: { contract_address: "0xf001", entry_point: "apply", calldata: ["0x1"] },
       proof: { data: "0xdata", output: ["0x2"], proof_facts: ["0x3"] },
     });
   });
@@ -139,7 +143,7 @@ describe("CorePrivateTransfersProver", () => {
     );
     expect(h.state.simulateArg).toBeDefined();
     expect(saved).toBeUndefined();
-    expect(estimate.call.contract_address).toBe("0xpool");
+    expect(estimate.call.contract_address).toBe("0xf001");
   });
 
   it("resolves invoke placeholders against the compiled transaction's open notes and pool", async () => {
@@ -185,6 +189,25 @@ describe("CorePrivateTransfersProver", () => {
       contractAddress: "0xdapp",
       computeAdditionalData: ["0xdead"],
       invokeAdditionalData: ["0x7"],
+    });
+  });
+
+  it("maps shadow_account_invoke to core build().shadowAccounts(dappName).invoke with camelCase calls", async () => {
+    await makeProver().prove([
+      {
+        type: "shadow_account_invoke",
+        dapp_name: "ekubo",
+        nonce: "0x3",
+        calls: [{ contract_address: "0xswap", entry_point: "swap", calldata: ["0x1"] }],
+        collect_policy: { type: "exact", amount: "0x64" },
+      },
+    ]);
+    const op = h.state.ops.find((entry) => entry.op === "shadowAccountsInvoke")!;
+    expect(op.dappName).toBe("ekubo");
+    expect(op.nonce).toBe("0x3");
+    expect(op.options).toEqual({
+      calls: [{ contractAddress: "0xswap", entrypoint: "swap", calldata: ["0x1"] }],
+      collectPolicy: { type: "exact", amount: 0x64n },
     });
   });
 });

@@ -1,11 +1,11 @@
 use privacy::objects::OpenNoteDeposit;
+use shadow_account_anonymizer::shadow_account_anonymizer::{
+    IShadowAccountAnonymizerDispatcher, IShadowAccountAnonymizerDispatcherTrait, OpenNote,
+};
 use snforge_std::{ContractClassTrait, DeclareResultTrait, Token, declare};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils_testing::test_utils::{cheat_caller_address_once, deploy_mock_erc20_token};
-use sub_account_anonymizer::sub_account_anonymizer::{
-    ISubAccountAnonymizerDispatcher, ISubAccountAnonymizerDispatcherTrait, OpenNote,
-};
 
 /// The address configured as the privacy contract; the only authorized caller.
 pub const PRIVACY: ContractAddress = 'PRIVACY'.try_into().unwrap();
@@ -13,8 +13,8 @@ pub const PRIVACY: ContractAddress = 'PRIVACY'.try_into().unwrap();
 /// The address configured as the governance admin; authorized to manage roles and upgrades.
 pub const GOVERNANCE_ADMIN: ContractAddress = 'GOVERNANCE_ADMIN'.try_into().unwrap();
 
-pub fn anonymizer_disp(anonymizer: ContractAddress) -> ISubAccountAnonymizerDispatcher {
-    ISubAccountAnonymizerDispatcher { contract_address: anonymizer }
+pub fn anonymizer_disp(anonymizer: ContractAddress) -> IShadowAccountAnonymizerDispatcher {
+    IShadowAccountAnonymizerDispatcher { contract_address: anonymizer }
 }
 
 /// A deployed anonymizer together with a funding-capable token and a mock dapp, for exercising the
@@ -44,7 +44,7 @@ pub impl ComponentsImpl of ComponentsTrait {
 pub fn deploy_components() -> Components {
     let token = deploy_token();
     let mock_dapp = deploy_mock_dapp();
-    let anonymizer = deploy_sub_account_anonymizer();
+    let anonymizer = deploy_shadow_account_anonymizer();
     Components { token, mock_dapp, anonymizer }
 }
 
@@ -60,14 +60,14 @@ pub fn transfer_to_caller_call(
     }
 }
 
-pub fn deploy_sub_account_anonymizer() -> ContractAddress {
-    let sub_account_class_hash = *declare("SubAccount")
+pub fn deploy_shadow_account_anonymizer() -> ContractAddress {
+    let shadow_account_class_hash = *declare("SubAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;
-    let contract = declare("SubAccountAnonymizer").unwrap_syscall().contract_class();
+    let contract = declare("ShadowAccountAnonymizer").unwrap_syscall().contract_class();
     let (address, _) = contract
-        .deploy(@array![PRIVACY.into(), sub_account_class_hash.into(), GOVERNANCE_ADMIN.into()])
+        .deploy(@array![PRIVACY.into(), shadow_account_class_hash.into(), GOVERNANCE_ADMIN.into()])
         .unwrap_syscall();
     address
 }

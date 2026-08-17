@@ -8,7 +8,7 @@
 
 import { setupAdmin, requireEnv, u256Calldata } from "../src/utils.js";
 
-const { adminAccount: account, provider } = setupAdmin();
+const { adminAccount: account, node } = setupAdmin();
 
 const USD_TOKEN = requireEnv("USD_TOKEN_ADDRESS");
 const USD_VTOKEN = requireEnv("USD_VTOKEN_ADDRESS");
@@ -18,7 +18,7 @@ const fmt = (raw: bigint) =>
   `${raw / ONE_TOKEN}.${(raw % ONE_TOKEN).toString().padStart(18, "0").slice(0, 4)}`;
 
 async function getBalance(token: string): Promise<bigint> {
-  const result = await provider.callContract({
+  const result = await node.callContract({
     contractAddress: token,
     entrypoint: "balance_of",
     calldata: [account.address],
@@ -34,7 +34,7 @@ const mintTx = await account.execute({
   entrypoint: "mint",
   calldata: [account.address, ...u256Calldata(mintAmount)],
 });
-await provider.waitForTransaction(mintTx.transaction_hash);
+await node.waitForTransaction(mintTx.transaction_hash);
 
 // Approve vToken contract (the ERC-4626 vault) to pull USD
 console.log("Approving vToken vault...");
@@ -43,7 +43,7 @@ const approveTx = await account.execute({
   entrypoint: "approve",
   calldata: [USD_VTOKEN, ...u256Calldata(mintAmount)],
 });
-await provider.waitForTransaction(approveTx.transaction_hash);
+await node.waitForTransaction(approveTx.transaction_hash);
 
 const balUsdBefore = await getBalance(USD_TOKEN);
 const balVTokenBefore = await getBalance(USD_VTOKEN);
@@ -57,7 +57,7 @@ const depositTx = await account.execute({
   entrypoint: "deposit",
   calldata: [...u256Calldata(depositAmount), account.address],
 });
-const depositReceipt = await provider.waitForTransaction(
+const depositReceipt = await node.waitForTransaction(
   depositTx.transaction_hash,
 );
 console.log(
@@ -81,9 +81,7 @@ const redeemTx = await account.execute({
   entrypoint: "redeem",
   calldata: [...u256Calldata(sharesToRedeem), account.address, account.address],
 });
-const redeemReceipt = await provider.waitForTransaction(
-  redeemTx.transaction_hash,
-);
+const redeemReceipt = await node.waitForTransaction(redeemTx.transaction_hash);
 console.log(
   `Redeem tx: ${redeemTx.transaction_hash}, success: ${redeemReceipt.isSuccess()}`,
 );

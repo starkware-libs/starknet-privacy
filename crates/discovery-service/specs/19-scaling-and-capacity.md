@@ -22,7 +22,7 @@ Discovery tuning in these experiments is latency-first:
 
 - Keep each discovery operation to one (or very few) API queries by setting `server_budget` high enough to avoid pagination for the expected state size.
 - Keep backend round-trip cost low by using RPC batch requests (`max_batch_size`) large enough to amortize per-request overhead.
-- Throttle RPC fan-out (`max_concurrent_requests`) to avoid overdriving backend internals and increasing queueing/collision contention.
+- Throttle RPC fan-out (`max_concurrent_requests`, one permit per JSON-RPC round trip including batch requests) to avoid overdriving backend internals and increasing queueing/collision contention.
 
 Capacity interpretation note:
 

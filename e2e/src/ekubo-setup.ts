@@ -52,7 +52,7 @@ function parseI129(value: bigint): { mag: bigint; sign: boolean } {
  */
 export async function deployEkuboInfra(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
   tokens: TokenAddresses,
   poolConfig: EkuboPoolConfig = DEVNET_POOL_CONFIG,
 ): Promise<EkuboAddresses> {
@@ -65,7 +65,7 @@ export async function deployEkuboInfra(
 
   const declareEkubo = async (name: string) => {
     const { classPath, compiledPath } = ekuboArtifact(name);
-    return declareClass(admin, provider, classPath, compiledPath);
+    return declareClass(admin, node, classPath, compiledPath);
   };
 
   const coreClassHash = await declareEkubo("Core");
@@ -75,7 +75,7 @@ export async function deployEkuboInfra(
 
   const coreAddress = await deployContract(
     admin,
-    provider,
+    node,
     coreClassHash,
     [admin.address],
     "0x100",
@@ -83,7 +83,7 @@ export async function deployEkuboInfra(
 
   const routerAddress = await deployContract(
     admin,
-    provider,
+    node,
     routerClassHash,
     [coreAddress],
     "0x200",
@@ -91,7 +91,7 @@ export async function deployEkuboInfra(
 
   const positionsAddress = await deployContract(
     admin,
-    provider,
+    node,
     positionsClassHash,
     [admin.address, coreAddress, ownedNftClassHash, "0"],
     "0x300",
@@ -116,36 +116,36 @@ export async function deployEkuboInfra(
   ];
 
   // Initialize pool
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: coreAddress,
     entrypoint: "initialize_pool",
     calldata: [...poolKey, initialTick.mag, initialTick.sign],
   });
 
   // Mint seed tokens to admin and transfer to Positions contract
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolToken0,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(poolConfig.seedAmount0)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolToken1,
     entrypoint: "mint",
     calldata: [admin.address, ...u256Calldata(poolConfig.seedAmount1)],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolToken0,
     entrypoint: "transfer",
     calldata: [positionsAddress, poolConfig.seedAmount0, 0n],
   });
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: poolToken1,
     entrypoint: "transfer",
     calldata: [positionsAddress, poolConfig.seedAmount1, 0n],
   });
 
   // Mint position and deposit liquidity
-  await executeAndWait(admin, provider, {
+  await executeAndWait(admin, node, {
     contractAddress: positionsAddress,
     entrypoint: "mint_and_deposit_and_clear_both",
     calldata: [
@@ -173,7 +173,7 @@ export async function deployEkuboInfra(
  */
 export async function deployEkuboExecutor(
   admin: Account,
-  provider: RpcProvider,
+  node: RpcProvider,
 ): Promise<string> {
   const executorArtifact = artifactPair(
     join(repoRoot(), "target/dev"),
@@ -183,14 +183,14 @@ export async function deployEkuboExecutor(
 
   const executorClassHash = await declareClass(
     admin,
-    provider,
+    node,
     executorArtifact.classPath,
     executorArtifact.compiledPath,
   );
 
   return deployContract(
     admin,
-    provider,
+    node,
     executorClassHash,
     [], // stateless — no constructor args
     "0x100",

@@ -27,7 +27,7 @@ use privacy::tests::utils_for_tests::{
     deploy_mock_return_garbage, deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
-    ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+    ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, LEGACY_VALIDATED, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
 };
 use privacy::utils::{
     compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
@@ -41,7 +41,8 @@ use snforge_std::signature::{KeyPairTrait, SignerTrait};
 use snforge_std::{
     CheatSpan, EventSpyTrait, EventsFilterTrait, MessageToL1SpyTrait, TokenTrait, cheat_tip,
     cheat_transaction_version, get_class_hash, map_entry_address, spy_events, spy_messages_to_l1,
-    start_cheat_chain_id_global, start_cheat_signature, stop_cheat_chain_id_global,
+    start_cheat_chain_id_global, start_cheat_signature, start_cheat_transaction_hash,
+    stop_cheat_chain_id_global, stop_cheat_transaction_hash,
 };
 use starknet::account::Call;
 use starknet::{ContractAddress, VALIDATED};
@@ -6609,7 +6610,7 @@ fn test_deposit_custom_account_custom_fails_but_call_set_sig_passes() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
     let depositor = deploy_mock_custom_account(
-        salt: 11, is_valid: false, public_key: key.public_key,
+        salt: 11, custom_result: Zero::zero(), panics_on_reject: false, public_key: key.public_key,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6637,7 +6638,7 @@ fn test_deposit_custom_account_all_checks_fail_reverts() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_FALLBACK_SK');
     let depositor = deploy_mock_custom_account(
-        salt: 12, is_valid: false, public_key: key.public_key,
+        salt: 12, custom_result: Zero::zero(), panics_on_reject: false, public_key: key.public_key,
     );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
@@ -6645,6 +6646,62 @@ fn test_deposit_custom_account_all_checks_fail_reverts() {
         .privacy
         .wrap_inputs_into_calls(
             user_addr: depositor, user_private_key: 'CUSTOM_FALLBACK_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty) — matches neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
+}
+
+/// Regression: a custom validator that rejects by panicking rather than returning 0 must not abort
+/// the transaction — the valid `CallSet` signature the wallet also holds must still authenticate.
+#[test]
+fn test_deposit_panicking_custom_validator_falls_through_to_call_set() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_PANIC_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 16, custom_result: Zero::zero(), panics_on_reject: true, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_PANIC_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "a panicking check I must fall through to the CallSet check");
+    stop_cheat_chain_id_global();
+}
+
+/// A panicking custom validator whose signature matches no check must fail with the pool's
+/// `INVALID_SIGNATURE`, not with the validator's own panic felt.
+#[test]
+fn test_deposit_panicking_custom_validator_all_checks_fail_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CUSTOM_PANIC_SK');
+    let depositor = deploy_mock_custom_account(
+        salt: 17, custom_result: Zero::zero(), panics_on_reject: true, public_key: key.public_key,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'CUSTOM_PANIC_PK', :client_actions,
         );
 
     // Sign a DIFFERENT CallSet (empty) — matches neither the tx hash nor the real CallSet hash.
@@ -6668,7 +6725,9 @@ fn test_deposit_legacy_sn_wallet_via_snip12_call_set() {
     start_cheat_chain_id_global('TEST');
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
-    let depositor = deploy_mock_stark_account(salt: 7, public_key: key.public_key);
+    let depositor = deploy_mock_stark_account(
+        salt: 7, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
@@ -6693,7 +6752,9 @@ fn test_deposit_legacy_sn_wallet_wrong_call_set_reverts() {
     start_cheat_chain_id_global('TEST');
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('CALLSET_WALLET_SK');
-    let depositor = deploy_mock_stark_account(salt: 8, public_key: key.public_key);
+    let depositor = deploy_mock_stark_account(
+        salt: 8, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
@@ -6723,7 +6784,9 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
     start_cheat_chain_id_global('TEST');
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('NO_SRC5_WALLET_SK');
-    let depositor = deploy_mock_stark_account(salt: 9, public_key: key.public_key);
+    let depositor = deploy_mock_stark_account(
+        salt: 9, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: false,
+    );
 
     let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
     let calls = test
@@ -6739,4 +6802,171 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
     let result = test.privacy.safe_execute_with_calls(calls);
     assert!(result.is_ok(), "no-SRC5 account should route to the legacy path, not revert");
     stop_cheat_chain_id_global();
+}
+
+/// A pre-SNIP-6 wallet accepts by returning the boolean `1` rather than the `VALIDATED` short
+/// string. SNIP-6 tells consumers to honor both, so a valid signature over the tx hash must
+/// authenticate at check II.
+#[test]
+fn test_deposit_legacy_bool_wallet_via_tx_hash() {
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 18, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'BOOL_PROTOCOL_PK', :client_actions,
+        );
+
+    let tx_hash = 'BOOL_TX_HASH';
+    start_cheat_transaction_hash(test.privacy.address, tx_hash);
+    let (r, s) = key.sign(tx_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "a boolean acceptance felt must authenticate at check II");
+    stop_cheat_transaction_hash(test.privacy.address);
+}
+
+/// The same boolean acceptance felt must also be honored at check III, reached only when the
+/// signature is over the SNIP-12 `CallSet` hash instead of the tx hash.
+#[test]
+fn test_deposit_legacy_bool_wallet_via_snip12_call_set() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 19, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'BOOL_PROTOCOL_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "a boolean acceptance felt must authenticate at check III");
+    stop_cheat_chain_id_global();
+}
+
+/// Tolerating the boolean acceptance felt must not weaken rejection: a boolean-style wallet that
+/// rejects (returns 0) over every message still fails with `INVALID_SIGNATURE`.
+#[test]
+fn test_deposit_legacy_bool_wallet_wrong_call_set_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 20, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'BOOL_PROTOCOL_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
+}
+
+/// Regression: a wallet that rejects a mismatched signature by panicking rather than returning 0
+/// must still reach the legacy `CallSet` check.
+#[test]
+fn test_deposit_panicking_wallet_via_snip12_call_set() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 13, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
+        );
+
+    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
+    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
+    let (r, s) = key.sign(hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "a panicking check II must fall through to the CallSet check");
+    stop_cheat_chain_id_global();
+}
+
+/// A panicking wallet whose signature matches no check must fail with the pool's
+/// `INVALID_SIGNATURE`, not with the account's own panic felt.
+#[test]
+fn test_deposit_panicking_wallet_wrong_call_set_reverts() {
+    start_cheat_chain_id_global('TEST');
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 14, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
+        );
+
+    // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
+    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
+    let (r, s) = key.sign(wrong_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
+    stop_cheat_chain_id_global();
+}
+
+/// A panicking wallet's valid tx-hash signature must still authenticate at check II — tolerating
+/// the panic must not cost the account the check it would otherwise have passed.
+#[test]
+fn test_deposit_panicking_wallet_via_tx_hash() {
+    let test: Test = Default::default();
+    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('PANICKING_WALLET_SK');
+    let depositor = deploy_mock_stark_account(
+        salt: 15, public_key: key.public_key, returns_legacy_bool: false, panics_on_reject: true,
+    );
+
+    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
+    let calls = test
+        .privacy
+        .wrap_inputs_into_calls(
+            user_addr: depositor, user_private_key: 'PANICKING_PROTOCOL_PK', :client_actions,
+        );
+
+    let tx_hash = 'PANICKING_TX_HASH';
+    start_cheat_transaction_hash(test.privacy.address, tx_hash);
+    let (r, s) = key.sign(tx_hash).unwrap();
+    start_cheat_signature(test.privacy.address, array![r, s].span());
+
+    let result = test.privacy.safe_execute_with_calls(calls);
+    assert!(result.is_ok(), "a valid tx-hash signature must still authenticate at check II");
+    stop_cheat_transaction_hash(test.privacy.address);
 }

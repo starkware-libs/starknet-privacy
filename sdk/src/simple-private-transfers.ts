@@ -37,11 +37,15 @@ export class SimplePrivateTransfersImpl implements SimplePrivateTransfersInterfa
     amount: Amount | All
   ): Promise<ExecuteResult> {
     const builder = this.build(token);
-    const surplustWithdraw = isAll(amount) ? true : false;
-    if (!isAll(amount)) {
-      builder.withdraw({ recipient, amount });
+    if (isAll(amount)) {
+      // Withdraw all: send everything as surplus to recipient's public balance
+      // TODO(Avi): no-op today — resolveNotes only enters a token into `balances` via
+      // deposits/useNotes/withdraws/createNotes, so a bare surplusTo with no other action
+      // on the token never selects notes or emits a withdraw. Needs a fix in internal/compiler.ts.
+      return builder.surplusTo(recipient, true).execute();
     }
-    return builder.surplusTo(recipient, surplustWithdraw).execute();
+    // Withdraw specific amount: pay recipient publicly, keep surplus as a private note
+    return builder.withdraw({ recipient, amount }).surplusTo(this.inner.user, false).execute();
   }
 
   transfer(

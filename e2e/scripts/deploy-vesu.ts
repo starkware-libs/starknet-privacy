@@ -25,7 +25,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-const { adminAccount, provider } = setupAdmin();
+const { adminAccount, node } = setupAdmin();
 
 // Reuse existing tokens if provided, otherwise deploy fresh ones
 const existingUsd = process.env.USD_TOKEN_ADDRESS;
@@ -43,17 +43,17 @@ if (hasExistingTokens) {
   console.log(`  BTC: ${btcToken}`);
 } else {
   console.log("\n=== Deploying test tokens ===");
-  ({ usdToken, btcToken } = await deployTestTokens(adminAccount, provider));
+  ({ usdToken, btcToken } = await deployTestTokens(adminAccount, node));
 }
 
 console.log("\n=== Deploying Vesu infrastructure ===");
-const vesu = await deployVesuInfra(adminAccount, provider, {
+const vesu = await deployVesuInfra(adminAccount, node, {
   usdToken,
   btcToken,
 });
 
 console.log("\n=== Deploying Vesu lending anonymizer ===");
-const anonymizerAddress = await deployVesuAnonymizer(adminAccount, provider);
+const anonymizerAddress = await deployVesuAnonymizer(adminAccount, node);
 
 // Build output env vars
 const tokens = [

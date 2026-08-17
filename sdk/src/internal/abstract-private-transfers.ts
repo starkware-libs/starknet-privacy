@@ -43,7 +43,7 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
     userAddress: StarknetAddress,
     protected readonly viewingKeyProvider: ViewingKeyProvider,
     protected readonly discoveryProvider: DiscoveryProviderInterface,
-    protected readonly subAccountAnonymizerAddress?: StarknetAddress
+    protected readonly shadowAccountAnonymizerAddress?: StarknetAddress
   ) {
     this.user = toBigInt(userAddress);
   }
@@ -101,7 +101,7 @@ export abstract class AbstractPrivateTransfers implements PrivateTransfersInterf
    */
   build(options?: ExecuteOptions): PrivateTransfersBuilder {
     return new PrivateTransfersBuilderImpl(this, this.user, options, {
-      anonymizerAddress: this.subAccountAnonymizerAddress,
+      anonymizerAddress: this.shadowAccountAnonymizerAddress,
       getViewingKey: () => this.getViewingKey(),
     });
   }
