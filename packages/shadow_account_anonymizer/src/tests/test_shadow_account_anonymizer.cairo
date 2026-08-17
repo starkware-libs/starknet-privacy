@@ -52,13 +52,16 @@ fn test_get_shadow_account_unknown_identity_commitment_is_zero() {
     assert!(anonymizer_disp(anonymizer).get_shadow_account('UNKNOWN').is_zero());
 }
 
+/// `get_shadow_account` reports only what is stored, so an undeployed commitment reads back as
+/// zero. The address such a commitment *would* deploy to comes from the range view instead, which
+/// `test_get_shadow_accounts_computed_address_matches_deploy` covers.
 #[test]
-fn test_undeployed_shadow_account_resolves_to_computed_address() {
+fn test_undeployed_shadow_account_has_no_stored_address() {
     let anonymizer = deploy_shadow_account_anonymizer();
-    let info = shadow_account_info(anonymizer, 0);
-    // Undeployed, but still resolves to the deterministic address it would deploy to.
-    assert!(!info.is_deployed);
-    assert!(info.address.is_non_zero());
+    let commitment = commitment_from_partial(partial_commitment('USER', 'DAPP'), 0);
+
+    assert!(!shadow_account_info(anonymizer, 0).is_deployed);
+    assert!(anonymizer_disp(anonymizer).get_shadow_account(commitment).is_zero());
 }
 
 #[test]
