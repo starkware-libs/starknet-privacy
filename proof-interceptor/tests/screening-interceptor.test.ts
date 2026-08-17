@@ -5,9 +5,9 @@ import { createServer, type Server } from "node:http";
 import {
   ScreeningInterceptor,
   getScreenedAddresses,
-  isSinglePoolCall,
   type ScreeningConfig,
 } from "../src/screening-interceptor.js";
+import { isSinglePoolCall } from "../src/pool-transaction.js";
 import type { ProveTxnV3 } from "../src/types.js";
 
 // Test addresses and values — must be valid hex for ABI decoding
