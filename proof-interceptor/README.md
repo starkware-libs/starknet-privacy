@@ -80,7 +80,7 @@ Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. O
 
 ### Request
 
-The body mirrors `starknet_proveTransaction` exactly (object or positional params). The screened shape is a single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` with `calldata = [call_count=1, contract_address=pool, selector, inner_len, user_addr, user_private_key, ...action_span]`. The action span is decoded against `PrivacyPoolABI`; only the Deposit variant triggers a screen. See `src/rpc.ts` for envelope validation and the calldata-layout comments above `isSinglePoolCall` in `src/screening-interceptor.ts` for the field-by-field breakdown.
+The body mirrors `starknet_proveTransaction` exactly (object or positional params). The screened shape is a single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` with `calldata = [call_count=1, contract_address=pool, selector, inner_len, user_addr, user_private_key, ...action_span]`. The action span is decoded against `PrivacyPoolABI`; only the Deposit variant triggers a screen. See `src/rpc.ts` for envelope validation and the calldata-layout comments above `isSinglePoolCall` in `src/pool-transaction.ts` for the field-by-field breakdown.
 
 ### Response shapes
 
@@ -181,7 +181,9 @@ npm start
 | `src/proxy.ts`                 | Top-level request handler — routing (`/`, `/health`, `/metrics`), body limits, JSON-RPC error mapping    |
 | `src/rpc.ts`                   | JSON-RPC envelope and `starknet_checkTransaction` parameter validation                                   |
 | `src/interceptor.ts`           | Parallel interceptor runner with first-block-wins semantics                                              |
-| `src/screening-interceptor.ts` | Pool-call gate, deposit detection, address extraction, retry/timeout, HMAC-signed call to elliptic-proxy |
+| `src/pool-transaction.ts`      | Pool-call gate and client-action decoding of a prove request's calldata                                  |
+| `src/shadow-account.ts`        | The shadow account interaction a transaction runs on the anonymizer, from its decoded actions            |
+| `src/screening-interceptor.ts` | Deposit detection, address extraction, retry/timeout, HMAC-signed call to elliptic-proxy                 |
 | `src/types.ts`                 | JSON-RPC and `ProveTxnV3` types                                                                          |
 | `src/metrics.ts`               | Prometheus registry and metric definitions                                                               |
 | `src/shutdown.ts`              | SIGTERM/SIGINT handlers                                                                                  |
