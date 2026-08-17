@@ -1,12 +1,11 @@
 // src/screening-interceptor.ts
 import { createHmac } from "node:crypto";
-import { CallData } from "starknet";
-import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
 import type {
   ScreeningSignature,
   TransactionInterceptor,
   Verdict,
 } from "./interceptor.js";
+import { decodeClientActions, isSinglePoolCall } from "./pool-transaction.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
   screeningResults,
@@ -33,47 +32,13 @@ export interface ScreeningConfig {
   blockNonPoolTx: boolean;
 }
 
-const ACTIONS_TYPE =
-  "core::array::Span::<privacy::actions::ClientAction>" as const;
-
-const callDataDecoder = new CallData(PrivacyPoolABI);
-
 // 0x-hex felt, at most 64 hex digits (the zero-padded address width).
 const HEX_FELT = /^0x[0-9a-fA-F]{1,64}$/;
 
 /**
- * Returns true iff the transaction is a single-call INVOKE whose target
- * contract matches `poolAddress`.
- *
- * Expected calldata layout for a single-call INVOKE:
- *   [0] call_count          — must normalize to "0x1"
- *   [1] contract_address    — must match `poolAddress`
- *   [2] selector             — entrypoint selector (not checked here)
- *   [3] inner_calldata_len   — length of inner calldata
- *   [4..] inner calldata
- *
- * Multi-call batches (call_count !== 1) are not considered pool
- * transactions even if one of the inner calls targets the pool, because
- * single-call shape is required for the screening logic to extract the
- * deposit action and user address.
- *
- * All hex felts are normalized before comparison so attackers can't bypass
- * the check with variants like "0X1", "0x01", "0x001", or mixed-case digits.
- */
-export function isSinglePoolCall(
-  transaction: ProveTxnV3,
-  poolAddress: string
-): boolean {
-  const calldata = transaction.calldata;
-  if (calldata.length < 7 || normalizeFelt(calldata[0]) !== "0x1") return false;
-  return normalizeFelt(calldata[1]) === normalizeFelt(poolAddress);
-}
-
-/**
  * Extracts addresses that need screening from a privacy pool transaction,
  * but only if the transaction is a single direct call to the pool and
- * contains a Deposit action. The inner calldata is decoded using the
- * contract ABI from the SDK.
+ * contains a Deposit action.
  *
  * Returns `[]` for non-pool transactions and for pool transactions that
  * carry no Deposit action (e.g., Withdraw-only). Whether non-pool
@@ -84,48 +49,12 @@ export function getScreenedAddresses(
   transaction: ProveTxnV3,
   poolAddress: string
 ): string[] {
-  if (!isSinglePoolCall(transaction, poolAddress)) return [];
-
-  const calldata = transaction.calldata;
-  const innerCalldataLength = parseInt(calldata[3], 16);
-  if (Number.isNaN(innerCalldataLength) || innerCalldataLength < 3) return [];
-
-  const innerCalldata = calldata.slice(4, 4 + innerCalldataLength);
-
-  // innerCalldata[0] = user_addr, [1] = user_private_key, [2..] = actions span
-  const actionsCalldata = innerCalldata.slice(2);
-  if (!hasDepositAction(actionsCalldata)) return [];
-
-  return [normalizeFelt(innerCalldata[0])];
-}
-
-/**
- * Decodes serialized client actions using the contract ABI and checks for Deposit.
- * Returns false if the calldata is malformed (fail-open: don't screen garbage).
- */
-function hasDepositAction(actionsCalldata: string[]): boolean {
-  try {
-    const decoded = callDataDecoder.decodeParameters(
-      ACTIONS_TYPE,
-      actionsCalldata
-    ) as Array<{ activeVariant: () => string }>;
-
-    return decoded.some((action) => action.activeVariant() === "Deposit");
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Canonicalizes a hex felt252 string for equality comparison. Lowercases the
- * input (so "0X" / "0x" prefixes and "ABC" / "abc" digits all normalize the
- * same), strips the optional "0x" prefix, removes leading zeros, then
- * re-attaches "0x". Returns "0x0" for the zero value.
- */
-function normalizeFelt(value: string): string {
-  const lower = value.toLowerCase();
-  const hex = lower.startsWith("0x") ? lower.slice(2) : lower;
-  return "0x" + (hex.replace(/^0+/, "") || "0");
+  const poolCall = decodeClientActions(transaction, poolAddress);
+  if (poolCall === null) return [];
+  const hasDeposit = poolCall.actions.some(
+    (action) => action.activeVariant() === "Deposit"
+  );
+  return hasDeposit ? [poolCall.userAddress] : [];
 }
 
 type SignOutcome =
