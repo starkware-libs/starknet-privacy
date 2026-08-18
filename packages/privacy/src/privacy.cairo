@@ -2,7 +2,7 @@
 pub mod Privacy {
     use core::ec::EcPointTrait;
     use core::iter::Extend;
-    use core::num::traits::{CheckedSub, Zero};
+    use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::security::ReentrancyGuardComponent;
@@ -31,11 +31,12 @@ pub mod Privacy {
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs, extract_server_actions_from_panic,
-        is_canonical_key, open_note, pack, panic_with_server_actions, propagate_external_panic,
-        send_message_to_server, storage_path_to_felt252, to_write_once_action, unpack,
+        consume_undeposited_open_note, decode_note_amount, derive_public_key, enc_note_packed_value,
+        encrypt_channel_info, encrypt_outgoing_channel_info, encrypt_private_key,
+        encrypt_subchannel_info, encrypt_user_addr, extract_compile_actions_inputs,
+        extract_server_actions_from_panic, is_canonical_key, open_note, pack,
+        panic_with_server_actions, propagate_external_panic, send_message_to_server,
+        storage_path_to_felt252, to_write_once_action, unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -856,7 +857,9 @@ pub mod Privacy {
         fn _apply_actions(
             ref self: ContractState, actions: Span<ServerAction>,
         ) -> Option<ContractAddress> {
-            let mut undeposited_open_notes: usize = Zero::zero();
+            // Ids of the open notes created by this tx that no returned `OpenNoteDeposit` has
+            // funded yet. Matching by id binds a deposit to a creation in the same proven span.
+            let mut undeposited_open_note_ids: Array<felt252> = array![];
             // The single regular-pool depositor (`TransferFrom.from_addr`); every `TransferFrom`
             // in the tx must share it (`MULTIPLE_DEPOSITORS` otherwise).
             let mut user_depositor: Option<ContractAddress> = None;
@@ -878,7 +881,7 @@ pub mod Privacy {
                     ServerAction::Invoke(input) => {
                         self
                             ._apply_invoke_and_deposits(
-                                :input, selector: INVOKE_SELECTOR, ref :undeposited_open_notes,
+                                :input, selector: INVOKE_SELECTOR, ref :undeposited_open_note_ids,
                             );
                     },
                     ServerAction::InvokeWithComputation(input) => {
@@ -886,7 +889,7 @@ pub mod Privacy {
                             ._apply_invoke_and_deposits(
                                 :input,
                                 selector: INVOKE_WITH_COMPUTATION_SELECTOR,
-                                ref :undeposited_open_notes,
+                                ref :undeposited_open_note_ids,
                             );
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
@@ -894,13 +897,13 @@ pub mod Privacy {
                     ServerAction::EmitDeposit(event) => self.emit(event),
                     ServerAction::EmitOpenNoteCreated(event) => {
                         self.emit(event);
-                        undeposited_open_notes += 1;
+                        undeposited_open_note_ids.append(event.note_id);
                     },
                     ServerAction::EmitEncNoteCreated(event) => self.emit(event),
                     ServerAction::EmitNoteUsed(event) => self.emit(event),
                 };
             }
-            assert(undeposited_open_notes == Zero::zero(), errors::UNDEPOSITED_OPEN_NOTES);
+            assert(undeposited_open_note_ids.is_empty(), errors::UNDEPOSITED_OPEN_NOTES);
             user_depositor
         }
 
@@ -972,11 +975,13 @@ pub mod Privacy {
         /// returned open notes.
         /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
         /// intentionally not emitted, as it is already visible in the public call trace.
+        /// Each returned deposit consumes its note id from `undeposited_open_note_ids`, so it must
+        /// name an open note created earlier in the same action span.
         fn _apply_invoke_and_deposits(
             ref self: ContractState,
             input: InvokeInput,
             selector: felt252,
-            ref undeposited_open_notes: usize,
+            ref undeposited_open_note_ids: Array<felt252>,
         ) {
             let InvokeInput { contract_address, calldata } = input;
             let mut return_data = call_contract_syscall(
@@ -997,11 +1002,11 @@ pub mod Privacy {
                 );
                 // Apply deposits to open notes returned by Invoke.
                 for deposit in deposits {
+                    consume_undeposited_open_note(
+                        ref undeposited_open_note_ids, note_id: *deposit.note_id,
+                    );
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
-                undeposited_open_notes = undeposited_open_notes
-                    .checked_sub(deposits.len())
-                    .expect(internal_errors::TOO_MANY_OPEN_NOTES_DEPOSITED);
             }
         }
 

@@ -684,6 +684,32 @@ pub(crate) impl UserImpl of UserTrait {
             .span()
     }
 
+    /// Build an `EmitOpenNoteCreated` action for `note_id` with no matching note write.
+    /// `apply_actions` takes it as "`note_id` was created in this tx", so a deposit naming
+    /// `note_id` gets past that check and reaches the note validations in `_deposit_to_open_note`.
+    ///
+    /// Only a hand-built span can separate the event from its write-once, so tests asserting
+    /// `NOTE_NOT_FOUND`, `NOTE_NOT_OPEN` or `NOTE_ALREADY_DEPOSITED` must go through here.
+    fn open_note_created_action(
+        ref self: User, note_id: felt252, token_addr: ContractAddress,
+    ) -> ServerAction {
+        let enc_recipient_addr = self.compute_enc_user_addr(random: self.get_random());
+        ServerAction::EmitOpenNoteCreated(
+            events::OpenNoteCreated { enc_recipient_addr, token: token_addr, note_id },
+        )
+    }
+
+    /// Returns `actions` preceded by `open_note_created_action(note_id, token_addr)`.
+    fn with_open_note_created_action(
+        ref self: User, note_id: felt252, token_addr: ContractAddress, actions: Span<ServerAction>,
+    ) -> Span<ServerAction> {
+        let mut actions_with_creation = array![
+            self.open_note_created_action(:note_id, :token_addr),
+        ];
+        actions_with_creation.append_span(actions);
+        actions_with_creation.span()
+    }
+
     /// Plant an open note directly in storage via WriteOnce, bypassing `EmitOpenNoteCreated`
     /// and the same-tx deposit enforcement.
     fn cheat_create_open_note(self: @User, create_note_input: CreateOpenNoteInput) {
@@ -710,12 +736,7 @@ pub(crate) impl UserImpl of UserTrait {
     fn create_and_deposit_to_open_note_e2e(
         self: @User, create_note_input: CreateOpenNoteInput, amount: u128, token: Token,
     ) -> felt252 {
-        let echo_executor_addr = *self.privacy.echo_executor;
-        token.supply(address: echo_executor_addr, :amount);
-        token
-            .approve(
-                owner: echo_executor_addr, spender: *self.privacy.address, amount: amount.into(),
-            );
+        self.privacy.fund_echo_executor(:token, :amount);
         let (note_id, actions) = self.create_and_deposit_to_open_note(:create_note_input, :amount);
         self.privacy.apply_actions(:actions);
         note_id
@@ -1933,6 +1954,14 @@ pub(crate) impl PrivacyCfgImpl of PrivacyCfgTrait {
             .apply_actions(
                 actions: server_actions, screening: self._auto_screening(actions: server_actions),
             );
+    }
+
+    /// Give the echo executor `amount` of `token` and approve the pool to pull it, so echoed
+    /// `OpenNoteDeposit`s can be funded by it.
+    fn fund_echo_executor(self: @PrivacyCfg, token: Token, amount: u128) {
+        let echo_executor_addr = *self.echo_executor;
+        token.supply(address: echo_executor_addr, :amount);
+        token.approve(owner: echo_executor_addr, spender: *self.address, amount: amount.into());
     }
 
     /// Build an `InvokeExternalInput` targeting the echo executor for depositing to open notes.
