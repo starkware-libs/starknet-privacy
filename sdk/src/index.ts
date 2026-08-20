@@ -2,6 +2,12 @@ export * from "./interfaces.js";
 export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
 export { ShadowAccountAnonymizerABI } from "./internal/anonymizer-abi.js";
+export {
+  PRIMER_CLASS_HASH,
+  shadowAccountAddress,
+  shadowAccountCommitment,
+  shadowAccountPartialCommitment,
+} from "./internal/shadow-account-address.js";
 export { SimplePrivateTransfersImpl } from "./simple-private-transfers.js";
 export {
   ProvingService,

@@ -9,11 +9,12 @@ use shadow_account_anonymizer::shadow_account_anonymizer::{
     commitment_from_partial, errors, partial_commitment,
 };
 use shadow_account_anonymizer::tests::test_utils::{
-    Components, ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components,
-    deploy_shadow_account_anonymizer, deploy_token, transfer_to_caller_call,
+    Components, ComponentsTrait, GOVERNANCE_ADMIN, PRIVACY, anonymizer_disp, declare_primer,
+    deploy_components, deploy_shadow_account_anonymizer, deploy_token, transfer_to_caller_call,
 };
 use snforge_std::{
-    DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare, spy_events,
+    ContractClassTrait, DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare,
+    spy_events,
 };
 use starknet::account::Call;
 use starknet::syscalls::call_contract_syscall;
@@ -832,4 +833,43 @@ fn test_invoke_return_data_is_the_deposits_then_the_addresses() {
     assert_eq!(deposits.len(), 1);
     assert_eq!(associated_addresses.len(), 1);
     assert_eq!(*associated_addresses[0], anonymizer.get_shadow_account(identity_commitment));
+}
+
+
+/// A committed cross-language vector. The SDK's `shadow-account-address` test derives the same
+/// felts from the same inputs, so the off-chain derivation cannot drift from the contract's. This
+/// test deploys the anonymizer at the vector's own address and goes through its entry points, so
+/// the expected felts pin the deployed contract rather than restate its recipe.
+#[test]
+fn test_shadow_account_derivation_matches_the_committed_vector() {
+    let anonymizer_address: ContractAddress = 0x444.try_into().unwrap();
+    declare_primer();
+    let shadow_account_class_hash = *declare("ShadowAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    declare("ShadowAccountAnonymizer")
+        .unwrap_syscall()
+        .contract_class()
+        .deploy_at(
+            @array![PRIVACY.into(), shadow_account_class_hash.into(), GOVERNANCE_ADMIN.into()],
+            anonymizer_address,
+        )
+        .unwrap_syscall();
+    let anonymizer = anonymizer_disp(anonymizer_address);
+
+    let partial = partial_commitment(identity_key: 0x111, dapp_name: 0x222);
+    assert_eq!(partial, 0xdbb320724c2f71919310007cc2ee821e9b234b98535d24dae197124c2ef4fb);
+
+    let commitment = anonymizer.privacy_compute(identity_key: 0x111, dapp_name: 0x222, nonce: 0x3);
+    assert_eq!(commitment, 0x418bf56bebf218ffa365531394e68b3336a9557b5b8be8ad6a21f44e79833b);
+
+    let shadow_accounts = anonymizer
+        .get_shadow_accounts(
+            partial_commitment: partial, start_nonce: 3, end_nonce: 4, until_undeployed: false,
+        );
+    assert_eq!(
+        *shadow_accounts[0].address,
+        0x5e1a753154c6cbb012b819c0362921b7040df54b90bb9241f54e7d946cf9708.try_into().unwrap(),
+    );
 }
