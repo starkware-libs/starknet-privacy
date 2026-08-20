@@ -21,6 +21,10 @@ jobs:
         run: |
           scarb fmt -w --check
 
+      - name: Check the Primer class hash agrees between Cairo and TypeScript
+        run: |
+          python3 scripts/check_primer_class_hash.py
+
       - name: Check unused imports and variables
         run: |
           scarb cache clean

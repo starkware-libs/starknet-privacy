@@ -4,6 +4,11 @@
 
 ### Added
 
+- `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and
+  `PRIMER_CLASS_HASH`, the shadow account derivation as pure functions, so a caller holding the raw
+  felts can predict a shadow account's address without deploying it or reading the chain.
+  `shadowAccounts(dapp).partialCommitment()` / `.commitment(nonce)` now delegate to them, and a
+  committed cross-language vector pins all three against the anonymizer's Cairo.
 - Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new
   `privacy_invoke_with_computation` return shape, `(Span<OpenNoteDeposit>, Span<ContractAddress>)`.
   The invoke now returns the shadow account its deposits passed through, which is the address the
