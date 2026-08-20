@@ -1,4 +1,5 @@
 // tests/pool-call.ts
+import { vi } from "vitest";
 import { CairoCustomEnum, CallData, num } from "starknet";
 import { PrivacyPoolABI } from "@starkware-libs/starknet-privacy-sdk/abi";
 import { ShadowAccountAnonymizerABI } from "@starkware-libs/starknet-privacy-sdk";
@@ -74,4 +75,11 @@ export function poolCallTransaction(actions: CairoCustomEnum[]): ProveTxnV3 {
     nonce_data_availability_mode: "L1",
     fee_data_availability_mode: "L1",
   } as unknown as ProveTxnV3;
+}
+
+/** Silences a fail-closed path's error log, and returns the spy to assert on. */
+export function silenceErrorLog(): ReturnType<
+  typeof vi.spyOn<typeof console, "error">
+> {
+  return vi.spyOn(console, "error").mockImplementation(() => {});
 }

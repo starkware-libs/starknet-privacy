@@ -6,7 +6,8 @@ import type { ProveTxnV3 } from "./types.js";
 const ACTIONS_TYPE =
   "core::array::Span::<privacy::actions::ClientAction>" as const;
 
-const callDataDecoder = new CallData(PrivacyPoolABI);
+/** The pool ABI's coder, shared by every module that encodes or decodes pool calldata. */
+export const poolCallData = new CallData(PrivacyPoolABI);
 
 /**
  * Returns true iff the transaction is a single-call INVOKE whose target
@@ -77,7 +78,7 @@ export function decodeClientActions(
 
   const innerCalldata = calldata.slice(4, 4 + innerCalldataLength);
   try {
-    const actions = callDataDecoder.decodeParameters(
+    const actions = poolCallData.decodeParameters(
       ACTIONS_TYPE,
       innerCalldata.slice(2)
     ) as CairoCustomEnum[];
