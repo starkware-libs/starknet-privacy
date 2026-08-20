@@ -25,6 +25,10 @@ jobs:
         run: |
           python3 scripts/check_primer_class_hash.py
 
+      - name: Check the open-note screening policies agree across Cairo, the ABI and the interceptor
+        run: |
+          python3 scripts/check_screening_policies.py
+
       - name: Check unused imports and variables
         run: |
           scarb cache clean
