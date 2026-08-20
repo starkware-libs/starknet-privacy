@@ -126,6 +126,7 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
+- `proof_interceptor_screening_policy_reads_total{result}` — open-note screening policies read from the pool: `Required` / `Exempt` / `Delegated`, or `unavailable` when the read failed and the flow fails closed.
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.
@@ -183,6 +184,7 @@ npm start
 | `src/interceptor.ts`           | Parallel interceptor runner with first-block-wins semantics                                              |
 | `src/pool-transaction.ts`      | Pool-call gate and client-action decoding of a prove request's calldata                                  |
 | `src/shadow-account.ts`        | The shadow account interaction a transaction runs on the anonymizer, from its decoded actions            |
+| `src/screening-policy.ts`      | Open-note screening policies read from the pool over RPC, cached per depositor with an LRU TTL           |
 | `src/screening-interceptor.ts` | Deposit detection, address extraction, retry/timeout, HMAC-signed call to elliptic-proxy                 |
 | `src/types.ts`                 | JSON-RPC and `ProveTxnV3` types                                                                          |
 | `src/metrics.ts`               | Prometheus registry and metric definitions                                                               |

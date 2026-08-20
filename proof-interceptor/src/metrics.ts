@@ -32,6 +32,13 @@ export const screeningResults = new Counter({
   registers: [registry],
 });
 
+export const screeningPolicyReads = new Counter({
+  name: "proof_interceptor_screening_policy_reads_total",
+  help: "Total open-note screening policies read from the pool, by policy or 'unavailable'",
+  labelNames: ["result"] as const,
+  registers: [registry],
+});
+
 export const screeningRetries = new Counter({
   name: "proof_interceptor_screening_retries_total",
   help: "Total screening retry attempts (not counting first attempt)",
