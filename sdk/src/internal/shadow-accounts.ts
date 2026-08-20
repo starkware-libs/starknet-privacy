@@ -9,8 +9,11 @@ import type {
   ViewingKey,
 } from "../interfaces.js";
 import { ShadowAccountAnonymizerABI } from "./anonymizer-abi.js";
-import { hash as poseidonHash, toBigInt, toHex } from "../utils/index.js";
-import { compute_identity_key } from "../utils/hashes.js";
+import { toBigInt, toHex } from "../utils/index.js";
+import {
+  shadowAccountCommitment,
+  shadowAccountPartialCommitment,
+} from "./shadow-account-address.js";
 
 /** Encodes a dapp name to a felt: a string is a Cairo short string, a felt passes through. */
 function encodeDappName(dappName: string | BigNumberish): bigint {
@@ -74,17 +77,16 @@ export class ShadowAccountsBuilderImpl implements ShadowAccountsBuilder {
   }
 
   async partialCommitment(): Promise<bigint> {
-    const viewingKey = await this.params.getViewingKey();
-    const identityKey = compute_identity_key(
+    return shadowAccountPartialCommitment(
       this.params.user,
-      toBigInt(viewingKey),
-      this.shadowAccountAnonymizerAddress
+      toBigInt(await this.params.getViewingKey()),
+      this.shadowAccountAnonymizerAddress,
+      this.dappName
     );
-    return poseidonHash(identityKey, this.dappName);
   }
 
   async commitment(nonce: BigNumberish): Promise<bigint> {
-    return poseidonHash(await this.partialCommitment(), toBigInt(nonce));
+    return shadowAccountCommitment(await this.partialCommitment(), toBigInt(nonce));
   }
 }
 
