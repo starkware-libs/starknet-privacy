@@ -2,20 +2,25 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import {
   ScreeningInterceptor,
-  getScreenedAddresses,
   type ScreeningConfig,
 } from "../src/screening-interceptor.js";
-import { isSinglePoolCall } from "../src/pool-transaction.js";
-import type { ProveTxnV3 } from "../src/types.js";
+import {
+  ANONYMIZER_ADDR,
+  POOL_ADDR,
+  SWAP_EXECUTOR,
+  computeAndInvokeAction,
+  createOpenNoteAction,
+  depositAction,
+  invokeExternalAction,
+  poolCallTransaction,
+  rawPoolCallTransaction,
+} from "./pool-call.js";
 
 // Test addresses and values — must be valid hex for ABI decoding
-const USER_ADDR = "0xaaa111";
-const PRIVATE_KEY = "0xbbb222";
-const TOKEN = "0xdead";
-const AMOUNT = "0x64";
-const POOL_ADDR = "0xpool";
+// A real felt: unlike the placeholders above, this one is serialized into an action and decoded.
 
 // The interceptor relays the /screen signature verbatim without verifying it,
 // so a well-shaped (not cryptographically valid) signature is enough here.
@@ -33,317 +38,6 @@ const ALLOW_RESPONSE = {
   signature: MOCK_SIGNATURE,
 };
 const BLOCKED_RESPONSE = { blocked: true, source: "blocklist" };
-
-function sampleTransaction(calldataOverride?: string[]): ProveTxnV3 {
-  return {
-    type: "INVOKE",
-    version: "0x3",
-    sender_address: "0xcontract",
-    calldata: calldataOverride ?? [
-      "0x1", // 1 call
-      "0xpool", // call.to (not decoded)
-      "0xselector", // call.selector (not decoded)
-      "0x6", // inner calldata length
-      USER_ADDR,
-      PRIVATE_KEY,
-      "0x1", // 1 action
-      "0x5", // Deposit variant
-      TOKEN,
-      AMOUNT,
-    ],
-    signature: ["0x1"],
-    nonce: "0x0",
-    resource_bounds: {},
-    tip: "0x0",
-    paymaster_data: [],
-    account_deployment_data: [],
-    nonce_data_availability_mode: "L1",
-    fee_data_availability_mode: "L1",
-  } as unknown as ProveTxnV3;
-}
-
-describe("getScreenedAddresses", () => {
-  it("extracts user_addr when transaction contains a deposit", () => {
-    const addresses = getScreenedAddresses(sampleTransaction(), POOL_ADDR);
-    expect(addresses).toEqual(["0xaaa111"]);
-  });
-
-  it("returns empty when contract address does not match pool address", () => {
-    const addresses = getScreenedAddresses(sampleTransaction(), "0xother");
-    expect(addresses).toEqual([]);
-  });
-
-  it("matches pool address regardless of leading zeros", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction([
-        "0x1",
-        "0x00000abc",
-        "0xsel",
-        "0x6",
-        USER_ADDR,
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]),
-      "0xabc"
-    );
-    expect(addresses).toEqual(["0xaaa111"]);
-  });
-
-  it("returns empty for short calldata", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction(["0x1", POOL_ADDR, "0xsel"]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual([]);
-  });
-
-  it("normalizes addresses by stripping leading zeros", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction([
-        "0x1",
-        POOL_ADDR,
-        "0xsel",
-        "0x6",
-        "0x00004a1b2c",
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual(["0x4a1b2c"]);
-  });
-
-  it("normalizes all-zero address to 0x0", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction([
-        "0x1",
-        POOL_ADDR,
-        "0xsel",
-        "0x6",
-        "0x0000000000",
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual(["0x0"]);
-  });
-
-  it("returns empty when inner_calldata_len is too small", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction(["0x1", POOL_ADDR, "0xsel", "0x2", "0x1", "0x2"]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual([]);
-  });
-
-  it("returns empty when inner_calldata_len is not valid hex", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction(["0x1", POOL_ADDR, "0xsel", "not-hex", "0x1"]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual([]);
-  });
-
-  it("handles address without 0x prefix", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction([
-        "0x1",
-        POOL_ADDR,
-        "0xsel",
-        "0x6",
-        "4a1b2c",
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual(["0x4a1b2c"]);
-  });
-
-  it("returns empty when calldata[0] is not 0x1", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction(["0x2", POOL_ADDR, "0xsel", "0x6", "0x1"]),
-      POOL_ADDR
-    );
-    expect(addresses).toEqual([]);
-  });
-
-  // Attackers must not be able to dodge the single-pool-call check by
-  // submitting equivalent encodings of 1 (uppercase prefix, leading zeros,
-  // bare "1" with no prefix). All of these are the same felt value.
-  it.each([["0X1"], ["0x01"], ["0x001"], ["0x0001"], ["1"]])(
-    "treats %s as a single-call count (no normalization bypass)",
-    (callCount) => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          callCount,
-          POOL_ADDR,
-          "0xselector",
-          "0x6",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x1",
-          "0x5",
-          TOKEN,
-          AMOUNT,
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual(["0xaaa111"]);
-    }
-  );
-
-  it("matches pool address regardless of 0X vs 0x prefix casing", () => {
-    const addresses = getScreenedAddresses(
-      sampleTransaction([
-        "0x1",
-        "0XABC",
-        "0xselector",
-        "0x6",
-        USER_ADDR,
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]),
-      "0xabc"
-    );
-    expect(addresses).toEqual(["0xaaa111"]);
-  });
-
-  describe("deposit-only screening", () => {
-    it("returns empty when actions contain only SetViewingKey (variant 0)", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0x5",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x1", // 1 action
-          "0x0", // SetViewingKey
-          "0xabc", // random
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual([]);
-    });
-
-    it("returns empty when actions contain only Withdraw (variant 7)", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0x8",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x1", // 1 action
-          "0x7", // Withdraw
-          "0x111", // to_addr
-          TOKEN,
-          AMOUNT,
-          "0xabc", // random
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual([]);
-    });
-
-    it("returns address when deposit appears after other actions", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0x8",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x2", // 2 actions
-          "0x0", // SetViewingKey
-          "0xabc",
-          "0x5", // Deposit
-          TOKEN,
-          AMOUNT,
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual(["0xaaa111"]);
-    });
-
-    it("handles InvokeExternal before deposit", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0xc",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x2", // 2 actions
-          "0x8", // InvokeExternal
-          "0x222", // contract_address
-          "0x2",
-          "0xa",
-          "0xb", // Span<felt252> len=2
-          "0x5", // Deposit
-          TOKEN,
-          AMOUNT,
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual(["0xaaa111"]);
-    });
-
-    it("returns empty when action count is zero", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0x3",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x0", // 0 actions
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual([]);
-    });
-
-    it("returns empty on malformed calldata (fail-open)", () => {
-      const addresses = getScreenedAddresses(
-        sampleTransaction([
-          "0x1",
-          POOL_ADDR,
-          "0xsel",
-          "0x4",
-          USER_ADDR,
-          PRIVATE_KEY,
-          "0x1", // 1 action
-          "0xff", // invalid variant index
-        ]),
-        POOL_ADDR
-      );
-      expect(addresses).toEqual([]);
-    });
-  });
-});
 
 // Helper to start a mock elliptic-proxy
 let mockServer: Server;
@@ -383,61 +77,16 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: POOL_ADDR,
+    // Unreachable on purpose: none of these transactions runs an invoke, so no policy is read. A
+    // test that reached for one would fail closed instead of silently screening the wrong address.
+    rpcUrl: "http://127.0.0.1:1",
+    anonymizerAddress: ANONYMIZER_ADDR,
+    policyTtlMs: 60_000,
+    policyTimeoutMs: 50,
     blockNonPoolTx: false,
     ...overrides,
   };
 }
-
-describe("isSinglePoolCall", () => {
-  it("returns true for a single-call INVOKE targeting the pool", () => {
-    expect(isSinglePoolCall(sampleTransaction(), POOL_ADDR)).toBe(true);
-  });
-
-  it("returns false when the target contract is not the pool", () => {
-    expect(isSinglePoolCall(sampleTransaction(), "0xother")).toBe(false);
-  });
-
-  it("returns false for multi-call transactions", () => {
-    const transaction = sampleTransaction([
-      "0x2", // 2 calls
-      POOL_ADDR,
-      "0xsel",
-      "0x0",
-      "0xother",
-      "0xsel",
-      "0x0",
-    ]);
-    expect(isSinglePoolCall(transaction, POOL_ADDR)).toBe(false);
-  });
-
-  it("returns false for short calldata", () => {
-    expect(
-      isSinglePoolCall(
-        sampleTransaction(["0x1", POOL_ADDR, "0xsel"]),
-        POOL_ADDR
-      )
-    ).toBe(false);
-  });
-
-  it.each([["0X1"], ["0x01"], ["0x001"]])(
-    "returns true when call_count is %s (normalized to 0x1)",
-    (callCount) => {
-      const transaction = sampleTransaction([
-        callCount,
-        POOL_ADDR,
-        "0xsel",
-        "0x6",
-        USER_ADDR,
-        PRIVATE_KEY,
-        "0x1",
-        "0x5",
-        TOKEN,
-        AMOUNT,
-      ]);
-      expect(isSinglePoolCall(transaction, POOL_ADDR)).toBe(true);
-    }
-  );
-});
 
 describe("ScreeningInterceptor", () => {
   it("attaches the signature to the verdict on an allowed deposit", async () => {
@@ -448,7 +97,7 @@ describe("ScreeningInterceptor", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
     const logCall = logSpy.mock.calls.find((call) => {
@@ -471,7 +120,7 @@ describe("ScreeningInterceptor", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       // Opaque code — must NOT leak the depositor address.
@@ -505,7 +154,7 @@ describe("ScreeningInterceptor", () => {
 
     const config = makeConfig();
     const interceptor = new ScreeningInterceptor(config);
-    await interceptor.intercept(sampleTransaction());
+    await interceptor.intercept(rawPoolCallTransaction());
 
     expect(receivedUrl).toBe("/screen");
     expect(receivedHeaders["x-access-key"]).toBe("test-partner");
@@ -534,7 +183,7 @@ describe("ScreeningInterceptor", () => {
 
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -558,7 +207,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(config);
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -574,7 +223,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -597,7 +246,7 @@ describe("ScreeningInterceptor", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
     expect(requestCount).toBe(3);
 
@@ -621,7 +270,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -639,7 +288,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -655,7 +304,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -679,7 +328,7 @@ describe("ScreeningInterceptor", () => {
 
     const spy = vi.spyOn(console, "error").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig());
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict.action).toBe("block");
     if (verdict.action === "block") {
       expect(verdict.reason).toBe("screening_unavailable");
@@ -697,7 +346,7 @@ describe("ScreeningInterceptor", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict).toEqual({ action: "block", reason: "address_blocked" });
     // A terminal block short-circuits before the signature check and is never
     // retried, even though maxRetries allows it.
@@ -720,14 +369,14 @@ describe("ScreeningInterceptor", () => {
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const interceptor = new ScreeningInterceptor(makeConfig({ maxRetries: 2 }));
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict).toEqual({ action: "block", reason: "address_blocked" });
     expect(requestCount).toBe(3);
     logSpy.mockRestore();
   });
 
   it("allows (no signature) when there is no extractable deposit address", async () => {
-    const transaction = sampleTransaction(["0x0"]);
+    const transaction = rawPoolCallTransaction(["0x0"]);
     const interceptor = new ScreeningInterceptor(
       makeConfig({ ellipticProxyUrl: "http://127.0.0.1:1" })
     );
@@ -743,7 +392,7 @@ describe("ScreeningInterceptor", () => {
         poolAddress: "0xdifferent",
       })
     );
-    const verdict = await interceptor.intercept(sampleTransaction());
+    const verdict = await interceptor.intercept(rawPoolCallTransaction());
     expect(verdict).toEqual({ action: "allow" });
 
     const logEntry = findLogEntry(
@@ -758,6 +407,80 @@ describe("ScreeningInterceptor", () => {
     logSpy.mockRestore();
   });
 
+  describe("screening subjects beyond the depositor", () => {
+    /** A node answering every `starknet_call` with `Delegated`, the anonymizer's production policy. */
+    async function startDelegatedPolicyNode(): Promise<{
+      url: string;
+      close: () => Promise<void>;
+    }> {
+      const node = createServer((request, response) => {
+        request.resume();
+        request.on("end", () => {
+          response.writeHead(200, { "content-type": "application/json" });
+          response.end(
+            JSON.stringify({ jsonrpc: "2.0", id: 1, result: ["0x2"] })
+          );
+        });
+      });
+      await new Promise<void>((resolve) => node.listen(0, resolve));
+      const { port } = node.address() as AddressInfo;
+      return {
+        url: `http://127.0.0.1:${port}`,
+        close: () =>
+          new Promise<void>((resolve) => node.close(() => resolve())),
+      };
+    }
+
+    it("blocks a transaction putting up two addresses", async () => {
+      // A deposit screens its depositor, and the delegated interaction screens its shadow account.
+      // The pool takes one attestation per transaction, so this cannot be satisfied and must not be
+      // signed.
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const policyNode = await startDelegatedPolicyNode();
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({ poolAddress: POOL_ADDR, rpcUrl: policyNode.url })
+      );
+
+      const verdict = await interceptor.intercept(
+        poolCallTransaction([
+          depositAction(),
+          createOpenNoteAction(),
+          computeAndInvokeAction(),
+        ])
+      );
+
+      expect(verdict.action).toBe("block");
+      if (verdict.action === "block") {
+        expect(verdict.reason).toBe("multiple_screening_subjects");
+      }
+      await policyNode.close();
+      logSpy.mockRestore();
+    });
+
+    it("blocks when an invoke target's policy cannot be read", async () => {
+      // `rpcUrl` is unreachable in these tests, so the policy read fails and the flow fails closed
+      // rather than guessing the target is exempt.
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({ poolAddress: POOL_ADDR })
+      );
+      const verdict = await interceptor.intercept(
+        poolCallTransaction([
+          createOpenNoteAction(),
+          invokeExternalAction(SWAP_EXECUTOR),
+        ])
+      );
+
+      expect(verdict.action).toBe("block");
+      if (verdict.action === "block") {
+        expect(verdict.reason).toBe("screening_policy_unavailable");
+      }
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+  });
+
   describe("blockNonPoolTx flag", () => {
     it("blocks transactions whose target is not the pool", async () => {
       const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -768,7 +491,7 @@ describe("ScreeningInterceptor", () => {
           blockNonPoolTx: true,
         })
       );
-      const verdict = await interceptor.intercept(sampleTransaction());
+      const verdict = await interceptor.intercept(rawPoolCallTransaction());
       expect(verdict.action).toBe("block");
       if (verdict.action === "block") {
         expect(verdict.reason).toContain(
@@ -789,7 +512,7 @@ describe("ScreeningInterceptor", () => {
     });
 
     it("blocks multi-call transactions even if a call targets the pool", async () => {
-      const transaction = sampleTransaction([
+      const transaction = rawPoolCallTransaction([
         "0x2", // 2 calls
         POOL_ADDR,
         "0xsel",
@@ -826,7 +549,7 @@ describe("ScreeningInterceptor", () => {
       const interceptor = new ScreeningInterceptor(
         makeConfig({ blockNonPoolTx: true })
       );
-      const verdict = await interceptor.intercept(sampleTransaction());
+      const verdict = await interceptor.intercept(rawPoolCallTransaction());
       expect(verdict).toEqual({ action: "allow", signature: MOCK_SIGNATURE });
 
       // Pool deposits should not emit the "non_pool_tx" log line — they go

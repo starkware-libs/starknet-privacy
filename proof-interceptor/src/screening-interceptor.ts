@@ -5,7 +5,10 @@ import type {
   TransactionInterceptor,
   Verdict,
 } from "./interceptor.js";
-import { decodeClientActions, isSinglePoolCall } from "./pool-transaction.js";
+import { isSinglePoolCall } from "./pool-transaction.js";
+import { OpenNoteScreeningPolicyClient } from "./screening-policy.js";
+import { getScreenedAddress } from "./screened-address.js";
+import type { ScreenedAddress } from "./screened-address.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
   screeningResults,
@@ -26,6 +29,10 @@ export interface ScreeningConfig {
   maxRetries: number;
   totalTimeoutMs: number;
   poolAddress: string;
+  rpcUrl: string;
+  anonymizerAddress: string;
+  policyTtlMs: number;
+  policyTimeoutMs: number;
   // When true, transactions that are not a single direct INVOKE call to
   // `poolAddress` are blocked outright. When false (default), such transactions
   // bypass screening and are allowed through.
@@ -36,26 +43,19 @@ export interface ScreeningConfig {
 const HEX_FELT = /^0x[0-9a-fA-F]{1,64}$/;
 
 /**
- * Extracts addresses that need screening from a privacy pool transaction,
- * but only if the transaction is a single direct call to the pool and
- * contains a Deposit action.
- *
- * Returns `[]` for non-pool transactions and for pool transactions that
- * carry no Deposit action (e.g., Withdraw-only). Whether non-pool
- * transactions are then allowed through or blocked is decided by the
- * caller via `ScreeningConfig.blockNonPoolTx`.
+ * The opaque code each unresolved screening subject blocks with: they reach the client as JSON-RPC
+ * error `data`, so they must not reveal an address. Keying by the kinds makes a new one a compile
+ * error rather than a kind that falls through to being screened.
  */
-export function getScreenedAddresses(
-  transaction: ProveTxnV3,
-  poolAddress: string
-): string[] {
-  const poolCall = decodeClientActions(transaction, poolAddress);
-  if (poolCall === null) return [];
-  const hasDeposit = poolCall.actions.some(
-    (action) => action.activeVariant() === "Deposit"
-  );
-  return hasDeposit ? [poolCall.userAddress] : [];
-}
+const UNRESOLVED_SUBJECT_REASONS: Record<
+  Exclude<ScreenedAddress["kind"], "one" | "none">,
+  string
+> = {
+  conflict: "multiple_screening_subjects",
+  unreadablePolicy: "screening_policy_unavailable",
+  unknownDelegate: "unknown_delegated_depositor",
+  undeterminedShadowAccount: "shadow_account_undetermined",
+};
 
 type SignOutcome =
   | { result: "allowed"; signature: ScreeningSignature }
@@ -65,7 +65,16 @@ type SignOutcome =
 export class ScreeningInterceptor implements TransactionInterceptor {
   readonly name = "screening";
 
-  constructor(private readonly config: ScreeningConfig) {}
+  private readonly policies: OpenNoteScreeningPolicyClient;
+
+  constructor(private readonly config: ScreeningConfig) {
+    this.policies = new OpenNoteScreeningPolicyClient({
+      rpcUrl: config.rpcUrl,
+      poolAddress: config.poolAddress,
+      ttlMs: config.policyTtlMs,
+      timeoutMs: config.policyTimeoutMs,
+    });
+  }
 
   async intercept(transaction: ProveTxnV3): Promise<Verdict> {
     if (!isSinglePoolCall(transaction, this.config.poolAddress)) {
@@ -86,18 +95,21 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       return { action: "allow" };
     }
 
-    const addresses = getScreenedAddresses(
+    const screened = await getScreenedAddress(
       transaction,
-      this.config.poolAddress
+      this.config,
+      this.policies
     );
-    if (addresses.length === 0) return { action: "allow" };
+    if (screened.kind === "none") return { action: "allow" };
+    if (screened.kind !== "one") {
+      return {
+        action: "block",
+        reason: UNRESOLVED_SUBJECT_REASONS[screened.kind],
+      };
+    }
 
-    // A deposit yields exactly one screened address: the depositor (user_addr),
-    // which the contract binds to the proven TransferFrom.from_addr. Screen and
-    // sign it in one /screen call. Reasons are opaque codes — they surface to
-    // the client as JSON-RPC error `data` and must not reveal the depositor.
-    const depositor = addresses[0];
-    const outcome = await this.screenAndSign(depositor);
+    // One address per transaction, screened and signed in one `/screen` call.
+    const outcome = await this.screenAndSign(screened.address);
     if (outcome.result === "blocked") {
       return { action: "block", reason: "address_blocked" };
     }

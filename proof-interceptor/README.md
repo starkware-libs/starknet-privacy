@@ -40,7 +40,7 @@ The prover runs the screening round-trip in parallel with proving. The sidecar r
 
 | Category                      | Verdict                                             | When                                                                                                                                                                                                                                                                  |
 | ----------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Screened**                  | depends on Elliptic                                 | Single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` carrying a Deposit action. The depositor address (`user_addr`, `inner_calldata[0]`) is sent to elliptic-proxy.                                                                                                    |
+| **Screened**                  | depends on Elliptic                                 | Single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` that puts up an address: a Deposit's depositor (`user_addr`), the shadow account an interaction runs through, or an invoke target whose open-note policy is `Required`.                                                                                                    |
 | **Bypass (non-pool)**         | `allow`                                             | Multi-call INVOKEs, calls to contracts other than `SCREENING_POOL_ADDRESS`, and pool calls whose `calldata[0]`/address is non-canonically encoded (`"0x01"`, `"0X1"`, case-mismatched address). Set `SCREENING_BLOCK_NON_POOL_TX=true` to block all of these instead. |
 | **Bypass (pool, no Deposit)** | `allow`                                             | Pool calls with no Deposit action (withdraw-only) or whose action span fails to decode (most often ABI drift). **Not affected by `SCREENING_BLOCK_NON_POOL_TX`** — this toggle only changes the non-pool branch.                                                      |
 | **Blocked**                   | RPC error `10000`                                   | Sanctioned `user_addr`, screening-pipeline failure with fail-closed defaults, or any unhandled exception inside an interceptor (caught and converted to a block with the exception message as the reason).                                                            |
@@ -67,8 +67,10 @@ Required when screening is enabled (the production case):
 | `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
 | `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
 | `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
+| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies.                                                                       |
+| `SCREENING_ANONYMIZER_ADDRESS` | Shadow account anonymizer. Its interactions are screened on the shadow account they run through, derived locally.                                    |
 
-Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
+Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `SCREENING_POLICY_TTL_MS`, `SCREENING_POLICY_TIMEOUT_MS`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
 
 ## HTTP endpoints
 
@@ -80,7 +82,7 @@ Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. O
 
 ### Request
 
-The body mirrors `starknet_proveTransaction` exactly (object or positional params). The screened shape is a single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` with `calldata = [call_count=1, contract_address=pool, selector, inner_len, user_addr, user_private_key, ...action_span]`. The action span is decoded against `PrivacyPoolABI`; only the Deposit variant triggers a screen. See `src/rpc.ts` for envelope validation and the calldata-layout comments above `isSinglePoolCall` in `src/pool-transaction.ts` for the field-by-field breakdown.
+The body mirrors `starknet_proveTransaction` exactly (object or positional params). The screened shape is a single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` with `calldata = [call_count=1, contract_address=pool, selector, inner_len, user_addr, user_private_key, ...action_span]`. The action span is decoded against `PrivacyPoolABI`. A Deposit triggers a screen of its depositor, and an invoke funding open notes triggers one of either the shadow account it runs through or the target itself, depending on the target's policy. See `src/rpc.ts` for envelope validation and the calldata-layout comments above `isSinglePoolCall` in `src/pool-transaction.ts` for the field-by-field breakdown.
 
 ### Response shapes
 
@@ -168,6 +170,8 @@ SCREENING_URL=https://<proxy-host> \
 SCREENING_PARTNER_NAME=<partner-name> \
 SCREENING_PARTNER_SECRET=<base64-secret> \
 SCREENING_POOL_ADDRESS=0x... \
+SCREENING_RPC_URL=https://<starknet-rpc> \
+SCREENING_ANONYMIZER_ADDRESS=0x... \
 PORT=8080 \
 npm start
 ```
@@ -184,6 +188,7 @@ npm start
 | `src/interceptor.ts`           | Parallel interceptor runner with first-block-wins semantics                                              |
 | `src/pool-transaction.ts`      | Pool-call gate and client-action decoding of a prove request's calldata                                  |
 | `src/shadow-account.ts`        | The shadow account interaction a transaction runs on the anonymizer, from its decoded actions            |
+| `src/screened-address.ts`      | The address a transaction is screened for: depositor, shadow account, or a `Required` invoke target      |
 | `src/screening-policy.ts`      | Open-note screening policies read from the pool over RPC, cached per depositor with an LRU TTL           |
 | `src/screening-interceptor.ts` | Deposit detection, address extraction, retry/timeout, HMAC-signed call to elliptic-proxy                 |
 | `src/types.ts`                 | JSON-RPC and `ProveTxnV3` types                                                                          |
