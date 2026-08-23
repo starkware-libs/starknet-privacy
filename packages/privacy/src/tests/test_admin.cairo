@@ -677,5 +677,5 @@ fn test_set_screener_public_key_assertions() {
 #[test]
 fn test_get_version() {
     let mut test: Test = Default::default();
-    assert_eq!(test.privacy.get_version(), '2.0');
+    assert_eq!(test.privacy.get_version(), '2.1');
 }

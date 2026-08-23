@@ -102,7 +102,7 @@ pub mod constants {
     /// Maximum clock skew (in seconds) tolerated for a screening attestation dated in the future.
     pub const DEPOSITOR_VALIDATION_MAX_FUTURE: u64 = 60;
     /// Contract version, exposed via `get_version`.
-    pub const CONTRACT_VERSION: felt252 = '2.0';
+    pub const CONTRACT_VERSION: felt252 = '2.1';
 }
 
 /// Returns the generator point.

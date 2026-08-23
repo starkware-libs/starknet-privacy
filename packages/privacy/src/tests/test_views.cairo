@@ -26,7 +26,7 @@ fn test_constructor() {
     assert_eq!(test.privacy.get_auditor_public_key(), test.auditor.public_key);
     // Test screener public key and contract version.
     assert_eq!(test.privacy.get_screener_public_key(), screener_key_pair().public_key);
-    assert_eq!(test.privacy.get_version(), '2.0');
+    assert_eq!(test.privacy.get_version(), '2.1');
     // Test roles.
     let contract_roles = ICommonRolesDispatcher { contract_address: test.privacy.address };
     assert!(
