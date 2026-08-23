@@ -21,6 +21,22 @@ const GET_POLICY_SELECTOR =
 
 const POLICIES: OpenNoteScreeningPolicy[] = ["Required", "Exempt", "Delegated"];
 
+/**
+ * What a node answers when the called contract has no such entrypoint: dedicated JSON-RPC error 21
+ * (`ENTRYPOINT_NOT_FOUND`), distinct from 20 (no contract) and 40 (a revert). A pool answering it
+ * predates the policy list.
+ */
+const ENTRYPOINT_NOT_FOUND_ANSWER: RpcAnswer = {
+  body: {
+    jsonrpc: "2.0",
+    id: 1,
+    error: {
+      code: 21,
+      message: "Requested entrypoint does not exist in the contract",
+    },
+  },
+};
+
 /** What the fake node does with one `starknet_call`: answer a body, an HTTP status, or nothing. */
 type RpcAnswer = { body: unknown } | { status: number } | "no answer";
 
@@ -99,6 +115,13 @@ async function fillCache(client: OpenNoteScreeningPolicyClient): Promise<void> {
  */
 function useMovableClock(): void {
   vi.useFakeTimers({ now: Date.now() });
+}
+
+/** Silences the line a pre-policy-pool read logs, and returns the spy to assert on. */
+function silencePolicyLog(): ReturnType<
+  typeof vi.spyOn<typeof console, "log">
+> {
+  return vi.spyOn(console, "log").mockImplementation(() => {});
 }
 
 describe("OpenNoteScreeningPolicyClient", () => {
@@ -271,6 +294,77 @@ describe("OpenNoteScreeningPolicyClient", () => {
     // starts a new one instead of awaiting a promise that already resolved to null.
     expect(await client.getPolicy(DEPOSITOR)).toBe("Required");
     expect(requests).toHaveLength(2);
+    errorSpy.mockRestore();
+  });
+
+  it("answers Exempt for every depositor of a pool without the policy entrypoint", async () => {
+    const errorSpy = silenceErrorLog();
+    const logSpy = silencePolicyLog();
+    respond = () => ENTRYPOINT_NOT_FOUND_ANSWER;
+    const client = newClient();
+
+    expect(await client.getPolicy(DEPOSITOR)).toBe("Exempt");
+    expect(await client.getPolicy("0xb0b")).toBe("Exempt");
+    // A missing entrypoint is an answer, not a failure: nothing goes to the error log.
+    expect(errorSpy).not.toHaveBeenCalled();
+    errorSpy.mockRestore();
+    logSpy.mockRestore();
+  });
+
+  it("caches the missing-entrypoint answer like a policy", async () => {
+    const logSpy = silencePolicyLog();
+    respond = () => ENTRYPOINT_NOT_FOUND_ANSWER;
+    const client = newClient();
+
+    expect(await client.getPolicy(DEPOSITOR)).toBe("Exempt");
+    expect(await client.getPolicy(DEPOSITOR)).toBe("Exempt");
+    expect(requests).toHaveLength(1);
+    logSpy.mockRestore();
+  });
+
+  it("keeps the depositor out of the pre-policy-pool log", async () => {
+    const logSpy = silencePolicyLog();
+    respond = () => ENTRYPOINT_NOT_FOUND_ANSWER;
+
+    await newClient().getPolicy(DEPOSITOR);
+
+    expect(logSpy).toHaveBeenCalledTimes(1);
+    const logged = String(logSpy.mock.calls[0][0]);
+    expect(logged).toContain("pre_policy_pool");
+    expect(logged).not.toContain("a11ce");
+    logSpy.mockRestore();
+  });
+
+  it("honors a pool upgrade that adds the policy entrypoint within one TTL", async () => {
+    const logSpy = silencePolicyLog();
+    useMovableClock();
+    respond = (requestNumber) =>
+      requestNumber === 1
+        ? ENTRYPOINT_NOT_FOUND_ANSWER
+        : policyAnswer("Required");
+    const client = newClient();
+    expect(await client.getPolicy(DEPOSITOR)).toBe("Exempt");
+
+    await vi.advanceTimersByTimeAsync(TTL_MS + 1);
+
+    expect(await client.getPolicy(DEPOSITOR)).toBe("Required");
+    expect(requests).toHaveLength(2);
+    logSpy.mockRestore();
+  });
+
+  it("fails closed when no contract answers at the pool address", async () => {
+    // Only the entrypoint miss reads as a pre-policy pool. An undeployed address is a
+    // misconfiguration, not an old pool, and stays a failed read.
+    const errorSpy = silenceErrorLog();
+    respond = () => ({
+      body: {
+        jsonrpc: "2.0",
+        id: 1,
+        error: { code: 20, message: "Contract not found" },
+      },
+    });
+
+    expect(await newClient().getPolicy(DEPOSITOR)).toBeNull();
     errorSpy.mockRestore();
   });
 
