@@ -1,6 +1,6 @@
 // src/screening-policy.ts
 import { LRUCache } from "lru-cache";
-import { CairoCustomEnum, RpcProvider } from "starknet";
+import { CairoCustomEnum, RpcError, RpcProvider } from "starknet";
 import { normalizeFelt, poolCallData } from "./pool-transaction.js";
 import { screeningPolicyReads } from "./metrics.js";
 
@@ -70,6 +70,11 @@ export class OpenNoteScreeningPolicyClient {
    * for the same address, or a fresh read; or `null` when the read fails, times out or answers with
    * something that is not a policy. A failed read is never cached, and an expired entry is never
    * served.
+   *
+   * A pool without the policy entrypoint answers `Exempt` for every depositor: such a pool predates
+   * the policy list, asks for no open-note attestations, and enforces its own depositor block list
+   * on chain. The answer is cached like any other, so an upgrade that adds the entrypoint is honored
+   * within one TTL.
    */
   async getPolicy(depositor: string): Promise<OpenNoteScreeningPolicy | null> {
     const address = normalizeFelt(depositor);
@@ -114,6 +119,13 @@ export class OpenNoteScreeningPolicyClient {
       screeningPolicyReads.inc({ result: policy });
       return policy;
     } catch (error) {
+      if (error instanceof RpcError && error.isType("ENTRYPOINT_NOT_FOUND")) {
+        console.log(
+          JSON.stringify({ screening: "pre_policy_pool", policy: "Exempt" })
+        );
+        screeningPolicyReads.inc({ result: "pre_policy_pool" });
+        return "Exempt";
+      }
       // No address goes into the log, as on the rest of this path.
       console.error(
         JSON.stringify({
