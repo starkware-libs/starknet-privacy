@@ -67,7 +67,7 @@ Required when screening is enabled (the production case):
 | `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
 | `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
 | `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
-| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies.                                                                       |
+| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint answers every read as `Exempt`: such a pool predates the policy list, asks for no open-note attestations, and enforces its own depositor block list on chain, so this service may deploy before the pool upgrades. The endpoint must serve JSON-RPC spec ≥ 0.9, where the entrypoint miss is the dedicated error 21 rather than a generic contract error. |
 | `SCREENING_ANONYMIZER_ADDRESS` | Shadow account anonymizer. Its interactions are screened on the shadow account they run through, derived locally.                                    |
 
 Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `SCREENING_POLICY_TTL_MS`, `SCREENING_POLICY_TIMEOUT_MS`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
@@ -128,7 +128,7 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
-- `proof_interceptor_screening_policy_reads_total{result}` — open-note screening policies read from the pool: `Required` / `Exempt` / `Delegated`, or `unavailable` when the read failed and the flow fails closed.
+- `proof_interceptor_screening_policy_reads_total{result}` — open-note screening policies read from the pool: `Required` / `Exempt` / `Delegated`; `pre_policy_pool` when the pool has no policy entrypoint and every open-note depositor reads as exempt; or `unavailable` when the read failed and the flow fails closed.
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.
