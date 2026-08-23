@@ -55,6 +55,7 @@ Defaults are deployment-friendly, not security-strict. Apply these for productio
 - **Choose listener binding deliberately.** The service has no application-level authentication, so the host binding is the security boundary. Prefer `HOST=127.0.0.1` (loopback-only, in-pod sidecar) when metrics can be relayed by the prover or a co-located collector. Use `HOST=0.0.0.0` only when direct Prometheus scraping of the Pod IP is required, and pair it with a NetworkPolicy restricting ingress to the prover and the approved scraper. Co-location in the same Pod is _not_ by itself the boundary: with `HOST=0.0.0.0`, the listener is reachable from any Pod that can route to this Pod's IP.
 - **`TLS_CERT_PATH`/`TLS_KEY_PATH` are server-side TLS only.** They encrypt the prover↔sidecar connection but do _not_ authenticate the client (no `requestCert`/`ca` is configured in `src/server.ts`). For real mTLS, put a service mesh or proxy in front of the sidecar.
 - **Verify `SCREENING_URL` is set.** Without it, the service runs as a no-op pass-through that always returns `allowed: true` — `/health` still reports OK. Confirm `proof_interceptor_screening_results_total` is non-zero on `/metrics`.
+- **Point `SCREENING_RPC_URL` at an endpoint serving JSON-RPC spec ≥ 0.9.** The pre-policy-pool fallback keys on the dedicated entrypoint-miss error (21); an older endpoint reports a generic contract error instead, so every policy read fails closed and open-note deposits block.
 - **Pin `@starkware-libs/starknet-privacy-sdk`** to a version whose `PrivacyPoolABI` matches the deployed pool contract. ABI drift causes silent fail-open on Deposit detection.
 
 ## Configuration
@@ -67,7 +68,7 @@ Required when screening is enabled (the production case):
 | `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
 | `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
 | `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
-| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies.                                                                       |
+| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint predates the list and enforces its own block list on chain, so every read answers `Exempt` and this service can deploy before the pool upgrades. |
 | `SCREENING_ANONYMIZER_ADDRESS` | Shadow account anonymizer. Its interactions are screened on the shadow account they run through, derived locally.                                    |
 
 Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `SCREENING_POLICY_TTL_MS`, `SCREENING_POLICY_TIMEOUT_MS`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
@@ -128,7 +129,7 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
-- `proof_interceptor_screening_policy_reads_total{result}` — open-note screening policies read from the pool: `Required` / `Exempt` / `Delegated`, or `unavailable` when the read failed and the flow fails closed.
+- `proof_interceptor_screening_policy_reads_total{result}` — open-note screening policies read from the pool: `Required` / `Exempt` / `Delegated`; `pre_policy_pool` when the pool has no policy entrypoint and every open-note depositor reads as exempt; or `unavailable` when the read failed and the flow fails closed.
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.

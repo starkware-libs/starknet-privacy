@@ -34,7 +34,7 @@ export const screeningResults = new Counter({
 
 export const screeningPolicyReads = new Counter({
   name: "proof_interceptor_screening_policy_reads_total",
-  help: "Total open-note screening policies read from the pool, by policy or 'unavailable'",
+  help: "Total open-note screening policies read from the pool, by policy, 'pre_policy_pool' (a pool without the entrypoint, exempt) or 'unavailable'",
   labelNames: ["result"] as const,
   registers: [registry],
 });
