@@ -1,5 +1,9 @@
 // src/config.ts
 
+import {
+  DEFAULT_POLICY_TIMEOUT_MS,
+  DEFAULT_POLICY_TTL_MS,
+} from "./screening-policy.js";
 import type { ScreeningConfig } from "./screening-interceptor.js";
 
 export const DEFAULT_MAX_BODY_BYTES = 5 * 1024 * 1024; // 5 MB
@@ -42,6 +46,19 @@ export function loadConfig(): Config {
       maxRetries: parseIntEnv("SCREENING_MAX_RETRIES", 2),
       totalTimeoutMs: parseIntEnv("SCREENING_TOTAL_TIMEOUT_MS", 10000),
       poolAddress: requiredEnv("SCREENING_POOL_ADDRESS"),
+      // Screening reads the pool's open-note policies over RPC and derives shadow account addresses
+      // locally, so neither endpoint can be defaulted. Both are required as soon as screening is on,
+      // which fails at startup rather than per transaction.
+      rpcUrl: requiredEnv("SCREENING_RPC_URL"),
+      anonymizerAddress: requiredEnv("SCREENING_ANONYMIZER_ADDRESS"),
+      policyTtlMs: parseIntEnv(
+        "SCREENING_POLICY_TTL_MS",
+        DEFAULT_POLICY_TTL_MS
+      ),
+      policyTimeoutMs: parseIntEnv(
+        "SCREENING_POLICY_TIMEOUT_MS",
+        DEFAULT_POLICY_TIMEOUT_MS
+      ),
       blockNonPoolTx: process.env.SCREENING_BLOCK_NON_POOL_TX === "true",
     };
   }
