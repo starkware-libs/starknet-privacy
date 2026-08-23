@@ -7,6 +7,7 @@ export const POOL_ADDR = "0x9001";
 export const USER_ADDR = "0xaaa111";
 export const PRIVATE_KEY = "0xbbb222";
 export const TOKEN = "0xdead";
+export const AMOUNT = "0x64";
 
 const poolCallData = new CallData(PrivacyPoolABI);
 
@@ -34,6 +35,40 @@ export function poolCallTransaction(actions: CairoCustomEnum[]): ProveTxnV3 {
       "0xselector",
       num.toHex(innerCalldata.length),
       ...innerCalldata,
+    ],
+    signature: ["0x1"],
+    nonce: "0x0",
+    resource_bounds: {},
+    tip: "0x0",
+    paymaster_data: [],
+    account_deployment_data: [],
+    nonce_data_availability_mode: "L1",
+    fee_data_availability_mode: "L1",
+  } as unknown as ProveTxnV3;
+}
+
+/**
+ * A prove request written as raw felts, so a test can express calldata no compiler would produce:
+ * a bad length prefix, an unprefixed address, a call count other than one.
+ */
+export function rawPoolCallTransaction(
+  calldataOverride?: string[]
+): ProveTxnV3 {
+  return {
+    type: "INVOKE",
+    version: "0x3",
+    sender_address: "0xcontract",
+    calldata: calldataOverride ?? [
+      "0x1", // 1 call
+      POOL_ADDR, // call.to
+      "0xselector", // call.selector (not decoded)
+      "0x6", // inner calldata length
+      USER_ADDR,
+      PRIVATE_KEY,
+      "0x1", // 1 action
+      "0x5", // Deposit variant
+      TOKEN,
+      AMOUNT,
     ],
     signature: ["0x1"],
     nonce: "0x0",
