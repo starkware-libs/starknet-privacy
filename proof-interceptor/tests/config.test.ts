@@ -1,6 +1,20 @@
 // tests/config.test.ts
 import { describe, it, expect, beforeEach } from "vitest";
 import { loadConfig } from "../src/config.js";
+import {
+  DEFAULT_POLICY_TIMEOUT_MS,
+  DEFAULT_POLICY_TTL_MS,
+} from "../src/screening-policy.js";
+
+/** The env every screening test needs: `loadConfig` requires all of these once screening is on. */
+function setScreeningEnv(): void {
+  process.env.SCREENING_URL = "http://elliptic-proxy:3000";
+  process.env.SCREENING_PARTNER_NAME = "test-partner";
+  process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
+  process.env.SCREENING_POOL_ADDRESS = "0xpool";
+  process.env.SCREENING_RPC_URL = "http://starknet-rpc:5050";
+  process.env.SCREENING_ANONYMIZER_ADDRESS = "0xanonymizer";
+}
 
 describe("loadConfig", () => {
   const originalEnv = process.env;
@@ -14,6 +28,8 @@ describe("loadConfig", () => {
     delete process.env.MAX_BODY_BYTES;
     delete process.env.TLS_CERT_PATH;
     delete process.env.TLS_KEY_PATH;
+    delete process.env.SCREENING_POLICY_TTL_MS;
+    delete process.env.SCREENING_POLICY_TIMEOUT_MS;
   });
 
   it("loads config from env vars", () => {
@@ -76,10 +92,7 @@ describe("loadConfig", () => {
   });
 
   it("loads screening config when SCREENING_URL is set", () => {
-    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
-    process.env.SCREENING_PARTNER_NAME = "test-partner";
-    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
-    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    setScreeningEnv();
 
     const config = loadConfig();
     expect(config.screening).toEqual({
@@ -91,15 +104,38 @@ describe("loadConfig", () => {
       maxRetries: 2,
       totalTimeoutMs: 10000,
       poolAddress: "0xpool",
+      rpcUrl: "http://starknet-rpc:5050",
+      anonymizerAddress: "0xanonymizer",
+      policyTtlMs: DEFAULT_POLICY_TTL_MS,
+      policyTimeoutMs: DEFAULT_POLICY_TIMEOUT_MS,
       blockNonPoolTx: false,
     });
   });
 
+  it.each(["SCREENING_RPC_URL", "SCREENING_ANONYMIZER_ADDRESS"])(
+    "refuses to start with screening on and %s missing",
+    (missing) => {
+      // Failing at startup beats failing per transaction: without either value the interceptor
+      // cannot resolve a policy or derive a shadow account, so every affected flow would block.
+      setScreeningEnv();
+      delete process.env[missing];
+
+      expect(() => loadConfig()).toThrow(`${missing} env var is required`);
+    }
+  );
+
+  it("takes the policy TTL and timeout from the env", () => {
+    setScreeningEnv();
+    process.env.SCREENING_POLICY_TTL_MS = "5000";
+    process.env.SCREENING_POLICY_TIMEOUT_MS = "250";
+
+    const config = loadConfig();
+    expect(config.screening?.policyTtlMs).toBe(5000);
+    expect(config.screening?.policyTimeoutMs).toBe(250);
+  });
+
   it("enables blockNonPoolTx when SCREENING_BLOCK_NON_POOL_TX is 'true'", () => {
-    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
-    process.env.SCREENING_PARTNER_NAME = "test-partner";
-    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
-    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    setScreeningEnv();
     process.env.SCREENING_BLOCK_NON_POOL_TX = "true";
 
     const config = loadConfig();
@@ -107,10 +143,7 @@ describe("loadConfig", () => {
   });
 
   it("leaves blockNonPoolTx false for any value other than 'true'", () => {
-    process.env.SCREENING_URL = "http://elliptic-proxy:3000";
-    process.env.SCREENING_PARTNER_NAME = "test-partner";
-    process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
-    process.env.SCREENING_POOL_ADDRESS = "0xpool";
+    setScreeningEnv();
     process.env.SCREENING_BLOCK_NON_POOL_TX = "1";
 
     const config = loadConfig();
