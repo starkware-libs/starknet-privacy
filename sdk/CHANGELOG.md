@@ -4,6 +4,23 @@
 
 ### Added
 
+- `ScreeningCallMockProofProvider` attests the screening subject a v3 pool asks for, not only a
+  deposit's depositor: an invoke target that funds open notes and is listed `Required`, or the
+  shadow account an interaction runs through when its target is listed `Delegated`. The policy is
+  read from the pool at prove time and the pool address comes off the transaction, so a devnet suite
+  gets the right attestation without configuring the provider, and a suite can stop listing its
+  anonymizer `Exempt` to keep the flow green. A transaction putting up two subjects is refused here
+  rather than reverting on chain with `MULTIPLE_SCREENING_SUBJECTS`.
+- `screeningSubjectOf` and `OpenNoteScreeningPolicy` in `starknet-privacy-sdk/testing`, the subject
+  resolution the mock provider runs, exported so a test can assert which address a transaction puts
+  up without proving it.
+- `screeningErrorFromProvingError` maps `screening_policy_unavailable` to `ScreeningUnavailable`:
+  the pool's policy list is as much a screening dependency as the screener, so a read the
+  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`,
+  `unknown_delegated_depositor` and `shadow_account_undetermined` are deliberately left
+  unmapped — terminal for the transaction as built, but silent about the address, so reporting them
+  as `ScreeningRejected` would tell a caller they are sanctioned.
+
 - `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and
   `PRIMER_CLASS_HASH`, the shadow account derivation as pure functions, so a caller holding the raw
   felts can predict a shadow account's address without deploying it or reading the chain.
@@ -25,6 +42,12 @@
   `Required`.
 - `generate-pool-interface` now maps Cairo enums to the `CairoCustomEnum` type starknet.js
   actually returns, instead of falling back to `unknown`.
+
+### Changed
+
+- `ScreeningRejected` and `ScreeningUnavailable` messages drop their `Deposit ` prefix. The screened
+  address is no longer always a deposit's depositor: it may be the shadow account an interaction
+  runs through, or an invoke target the pool requires screening for.
 
 ### Fixed
 
