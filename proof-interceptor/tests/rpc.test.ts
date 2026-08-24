@@ -172,6 +172,42 @@ describe("validateRpcRequest", () => {
       }
     });
 
+    it("rejects calldata whose elements are not strings", () => {
+      // Every felt downstream is read as a string, so an array of numbers reaching the pool
+      // decoder would make the transaction's declared type a lie.
+      const tx = { ...sampleInvokeV3(), calldata: [1, 2, 3] };
+      const result = validateRpcRequest(
+        rpcBody("starknet_checkTransaction", ["latest", tx])
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.response.error.code).toBe(-32600);
+        expect(result.errorType).toBe("invalid_request");
+      }
+    });
+
+    it("rejects calldata mixing strings with a non-string", () => {
+      const tx = { ...sampleInvokeV3(), calldata: ["0x1", null, "0x3"] };
+      const result = validateRpcRequest(
+        rpcBody("starknet_checkTransaction", ["latest", tx])
+      );
+      expect(result.ok).toBe(false);
+    });
+
+    it("passes through the fields it does not read", () => {
+      // The prover's wire object carries more than this service verifies; rejecting an unfamiliar
+      // field would block a transaction it has no opinion on.
+      const tx = { ...sampleInvokeV3(), tip: 7, an_unknown_field: { a: 1 } };
+      const result = validateRpcRequest(
+        rpcBody("starknet_checkTransaction", ["latest", tx])
+      );
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.transaction.calldata).toEqual(["0x1"]);
+        expect(result.transaction.tip).toBe(7);
+      }
+    });
+
     describe("object-form params (by-name)", () => {
       it("accepts object params with block_id and transaction", () => {
         const result = validateRpcRequest(
@@ -336,6 +372,32 @@ describe("validateRpcRequest", () => {
       expect(result.ok).toBe(false);
       if (!result.ok) {
         expect(result.response.id).toBe("my-request-id");
+      }
+    });
+
+    it("preserves the id of a request whose envelope is invalid", () => {
+      const result = validateRpcRequest(
+        rpcBody("starknet_checkTransaction", ["latest", sampleInvokeV3()], {
+          jsonrpc: "1.0",
+          id: 7,
+        })
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.response.error.code).toBe(-32600);
+        expect(result.response.id).toBe(7);
+      }
+    });
+
+    it("addresses the error to null when the id is not a valid one", () => {
+      const result = validateRpcRequest(
+        rpcBody("starknet_checkTransaction", ["latest", sampleInvokeV3()], {
+          id: { not: "an id" },
+        })
+      );
+      expect(result.ok).toBe(false);
+      if (!result.ok) {
+        expect(result.response.id).toBeNull();
       }
     });
 
