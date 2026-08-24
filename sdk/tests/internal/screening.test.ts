@@ -122,6 +122,29 @@ describe("screeningErrorFromProvingError", () => {
     expect(mapped).toBeInstanceOf(ScreeningRejected);
   });
 
+  it("maps code 10000 + screening_policy_unavailable to ScreeningUnavailable", () => {
+    const mapped = screeningErrorFromProvingError(
+      new ProvingServiceError(10000, "Transaction rejected", "screening_policy_unavailable")
+    );
+    expect(mapped).toBeInstanceOf(ScreeningUnavailable);
+  });
+
+  it("leaves the unresolved-subject reasons unmapped rather than calling them a rejection", () => {
+    // These are terminal for the transaction as built but say nothing about the address. Mapping
+    // them to ScreeningRejected would tell the caller they are sanctioned and must never retry; the
+    // caller rethrows the prover's own error instead, whose message already carries the reason.
+    for (const data of [
+      "multiple_screening_subjects",
+      "unknown_delegated_depositor",
+      "shadow_account_undetermined",
+    ]) {
+      const mapped = screeningErrorFromProvingError(
+        new ProvingServiceError(10000, "Transaction rejected", data)
+      );
+      expect(mapped).toBeUndefined();
+    }
+  });
+
   it("returns undefined for code 10000 with no data (not a screening verdict)", () => {
     const mapped = screeningErrorFromProvingError(
       new ProvingServiceError(10000, "Transaction rejected")
