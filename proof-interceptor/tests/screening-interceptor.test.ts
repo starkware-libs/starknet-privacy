@@ -1,5 +1,5 @@
 // tests/screening-interceptor.test.ts
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, type MockInstance } from "vitest";
 import { createHmac } from "node:crypto";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -565,7 +565,7 @@ describe("ScreeningInterceptor", () => {
 });
 
 function findLogEntry(
-  logSpy: ReturnType<typeof vi.spyOn<typeof console, "log">>,
+  logSpy: MockInstance<typeof console.log>,
   predicate: (entry: Record<string, unknown>) => boolean
 ): Record<string, unknown> | undefined {
   for (const call of logSpy.mock.calls) {

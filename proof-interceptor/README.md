@@ -151,9 +151,10 @@ If `proof_interceptor_screening_results_total` stays at zero after real traffic,
 
 ```bash
 npm ci
-npm run build       # tsc → dist/
+(cd ../elliptic-proxy && npm ci)   # tests/e2e.test.ts imports its source, so lint resolves its deps
+npm run build       # tsc -p tsconfig.build.json → dist/
 npm test            # vitest run
-npm run lint        # prettier + eslint + tsc --noEmit
+npm run lint        # prettier + eslint + tsc --noEmit (src and tests)
 npm run format      # auto-fix
 ```
 
