@@ -206,11 +206,11 @@ impl<T: RawStorageAccess> IViews for T {
         }
         let values = self.read_slots(slots).await?;
         let mut result = Vec::with_capacity(count);
-        for chunk in values.chunks_exact(3) {
+        for &[ephemeral_pubkey, enc_channel_key, enc_sender_addr] in values.as_chunks::<3>().0 {
             result.push(EncChannelInfo {
-                ephemeral_pubkey: chunk[0],
-                enc_channel_key: chunk[1],
-                enc_sender_addr: chunk[2],
+                ephemeral_pubkey,
+                enc_channel_key,
+                enc_sender_addr,
             });
         }
         Ok(result)
@@ -274,5 +274,48 @@ impl<T: RawStorageAccess> IViews for T {
             .into_iter()
             .next()
             .ok_or(StorageError::SlotCountMismatch)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::storage_backend::MockBackend;
+
+    /// Each channel occupies 3 consecutive slots read as one flat batch, so the decoder maps
+    /// values back to fields by position. Distinct per-field values catch a positional swap.
+    #[tokio::test]
+    async fn test_channel_info_batch_maps_slots_to_fields_by_position() {
+        let recipient_addr = Felt::from(0xa11ce_u64);
+        let start_index = 7;
+        let num_channels = 2;
+
+        let mut backend = MockBackend::empty();
+        let mut expected_channels = Vec::with_capacity(num_channels);
+        for channel_offset in 0..num_channels {
+            let channel_slots = storage_slots::recipient_channels_element(
+                recipient_addr,
+                start_index + channel_offset as u64,
+            );
+            let channel_info = EncChannelInfo {
+                ephemeral_pubkey: Felt::from(100 + channel_offset),
+                enc_channel_key: Felt::from(200 + channel_offset),
+                enc_sender_addr: Felt::from(300 + channel_offset),
+            };
+            backend.insert(
+                channel_slots.ephemeral_pubkey,
+                channel_info.ephemeral_pubkey,
+            );
+            backend.insert(channel_slots.enc_channel_key, channel_info.enc_channel_key);
+            backend.insert(channel_slots.enc_sender_addr, channel_info.enc_sender_addr);
+            expected_channels.push(channel_info);
+        }
+
+        let channels = backend
+            .get_channel_info_batch(recipient_addr, start_index, num_channels)
+            .await
+            .unwrap();
+
+        assert_eq!(channels, expected_channels);
     }
 }
