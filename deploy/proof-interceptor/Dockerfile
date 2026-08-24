@@ -27,19 +27,29 @@ RUN cd proof-interceptor \
  && npm ci \
  && npm run build
 
-# Drop devDependencies once compilation is done; the runtime stage only
-# needs the production deps.
+# Drop devDependencies once compilation is done; the runtime stage only needs
+# the production deps. The SDK is pruned too — it is a file: dependency, so its
+# tree ships in the image rather than being flattened into the interceptor's.
 RUN cd proof-interceptor \
+ && npm prune --omit=dev \
+ && cd ../sdk \
  && npm prune --omit=dev
 
 # ---- runtime stage --------------------------------------------------------
 FROM node:22-slim
 WORKDIR /app/proof-interceptor
 
-# The SDK is a file: dependency, so the runtime needs both directories
-# present at the path npm resolved during install.
-COPY --from=build /app/sdk /app/sdk
-COPY --from=build /app/proof-interceptor /app/proof-interceptor
+# The SDK is a file: dependency, so the runtime needs both directories present
+# at the path npm resolved during install: the interceptor's
+# node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk.
+# No first-party sources, tests or configs are copied. The node_modules trees are
+# not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
+COPY --from=build /app/sdk/package.json /app/sdk/package.json
+COPY --from=build /app/sdk/dist /app/sdk/dist
+COPY --from=build /app/sdk/node_modules /app/sdk/node_modules
+COPY --from=build /app/proof-interceptor/package.json /app/proof-interceptor/package.json
+COPY --from=build /app/proof-interceptor/dist /app/proof-interceptor/dist
+COPY --from=build /app/proof-interceptor/node_modules /app/proof-interceptor/node_modules
 
 ENV NODE_ENV=production
 ENV PORT=8080

@@ -8,6 +8,7 @@
 **/.gitignore
 **/node_modules
 **/dist
+**/tests
 **/.cache
 **/coverage
 **/*.log
