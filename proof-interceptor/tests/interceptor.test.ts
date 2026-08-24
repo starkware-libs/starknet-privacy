@@ -107,7 +107,7 @@ describe("runInterceptors", () => {
     );
     expect(result).toEqual({
       action: "block",
-      reason: "connection failed",
+      reason: "interceptor_error",
     });
     const after = await errorsTotalValue("interceptor_error");
     expect(after).toBe(before + 1);

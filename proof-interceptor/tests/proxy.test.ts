@@ -211,7 +211,9 @@ describe("handler with interceptors", () => {
     const response = await rpcPost(proxyUrl("/"), checkRequest());
     const body = await response.json();
     expect(body.error.code).toBe(10000);
-    expect(body.error.data).toBe("network timeout");
+    // Opaque: the thrown message is logged, never handed to the caller.
+    expect(body.error.data).toBe("interceptor_error");
+    expect(JSON.stringify(body)).not.toContain("network timeout");
     spy.mockRestore();
   });
 });

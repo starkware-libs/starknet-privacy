@@ -93,6 +93,7 @@ export function createHandler(options: HandlerOptions = {}) {
       finishRequest("error", {
         rpcAction: "error",
         errorType: verdict.errorType,
+        requestId: verdict.response.id,
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify(verdict.response));
@@ -106,14 +107,21 @@ export function createHandler(options: HandlerOptions = {}) {
 
     const interceptorVerdict = await runInterceptors(
       interceptors,
-      verdict.transaction
+      verdict.transaction,
+      verdict.requestId
     );
 
     if (interceptorVerdict.action === "block") {
-      console.error(JSON.stringify({ error: "transaction_rejected" }));
+      console.error(
+        JSON.stringify({
+          error: "transaction_rejected",
+          requestId: verdict.requestId,
+        })
+      );
       finishRequest("check_with_interceptors", {
         rpcAction: "check_with_interceptors",
         interceptorVerdict: "block",
+        requestId: verdict.requestId,
       });
       res.writeHead(200, { "content-type": "application/json" });
       res.end(
