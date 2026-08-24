@@ -151,8 +151,6 @@ export function computeAndInvokeAction(
 }
 
 /** Silences a fail-closed path's error log, and returns the spy to assert on. */
-export function silenceErrorLog(): ReturnType<
-  typeof vi.spyOn<typeof console, "error">
-> {
+export function silenceErrorLog() {
   return vi.spyOn(console, "error").mockImplementation(() => {});
 }

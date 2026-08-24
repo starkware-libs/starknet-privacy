@@ -118,9 +118,7 @@ function useMovableClock(): void {
 }
 
 /** Silences the line a pre-policy-pool read logs, and returns the spy to assert on. */
-function silencePolicyLog(): ReturnType<
-  typeof vi.spyOn<typeof console, "log">
-> {
+function silencePolicyLog() {
   return vi.spyOn(console, "log").mockImplementation(() => {});
 }
 

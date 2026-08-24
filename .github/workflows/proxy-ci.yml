@@ -52,11 +52,17 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: proof-interceptor/package-lock.json
+          cache-dependency-path: |
+            proof-interceptor/package-lock.json
+            elliptic-proxy/package-lock.json
       - name: Build SDK (proof-interceptor depends on ABI)
         if: steps.filter.outputs.changed == 'true'
         working-directory: sdk
         run: npm ci && npm run build
+      - name: Install elliptic-proxy (its source is type-checked through tests/e2e.test.ts)
+        if: steps.filter.outputs.changed == 'true'
+        working-directory: elliptic-proxy
+        run: npm ci
       - name: Install
         if: steps.filter.outputs.changed == 'true'
         working-directory: proof-interceptor
