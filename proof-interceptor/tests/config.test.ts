@@ -173,4 +173,36 @@ describe("loadConfig", () => {
 
     expect(() => loadConfig()).toThrow("SCREENING_POOL_ADDRESS");
   });
+
+  it("throws when PORT is outside the port range", () => {
+    process.env.PORT = "70000";
+
+    expect(() => loadConfig()).toThrow("PORT must be between 1 and 65535");
+  });
+
+  it("throws when MAX_BODY_BYTES is zero", () => {
+    process.env.MAX_BODY_BYTES = "0";
+
+    expect(() => loadConfig()).toThrow(
+      "MAX_BODY_BYTES must be a positive integer"
+    );
+  });
+
+  it("treats an empty required var as missing", () => {
+    // An exported-but-empty var is how a misconfigured deployment usually presents, and it must
+    // fail at startup rather than reach the screener as an empty partner name.
+    setScreeningEnv();
+    process.env.SCREENING_PARTNER_SECRET = "";
+
+    expect(() => loadConfig()).toThrow(
+      "SCREENING_PARTNER_SECRET env var is required"
+    );
+  });
+
+  it("leaves screening off when SCREENING_URL is empty", () => {
+    process.env.SCREENING_URL = "";
+
+    const config = loadConfig();
+    expect(config.screening).toBeUndefined();
+  });
 });
