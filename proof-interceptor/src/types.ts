@@ -1,10 +1,5 @@
 // src/types.ts
-export interface JsonRpcRequest {
-  jsonrpc: "2.0";
-  id: string | number | null;
-  method: string;
-  params?: unknown;
-}
+import { z } from "zod";
 
 export interface JsonRpcError {
   code: number;
@@ -26,20 +21,21 @@ export interface JsonRpcSuccessResponse {
 
 export type JsonRpcResponse = JsonRpcSuccessResponse | JsonRpcErrorResponse;
 
-export interface ProveTxnV3 {
-  type: "INVOKE";
-  version: "0x3";
-  sender_address: string;
-  calldata: string[];
-  signature: string[];
-  nonce: string;
-  resource_bounds: Record<string, unknown>;
-  tip: string;
-  paymaster_data: string[];
-  account_deployment_data: string[];
-  nonce_data_availability_mode: string;
-  fee_data_availability_mode: string;
-}
+/**
+ * The fields of a v3 INVOKE this service reads, and therefore the ones it verifies. The prover's
+ * wire object carries more — `sender_address`, `signature`, `nonce`, `resource_bounds`, `tip`,
+ * `paymaster_data`, `account_deployment_data` and the availability modes — which pass through
+ * unread: validating them would reject transactions this service has no opinion on.
+ */
+export const ProveTxnV3Schema = z
+  .object({
+    type: z.literal("INVOKE"),
+    version: z.literal("0x3"),
+    calldata: z.array(z.string()),
+  })
+  .passthrough();
+
+export type ProveTxnV3 = z.infer<typeof ProveTxnV3Schema>;
 
 export function jsonRpcError(
   id: string | number | null,

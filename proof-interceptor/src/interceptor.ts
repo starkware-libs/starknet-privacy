@@ -45,7 +45,9 @@ export async function runInterceptors(
       const message = error instanceof Error ? error.message : String(error);
       console.error(JSON.stringify({ error: "interceptor_error", message }));
       errorsTotal.inc({ type: "interceptor_error" });
-      verdict = { action: "block", reason: message };
+      // The message is logged, not returned: a reason reaches the client as JSON-RPC error `data`,
+      // where an exception's text could carry an address or an internal detail.
+      verdict = { action: "block", reason: "interceptor_error" };
     }
     const durationSeconds = (Date.now() - startTime) / 1000;
 
