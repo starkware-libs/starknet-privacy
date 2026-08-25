@@ -3,6 +3,20 @@ export { AddressMap } from "./utils/index.js";
 export { createPrivateTransfers } from "./factory.js";
 export { ShadowAccountAnonymizerABI } from "./internal/anonymizer-abi.js";
 export {
+  screeningSubjectOf,
+  shadowAccountOfPoolCall,
+  shadowAccountInteractionOf,
+  openNoteDepositorOf,
+  normalizeFelt,
+} from "./internal/screening-subject.js";
+export type {
+  OpenNoteScreeningPolicy,
+  OpenNotePolicyReader,
+  ScreeningSubject,
+  ScreeningSubjectOptions,
+  DecodedPoolCall,
+} from "./internal/screening-subject.js";
+export {
   PRIMER_CLASS_HASH,
   shadowAccountAddress,
   shadowAccountCommitment,

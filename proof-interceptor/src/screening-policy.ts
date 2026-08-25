@@ -1,14 +1,17 @@
 // src/screening-policy.ts
 import { LRUCache } from "lru-cache";
 import { CairoCustomEnum, RpcError, RpcProvider } from "starknet";
+import type { OpenNoteScreeningPolicy } from "@starkware-libs/starknet-privacy-sdk";
 import { normalizeFelt, poolCallData } from "./pool-transaction.js";
 import { screeningPolicyReads } from "./metrics.js";
 
 /**
- * The pool answers with a variant index, so this must match the Cairo enum in name and order.
- * `scripts/check_screening_policies.py` fails a pull request where the two disagree.
+ * The pool answers with a variant index, so the union must match the Cairo enum in name and order.
+ * The SDK declares it once and the shared subject rule reads it there;
+ * `scripts/check_screening_policies.py` fails a pull request where that declaration and the Cairo
+ * enum disagree.
  */
-export type OpenNoteScreeningPolicy = "Required" | "Exempt" | "Delegated";
+export type { OpenNoteScreeningPolicy };
 
 export const MAX_CACHED_POLICIES = 1024;
 

@@ -4,6 +4,12 @@
 
 ### Added
 
+- `screeningSubjectOf`, the pool's rule for which address a transaction must be screened on, with
+  the `OpenNoteScreeningPolicy` union, `shadowAccountOfPoolCall` and the open-note depositor
+  detection it rests on. The rule was the proof interceptor's; it moves here so everything deciding
+  what to screen — the interceptor, and the mock proving provider the devnet suites run against —
+  reaches the same answer. Decoding the pool call, reading the policy and rendering a refusal stay
+  with the caller.
 - `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and
   `PRIMER_CLASS_HASH`, the shadow account derivation as pure functions, so a caller holding the raw
   felts can predict a shadow account's address without deploying it or reading the chain.

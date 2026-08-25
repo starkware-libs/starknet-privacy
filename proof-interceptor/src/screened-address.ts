@@ -1,9 +1,10 @@
 // src/screened-address.ts
-import { CairoCustomEnum, num } from "starknet";
-import { decodeClientActions, normalizeFelt } from "./pool-transaction.js";
-import type { PoolCallActions } from "./pool-transaction.js";
+import {
+  screeningSubjectOf,
+  type ScreeningSubject,
+} from "@starkware-libs/starknet-privacy-sdk";
+import { decodeClientActions } from "./pool-transaction.js";
 import type { ProveTxnV3 } from "./types.js";
-import { getShadowAccountAddress } from "./shadow-account.js";
 import type { OpenNoteScreeningPolicyClient } from "./screening-policy.js";
 
 type PolicyReader = Pick<OpenNoteScreeningPolicyClient, "getPolicy">;
@@ -13,38 +14,32 @@ export interface ScreenedAddressConfig {
   anonymizerAddress: string;
 }
 
-type InvokeAction = "InvokeExternal" | "ComputeAndInvoke";
+export type ScreenedAddress = ScreeningSubject;
 
 /**
- * The contract whose invoke funds a transaction's open notes — the one the pool holds an open-note
- * policy for — and the action it is driven through.
+ * The opaque code a subject this service cannot derive is logged under. `conflict` and
+ * `unreadablePolicy` are absent on purpose: the first is the transaction's own shape and the second
+ * is already logged, with its cause, by the read that failed.
  */
-interface OpenNoteDepositor {
-  address: string;
-  action: InvokeAction;
-}
-
-/** The pool takes one attestation per transaction, so a delegated depositor puts up at most one address. */
-type DelegatedAddress = Extract<
-  ScreenedAddress,
-  {
-    kind: "one" | "none" | "unknownDelegate" | "undeterminedShadowAccount";
-  }
->;
-
-export type ScreenedAddress =
-  | { kind: "none" }
-  | { kind: "one"; address: string }
-  | { kind: "conflict" }
-  | { kind: "unreadablePolicy" }
-  | { kind: "unknownDelegate" }
-  | { kind: "undeterminedShadowAccount" };
+const UNDERIVABLE_SUBJECT_LOGS: Record<
+  Extract<
+    ScreenedAddress["kind"],
+    "unknownDelegate" | "undeterminedShadowAccount"
+  >,
+  string
+> = {
+  unknownDelegate: "unknown_delegated_depositor",
+  undeterminedShadowAccount: "shadow_account_undetermined",
+};
 
 /**
  * The address a prove request must be screened for.
  *
  * Screening an address the pool did not ask for is not a harmless extra: it rejects an attestation
- * it has no subject for with `UNEXPECTED_SCREENING`.
+ * it has no subject for with `UNEXPECTED_SCREENING`. The rule deciding that address is the SDK's
+ * {@link screeningSubjectOf}, shared with the mock proving provider the devnet suites run against,
+ * so the two cannot drift apart. What stays here is this service's own: decoding the pool call out
+ * of a prove request, reading the policy over RPC, and logging a refusal as an opaque code.
  */
 export async function getScreenedAddress(
   transaction: ProveTxnV3,
@@ -55,105 +50,19 @@ export async function getScreenedAddress(
   const poolCall = decodeClientActions(transaction, config.poolAddress);
   if (poolCall === null) return { kind: "none" };
 
-  const addresses = new Set<string>();
-
-  // A deposit is screened on its own depositor. The screening policy list does not apply to a
-  // `TransferFrom` the user signs for themselves.
-  if (poolCall.actions.some((action) => action.activeVariant() === "Deposit")) {
-    addresses.add(poolCall.userAddress);
-  }
-
-  const openNoteDepositor = getOpenNoteDepositor(poolCall.actions);
-  if (openNoteDepositor !== null) {
-    const policy = await policyReader.getPolicy(openNoteDepositor.address);
-    switch (policy) {
-      case "Exempt":
-        break;
-
-      case "Required":
-        addresses.add(openNoteDepositor.address);
-        break;
-
-      case "Delegated": {
-        const delegated = getDelegatedAddress(
-          poolCall,
-          openNoteDepositor,
-          config
-        );
-        if (delegated.kind === "one") addresses.add(delegated.address);
-        else if (delegated.kind !== "none") return delegated;
-        break;
-      }
-
-      case null:
-        return { kind: "unreadablePolicy" };
-
-      default:
-        return unscreenableUnderUnhandledPolicy(policy);
-    }
-  }
-
-  if (addresses.size > 1) return { kind: "conflict" };
-  const [address] = addresses;
-  return address === undefined ? { kind: "none" } : { kind: "one", address };
-}
-
-/** The address a delegated open-note depositor puts up for the deposits its invoke funds. */
-function getDelegatedAddress(
-  poolCall: PoolCallActions,
-  openNoteDepositor: OpenNoteDepositor,
-  { anonymizerAddress }: ScreenedAddressConfig
-): DelegatedAddress {
-  // A plain invoke is exempt under `Delegated`; only a compute-invoke puts up an address.
-  if (openNoteDepositor.action !== "ComputeAndInvoke") return { kind: "none" };
-
-  if (openNoteDepositor.address !== normalizeFelt(anonymizerAddress)) {
-    console.error(JSON.stringify({ error: "unknown_delegated_depositor" }));
-    return { kind: "unknownDelegate" };
-  }
-
-  const shadowAccount = getShadowAccountAddress(poolCall, anonymizerAddress);
-  if (shadowAccount === null) {
-    console.error(JSON.stringify({ error: "shadow_account_undetermined" }));
-    return { kind: "undeterminedShadowAccount" };
-  }
-  return { kind: "one", address: shadowAccount };
-}
-
-/**
- * Under the invariant that an open note must be funded within the transaction that creates it, any
- * transaction carrying a `CreateOpenNote` action has an open-note depositor.
- */
-function getOpenNoteDepositor(
-  actions: CairoCustomEnum[]
-): OpenNoteDepositor | null {
-  if (!actions.some((action) => action.activeVariant() === "CreateOpenNote")) {
-    return null;
-  }
-  for (const action of actions) {
-    const variant = action.activeVariant();
-    if (variant !== "InvokeExternal" && variant !== "ComputeAndInvoke")
-      continue;
-    const { contract_address } = action.unwrap() as {
-      contract_address: bigint;
-    };
-    return {
-      address: normalizeFelt(num.toHex(contract_address)),
-      action: variant,
-    };
-  }
-  return null;
-}
-
-/**
- * Refuses a policy the switch above does not handle, and fails closed if one reaches it at runtime.
- * The `never` parameter is the point: `scripts/check_screening_policies.py` keeps
- * {@link OpenNoteScreeningPolicy} tracking the Cairo enum, so a new variant fails to compile here
- * instead of falling through and screening nobody.
- */
-function unscreenableUnderUnhandledPolicy(policy: never): ScreenedAddress {
-  console.error(
-    JSON.stringify({ error: "screening_policy_unavailable", policy })
+  const subject = await screeningSubjectOf(
+    poolCall,
+    (depositor) => policyReader.getPolicy(depositor),
+    { anonymizerAddress: config.anonymizerAddress }
   );
-  return { kind: "unreadablePolicy" };
+
+  if (
+    subject.kind === "unknownDelegate" ||
+    subject.kind === "undeterminedShadowAccount"
+  ) {
+    console.error(
+      JSON.stringify({ error: UNDERIVABLE_SUBJECT_LOGS[subject.kind] })
+    );
+  }
+  return subject;
 }

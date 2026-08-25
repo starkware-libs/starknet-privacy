@@ -18,7 +18,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 CAIRO_SOURCE = REPO_ROOT / "packages/privacy/src/objects.cairo"
 ABI_SOURCE = REPO_ROOT / "sdk/src/internal/abi.ts"
-INTERCEPTOR_SOURCE = REPO_ROOT / "proof-interceptor/src/screening-policy.ts"
+UNION_SOURCE = REPO_ROOT / "sdk/src/internal/screening-subject.ts"
 
 ENUM_NAME = "OpenNoteScreeningPolicy"
 ABI_ENUM_NAME = f"privacy::objects::{ENUM_NAME}"
@@ -49,9 +49,9 @@ def abi_variants() -> list[str]:
 
 
 def union_members() -> list[str]:
-    union = UNION_PATTERN.search(INTERCEPTOR_SOURCE.read_text())
+    union = UNION_PATTERN.search(UNION_SOURCE.read_text())
     if union is None:
-        sys.exit(f"{INTERCEPTOR_SOURCE}: `export type {ENUM_NAME}` not found. Did it move?")
+        sys.exit(f"{UNION_SOURCE}: `export type {ENUM_NAME}` not found. Did it move?")
     return UNION_MEMBER_PATTERN.findall(union.group(1))
 
 
@@ -59,7 +59,7 @@ def main() -> None:
     policies = {
         CAIRO_SOURCE: cairo_variants(),
         ABI_SOURCE: abi_variants(),
-        INTERCEPTOR_SOURCE: union_members(),
+        UNION_SOURCE: union_members(),
     }
     if len(set(map(tuple, policies.values()))) > 1:
         listed = "\n".join(
@@ -69,8 +69,8 @@ def main() -> None:
             "The open-note screening policies disagree, in name or in order:\n"
             f"{listed}\n"
             "Order is the serde index the pool answers with, so it has to match too. Cairo owns the "
-            "list: regenerate the ABI with `npm run generate:abi` in sdk/, then update the "
-            "interceptor's union and the policies it screens on."
+            "list: regenerate the ABI with `npm run generate:abi` in sdk/, then update the union and "
+            "the subject rule that screens on it. The proof interceptor imports both."
         )
     print(f"Open-note screening policies agree: {policies[CAIRO_SOURCE]}")
 
