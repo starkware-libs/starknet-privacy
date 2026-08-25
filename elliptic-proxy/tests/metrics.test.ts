@@ -1,9 +1,33 @@
 // tests/metrics.test.ts
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
 import type { Request } from "@google-cloud/functions-framework";
 import { createHandler } from "../src/handler.js";
-import { metricsContentType } from "../src/metrics.js";
-import { makeConfig, makeResponse } from "./helpers.js";
+import {
+  ellipticRequests,
+  metricsContentType,
+  resetMetricsForTest,
+} from "../src/metrics.js";
+import {
+  makeConfig,
+  makeMockEllipticConfig,
+  makeRequest,
+  makeResponse,
+} from "./helpers.js";
+
+// An upstream reply the handler treats as "not on chain" → allowed, so the
+// flow reaches the dispatch site and completes without crafting a score body.
+const NOT_ON_CHAIN = { status: 404, body: "", durationMs: 5 };
+
+async function ellipticCount(
+  partner: string,
+  upstream: string
+): Promise<number> {
+  const metric = await ellipticRequests.get();
+  const series = metric.values.find(
+    (v) => v.labels.partner === partner && v.labels.upstream === upstream
+  );
+  return series?.value ?? 0;
+}
 
 const METRICS_TOKEN = "scrape-token";
 
@@ -62,5 +86,53 @@ describe("GET /metrics", () => {
     // collectDefaultMetrics always emits the process start time series.
     expect(res.body).toContain("process_start_time_seconds");
     expect(mockForward).not.toHaveBeenCalled();
+  });
+});
+
+describe("elliptic_proxy_elliptic_requests_total", () => {
+  beforeEach(() => resetMetricsForTest());
+
+  function handlerFor(config = makeConfig(), forward = vi.fn()) {
+    const configLoader = { get: vi.fn().mockResolvedValue(config) };
+    return { handler: createHandler(configLoader, forward), forward };
+  }
+
+  it("increments by partner and upstream on a forwarded call", async () => {
+    const { handler, forward } = handlerFor();
+    forward.mockResolvedValue(NOT_ON_CHAIN);
+    await handler(makeRequest(), makeResponse());
+    expect(forward).toHaveBeenCalledTimes(1);
+    expect(await ellipticCount("test-partner", "elliptic")).toBe(1);
+  });
+
+  it("labels the mock upstream when screening against it", async () => {
+    const { handler, forward } = handlerFor(makeMockEllipticConfig());
+    forward.mockResolvedValue(NOT_ON_CHAIN);
+    await handler(makeRequest(), makeResponse());
+    expect(await ellipticCount("test-partner", "mock")).toBe(1);
+    expect(await ellipticCount("test-partner", "elliptic")).toBe(0);
+  });
+
+  it("does not count an allowlist hit (no upstream call)", async () => {
+    const { handler, forward } = handlerFor(
+      makeConfig({ blockOverrideAddresses: ["0xabc123"] })
+    );
+    await handler(makeRequest(), makeResponse());
+    expect(forward).not.toHaveBeenCalled();
+    expect(await ellipticCount("test-partner", "elliptic")).toBe(0);
+  });
+
+  it("does not count a request rejected before auth", async () => {
+    const { handler, forward } = handlerFor();
+    const req = makeRequest({
+      headers: {
+        "x-access-key": "test-partner",
+        "x-access-sign": "bad-signature",
+        "x-access-timestamp": Date.now().toString(),
+      },
+    });
+    await handler(req, makeResponse());
+    expect(forward).not.toHaveBeenCalled();
+    expect(await ellipticCount("test-partner", "elliptic")).toBe(0);
   });
 });
