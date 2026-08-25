@@ -130,9 +130,11 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 
 - `proof_interceptor_build_info{version,git_sha}` — always `1`; the labels are the point. Join against it to tie behaviour to a deploy. `version` comes from `package.json`, `git_sha` from the `GIT_SHA` env var (`unknown` when unset).
 - `proof_interceptor_screening_results_total{result}` — `allowed` / `blocked` / `unavailable`. The primary signal that screening is wired up at all.
+- `proof_interceptor_screening_availability_total{outcome}` — one increment per call to the proxy: `success`, `timeout`, `http_error`, `network_error`. Separate from `screening_results_total`, which counts verdicts — this one says whether the upstream answered, so a proxy outage is visible even while fail-open keeps allowing deposits.
 - `proof_interceptor_screening_retries_total` — retry attempts only (first attempts excluded).
 - `proof_interceptor_screening_duration_seconds{result}` — Elliptic round-trip latency.
 - `proof_interceptor_interceptor_verdicts_total{interceptor,verdict}` — per-interceptor verdicts.
+- `proof_interceptor_interceptor_errors_total{interceptor}` — errors attributed to the interceptor that raised them, rather than the single `errors_total{type="interceptor_error"}` bucket.
 - `proof_interceptor_rpc_requests_total{action,method}` and `proof_interceptor_errors_total{type}` — request and error counters.
 - `proof_interceptor_process_crashes_total{source}` — `uncaught_exception` / `unhandled_rejection`. Non-zero means the process died and was restarted.
 

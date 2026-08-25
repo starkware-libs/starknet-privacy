@@ -10,11 +10,34 @@ import type {
 import { logger } from "./logger.js";
 import type { ProveTxnV3 } from "./types.js";
 import {
+  screeningAvailability,
   screeningResults,
   screeningRetries,
   screeningDuration,
   signaturesIssued,
 } from "./metrics.js";
+
+/**
+ * Categorizes a failure of `callEllipticProxy` for the
+ * `proof_interceptor_screening_availability_total{outcome}` metric.
+ */
+export type ScreeningErrorCategory = "timeout" | "http_error" | "network_error";
+
+/**
+ * Error thrown by `callEllipticProxy` that carries the category the metric
+ * should be labelled with. Keeps categorization at the throw site (where the
+ * cause is unambiguous) so the metric increment can be a simple lookup at
+ * the catch site.
+ */
+class ScreeningError extends Error {
+  constructor(
+    readonly category: ScreeningErrorCategory,
+    message: string
+  ) {
+    super(message);
+    this.name = "ScreeningError";
+  }
+}
 
 export interface ScreeningConfig {
   ellipticProxyUrl: string;
@@ -206,6 +229,7 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         const screeningLatencyMs = Date.now() - callStart;
         screeningResults.inc({ result });
         screeningDuration.observe({ result }, screeningLatencyMs / 1000);
+        screeningAvailability.inc({ outcome: "success" });
         logger.info({
           event: "screening_complete",
           result,
@@ -219,6 +243,9 @@ export class ScreeningInterceptor implements TransactionInterceptor {
         return { result: "blocked" };
       } catch (error) {
         lastError = error instanceof Error ? error : new Error(String(error));
+        const outcome: ScreeningErrorCategory =
+          error instanceof ScreeningError ? error.category : "network_error";
+        screeningAvailability.inc({ outcome });
       }
     }
 
@@ -252,22 +279,45 @@ export class ScreeningInterceptor implements TransactionInterceptor {
       body
     );
 
-    const response = await fetch(this.config.ellipticProxyUrl + path, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-access-key": this.config.partnerName,
-        "x-access-sign": signature,
-        "x-access-timestamp": timestamp,
-      },
-      body,
-      signal: AbortSignal.timeout(timeoutMs),
-    });
+    let response;
+    try {
+      response = await fetch(this.config.ellipticProxyUrl + path, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-access-key": this.config.partnerName,
+          "x-access-sign": signature,
+          "x-access-timestamp": timestamp,
+        },
+        body,
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+    } catch (error) {
+      // `AbortSignal.timeout` raises `TimeoutError` (Node >=22) — older runtimes
+      // and some test shims raise `AbortError`. Accept both. Any other thrown
+      // error from `fetch` (TypeError "fetch failed", DNS / TCP / TLS issues)
+      // is categorized as a network error.
+      const name = (error as { name?: string }).name;
+      if (name === "TimeoutError" || name === "AbortError") {
+        throw new ScreeningError(
+          "timeout",
+          `elliptic-proxy timed out after ${timeoutMs}ms`
+        );
+      }
+      const message = error instanceof Error ? error.message : String(error);
+      throw new ScreeningError(
+        "network_error",
+        `elliptic-proxy network error: ${message}`
+      );
+    }
 
     // A non-2xx is a transient transport/upstream fault — throw so the caller
     // retries, then fails closed.
     if (!response.ok) {
-      throw new Error(`elliptic-proxy /screen returned ${response.status}`);
+      throw new ScreeningError(
+        "http_error",
+        `elliptic-proxy /screen returned ${response.status}`
+      );
     }
 
     const payload: unknown = await response.json();
