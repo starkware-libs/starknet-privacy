@@ -92,6 +92,7 @@ describe("loadConfig", () => {
       totalTimeoutMs: 10000,
       poolAddress: "0xpool",
       blockNonPoolTx: false,
+      healthMaxUnavailableMs: 30000,
     });
   });
 

@@ -28,6 +28,29 @@ export function createHandler(options: HandlerOptions = {}) {
 
   return async (req: IncomingMessage, res: ServerResponse) => {
     if (req.url === "/health" && req.method === "GET") {
+      // Probe each interceptor that opted in to health reporting. The body
+      // intentionally exposes only interceptor names + opaque reason codes —
+      // no internal state (timestamps, error counts) reaches the response.
+      const unhealthy = interceptors
+        .map((interceptor) => ({
+          name: interceptor.name,
+          health: interceptor.health?.() ?? { healthy: true },
+        }))
+        .filter((entry) => !entry.health.healthy);
+
+      if (unhealthy.length > 0) {
+        res.writeHead(503, { "content-type": "application/json" });
+        res.end(
+          JSON.stringify({
+            status: "unhealthy",
+            interceptors: unhealthy.map((entry) => ({
+              name: entry.name,
+              reason: entry.health.reason,
+            })),
+          })
+        );
+        return;
+      }
       res.writeHead(200, { "content-type": "application/json" });
       res.end(JSON.stringify({ status: "ok" }));
       return;
