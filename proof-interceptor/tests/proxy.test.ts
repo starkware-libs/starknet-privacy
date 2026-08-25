@@ -146,6 +146,93 @@ describe("handler", () => {
     expect(response.status).toBe(413);
     expect(await response.json()).toEqual({ error: "payload too large" });
   });
+
+  it("echoes x-request-id from the request when provided", async () => {
+    await startProxy();
+    const requestId = "client-supplied-id-123";
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": requestId,
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+    expect(response.headers.get("x-request-id")).toBe(requestId);
+  });
+
+  it("generates an x-request-id when none is supplied", async () => {
+    await startProxy();
+
+    const response = await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+    const generated = response.headers.get("x-request-id");
+    expect(generated).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+    );
+  });
+
+  it("drops hostile x-request-id and generates a fresh one", async () => {
+    await startProxy();
+    // Whitespace and oversize values must be rejected — either would be
+    // unsafe to echo into a response header or to embed in a structured
+    // log field. CR/LF are already blocked by Node's HTTP parser before
+    // `req.headers` even sees them, so we don't need to test those here.
+    const hostile = ["with space", "tab\there", "a".repeat(2048)];
+    for (const value of hostile) {
+      const response = await fetch(proxyUrl("/"), {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-request-id": value,
+        },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+      });
+      const echoed = response.headers.get("x-request-id") ?? "";
+      expect(echoed).not.toBe(value);
+      expect(echoed).toMatch(
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
+      );
+    }
+  });
+
+  it("includes status and request_id in the per-request log line", async () => {
+    await startProxy();
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+
+    await fetch(proxyUrl("/"), {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-request-id": "trace-XYZ",
+      },
+      body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "unknown" }),
+    });
+
+    const requestLog = logSpy.mock.calls
+      .map((call) => {
+        try {
+          return JSON.parse(call[0] as string) as Record<string, unknown>;
+        } catch {
+          return undefined;
+        }
+      })
+      .find((entry) => entry?.event === "request");
+    expect(requestLog).toBeDefined();
+    expect(requestLog).toMatchObject({
+      event: "request",
+      method: "POST",
+      url: "/",
+      status: 200,
+      request_id: "trace-XYZ",
+    });
+    expect(typeof requestLog!.latencyMs).toBe("number");
+    logSpy.mockRestore();
+  });
 });
 
 describe("handler with interceptors", () => {

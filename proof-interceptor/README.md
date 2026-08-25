@@ -78,6 +78,10 @@ Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. O
 | `/health`  | GET    | Liveness/readiness. Returns `200 {"status":"ok"}`.                                                                    |
 | `/metrics` | GET    | Prometheus metrics.                                                                                                   |
 
+Every response carries an `x-request-id` header. An inbound `x-request-id` is reused when it
+is printable ASCII with no whitespace and at most 128 characters; anything else is replaced by
+a fresh UUID, so a caller cannot inject header bytes or bloat the log line. See [Logging](#logging).
+
 ### Request
 
 The body mirrors `starknet_proveTransaction` exactly (object or positional params). The screened shape is a single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` with `calldata = [call_count=1, contract_address=pool, selector, inner_len, user_addr, user_private_key, ...action_span]`. The action span is decoded against `PrivacyPoolABI`; only the Deposit variant triggers a screen. See `src/rpc.ts` for envelope validation and the calldata-layout comments above `isSinglePoolCall` in `src/screening-interceptor.ts` for the field-by-field breakdown.
@@ -132,6 +136,19 @@ Prometheus counters/histograms exported on `/metrics` (defined in `src/metrics.t
 - `proof_interceptor_process_crashes_total{source}` — `uncaught_exception` / `unhandled_rejection`. Non-zero means the process died and was restarted.
 
 Plus default Node.js process metrics from `prom-client`.
+
+## Logging
+
+Every log line is a single JSON object on stdout (stderr for `error`), carrying `level` and an
+`event` name. Inside a request, `request_id` is attached automatically — the id is held in an
+`AsyncLocalStorage` scope, so downstream lines (`screening_complete`, `screening_failed`,
+`interceptor_error`) correlate to the originating call without being threaded through.
+
+Each request produces exactly one `event="request"` line with `method`, `url`, `status`,
+`latencyMs`, and the RPC outcome. Errors are logged where they happen rather than only where
+they are mapped to a response.
+
+Request bodies are never logged: `user_addr` and pool calldata are private user data.
 
 ## Process lifecycle
 
