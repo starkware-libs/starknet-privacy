@@ -177,6 +177,26 @@ prom-client's default metrics) marks the cold start that zeroed them.
 | Metric                                   | Labels                | Meaning                                                                                                                                                                                       |
 | ---------------------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `elliptic_proxy_elliptic_requests_total` | `partner`, `upstream` | Calls actually forwarded to Elliptic — the billed, allotment-capped resource. Counted at the dispatch site, so requests short-circuited by auth, the rate limiter, the operator lists, or the blocked cache are excluded. `upstream` separates live `elliptic` cost from `mock` traffic. |
+| `elliptic_proxy_http_responses_total`     | `status`, `partner`   | Every response the proxy returns, by HTTP status. `partner` is a known partner name or `"unknown"` — the `x-access-key` header is attacker-controlled, so unknown values collapse rather than minting unbounded series. |
+
+### Alerting on it
+
+```promql
+# our bug — one is already too many
+sum(increase(elliptic_proxy_http_responses_total{status=~"500|503"}[10m])) > 0
+
+# Elliptic is down — 502 is a non-2xx reply, 504 an unreachable upstream
+sum(rate(elliptic_proxy_http_responses_total{status=~"502|504"}[5m]))
+
+# a partner's secret is wrong, or someone is guessing it
+sum by (partner) (rate(elliptic_proxy_http_responses_total{status="401"}[5m]))
+
+# Elliptic spend by partner — names whose secret to revoke under abuse
+sum by (partner) (rate(elliptic_proxy_elliptic_requests_total{upstream="elliptic"}[5m]))
+```
+
+Thresholds depend on baseline traffic and the Elliptic allotment, so they are left to the
+alerting config rather than fixed here.
 
 ## Error handling
 
@@ -278,3 +298,4 @@ Errors are logged to stderr:
 - `error: "config_load_failed"` — Secret Manager fetch / parse failure.
 - `error: "upstream_request_failed"` — fetch to Elliptic threw at the transport layer (DNS, TLS, TCP, timeout). Includes `cause.code` (e.g. `ENOTFOUND`, `ECONNREFUSED`) so the underlying reason is visible without code changes.
 - `error: "upstream_error"` — Elliptic returned a non-2xx response. Includes `ellipticStatus` and the first 2KB of the response body, so HTTP-level errors (`401 AuthenticationError`, `400 ValidationError`, etc.) are diagnosable from logs alone.
+- `error: "unhandled_exception"` — a bug escaped the handler. The proxy fails closed with a `500` and counts it in `elliptic_proxy_http_responses_total{status="500"}`.
