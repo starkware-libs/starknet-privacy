@@ -12,6 +12,7 @@ import {
   createPrivateTransfers,
   type PrivateTransfersInterface,
 } from "@starkware-libs/starknet-privacy-sdk";
+import { InterceptorSubjectProofProvider } from "./interceptor-subject-proof-provider.js";
 import { IndexerClient, type IndexerSpawnConfig } from "./indexer-client.js";
 
 const CONTRACT_CLASS_PATH = join(
@@ -109,6 +110,7 @@ export interface E2eTestEnv {
 
 export interface E2eTestEnvConfig {
   indexer?: Partial<IndexerSpawnConfig>;
+  interceptorBackedScreening?: boolean;
 }
 
 export async function createE2eTestEnv(
@@ -125,13 +127,20 @@ export async function createE2eTestEnv(
   });
   await indexer.waitUntilReady(devnet.url);
 
-  // The pool screens deposits, so the proving node signs each deposit's attestation with the
-  // screener key the pool was deployed with.
+  // Both providers sign with the screener key the pool was deployed with; they differ in which
+  // address they attest. The mock always takes the depositor, so a suite whose depositor is listed
+  // `Delegated` needs the interceptor's rule to reach the address the pool actually asks for.
+  const provingProvider = config?.interceptorBackedScreening
+    ? new InterceptorSubjectProofProvider(env.node, chainId, {
+        poolAddress: env.privacy.address,
+      })
+    : new ScreeningCallMockProofProvider(env.node, chainId);
+
   const transfers = {
     alice: createPrivateTransfers({
       account: env.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
+      provingProvider,
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,
@@ -141,7 +150,7 @@ export async function createE2eTestEnv(
     bob: createPrivateTransfers({
       account: env.bob,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
-      provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
+      provingProvider,
       discoveryProvider: new IndexerDiscoveryProvider(
         indexer.apiUrl,
         env.privacy.address,

@@ -17,7 +17,7 @@ import { PrivacyPoolABI } from "../internal/abi.js";
 import type { Proof, ProofInvocation } from "../interfaces.js";
 import { extractExecuteViewCalldata } from "../internal/proof-invocation-factory.js";
 import { CallMockProofProvider } from "../internal/mock-proving.js";
-import { signScreeningAttestation, SCREENING_SIGNER_PRIVATE_KEY } from "./screening-signer.js";
+import { attestScreeningSubject } from "./screening-signer.js";
 
 const CLIENT_ACTIONS_TYPE = "core::array::Span::<privacy::actions::ClientAction>" as const;
 
@@ -30,19 +30,7 @@ export class ScreeningCallMockProofProvider extends CallMockProofProvider {
     const depositor = this.depositorToScreen(invocation);
     if (depositor === undefined) return proof;
 
-    // Sign over the chain id the contract actually verifies against
-    // (get_tx_info().chain_id), queried from the chain rather than assumed, and
-    // an issued_at <= the block timestamp the contract reads (else
-    // SCREENING_FUTURE_DATED) — use the chain's own clock, not the host's.
-    const chainId = await this.node.getChainId();
-    const block = await this.node.getBlock(blockIdentifier ?? "latest");
-    const signature = signScreeningAttestation(
-      SCREENING_SIGNER_PRIVATE_KEY,
-      BigInt(chainId),
-      BigInt(depositor),
-      Number(block.timestamp)
-    );
-    return { ...proof, additionalData: { signature } };
+    return attestScreeningSubject(this.node, proof, depositor, blockIdentifier);
   }
 
   /**

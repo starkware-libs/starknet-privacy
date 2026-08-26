@@ -22,10 +22,11 @@
   The invoke now returns the shadow account its deposits passed through, which is the address the
   pool screens for them. Calldata is unchanged, so code that only builds invoke calldata is
   unaffected.
-- `exemptOpenNoteDepositor(admin, provider, pool, depositor)` in `starknet-privacy-sdk/testing`,
-  which lists a depositor as screening-exempt on a devnet pool. An Invoke target that funds open
-  notes is the transaction's screening subject unless it is listed, so a harness deploying its own
-  executor needs this or the deposit reverts with `SCREENING_REQUIRED`.
+- `exemptOpenNoteDepositor(admin, provider, pool, depositor)` and
+  `delegateOpenNoteDepositor(admin, provider, pool, depositor)` in `starknet-privacy-sdk/testing`,
+  which list a depositor as screening-exempt, or as providing the addresses to screen, on a devnet
+  pool. A harness deploying its own executor needs this, or its deposits revert with
+  `SCREENING_REQUIRED`. `openNoteScreeningPolicyOf(provider, pool, depositor)` reads a policy back.
 - Regenerated `PrivacyPoolABI` and `PoolContractInterface` for the pool's open-note screening
   policies: `get_open_note_screening_policy` / `set_open_note_screening_policy`, carrying an
   `OpenNoteScreeningPolicy` of `Required` (screen the depositor, the default), `Exempt` (screening
@@ -36,7 +37,7 @@
 
 ### Changed
 
-- `ScreeningRejected` and `ScreeningUnavailable` messages drop their `Deposit ` prefix. The screened
+- `ScreeningRejected` and `ScreeningUnavailable` messages drop their `Deposit` prefix. The screened
   address is no longer always a deposit's depositor: it may be the shadow account an interaction
   runs through, or an invoke target the pool requires screening for.
 
@@ -253,7 +254,7 @@
   original rather than mislabeling a transient fault as terminal.
 - Screening v2: `apply_actions` calldata carries the screening attestation as a
   trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
-  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
   Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
   optional `additionalData` relaying the prove response's `additional_data`.
   Emitted **only against a screening-capable pool**, identified with zero RPC

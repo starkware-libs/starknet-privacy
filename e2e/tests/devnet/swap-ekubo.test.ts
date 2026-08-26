@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  exemptOpenNoteDepositor,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
@@ -10,7 +13,6 @@ import {
   type EkuboAddresses,
 } from "../../src/ekubo-setup.js";
 import { u256Calldata } from "../../src/utils.js";
-import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 describe("Ekubo swap on devnet", () => {
   let devnet: Devnet;
