@@ -113,11 +113,17 @@ function getDelegatedAddress(
   }
 
   const shadowAccount = getShadowAccountAddress(poolCall, anonymizerAddress);
-  if (shadowAccount === null) {
-    console.error(JSON.stringify({ error: "shadow_account_undetermined" }));
-    return { kind: "undeterminedShadowAccount" };
+  switch (shadowAccount.kind) {
+    case "address":
+      return { kind: "one", address: shadowAccount.address };
+
+    case "noOpenNotes":
+      return { kind: "none" };
+
+    case "undetermined":
+      console.error(JSON.stringify({ error: "shadow_account_undetermined" }));
+      return { kind: "undeterminedShadowAccount" };
   }
-  return { kind: "one", address: shadowAccount };
 }
 
 /**

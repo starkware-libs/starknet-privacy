@@ -186,18 +186,33 @@ describe("getScreenedAddress", () => {
     expect(screened).toEqual({ kind: "one", address: ANONYMIZER_ADDR });
   });
 
-  it("cannot determine a shadow account for an interaction that settles no open note", async () => {
+  it("screens nobody for an interaction that settles no open note", async () => {
     // The open note is created here, so the empty note list is what the resolver reacts to rather
     // than the missing `CreateOpenNote`. The policy is still read — the invoke is the transaction's
-    // open-note depositor — but the interaction settles nothing, so no shadow account acts and the
-    // pool is left asking for a subject the interceptor cannot name.
+    // open-note depositor — but the pool assigns a subject only for an invoke that returns
+    // deposits, so it asks for none and an attestation would revert with `UNEXPECTED_SCREENING`.
     const { screened, asked } = await subjectOf(
       [createOpenNoteAction(), computeAndInvokeAction(ANONYMIZER_ADDR, [])],
       { [ANONYMIZER_ADDR]: "Delegated" }
     );
 
-    expect(screened).toEqual({ kind: "undeterminedShadowAccount" });
+    expect(screened).toEqual({ kind: "none" });
     expect(asked).toEqual([ANONYMIZER_ADDR]);
+  });
+
+  it("still screens a deposit riding an interaction that settles no open note", async () => {
+    // The delegated invoke puts up nobody, so the deposit's own depositor is the whole requirement.
+    // Refusing the transaction instead would withhold the one address the pool does ask for.
+    const { screened } = await subjectOf(
+      [
+        depositAction(),
+        createOpenNoteAction(),
+        computeAndInvokeAction(ANONYMIZER_ADDR, []),
+      ],
+      { [ANONYMIZER_ADDR]: "Delegated" }
+    );
+
+    expect(screened).toEqual({ kind: "one", address: USER_ADDR });
   });
 
   it("reads no policy for a transaction that creates no open note", async () => {
