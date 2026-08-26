@@ -46,7 +46,11 @@ jobs:
             changed:
               - 'proof-interceptor/**'
               - 'elliptic-proxy/**'
-              - 'sdk/src/internal/abi.ts'
+              # The whole SDK: the interceptor imports the shadow account derivation and the
+              # anonymizer ABI as well as the pool ABI, reaches them through the package's root
+              # barrel and its `./abi` subpath, and this job builds the SDK before installing.
+              # `sdk/**` is what the docker and e2e workflows already watch.
+              - 'sdk/**'
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.filter.outputs.changed == 'true'
         with:
