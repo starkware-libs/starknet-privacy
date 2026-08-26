@@ -22,6 +22,8 @@
  */
 
 import { ec } from "starknet";
+import type { BlockIdentifier, ProviderInterface } from "starknet";
+import type { Proof } from "../interfaces.js";
 import type { ScreeningSignature } from "../internal/proving-service.js";
 
 /** A Cairo short string is its ASCII bytes read big-endian as a felt (<= 31 chars). */
@@ -105,4 +107,28 @@ export function signScreeningAttestation(
     sig_r: "0x" + signature.r.toString(16),
     sig_s: "0x" + signature.s.toString(16),
   };
+}
+
+/**
+ * `proof` with an attestation over `subject`, signed with the key the devnet pool is deployed with.
+ *
+ * Both signed values come from the chain rather than the host: the contract verifies against
+ * `get_tx_info().chain_id`, and rejects an `issued_at` later than the block timestamp it reads with
+ * `SCREENING_FUTURE_DATED`.
+ */
+export async function attestScreeningSubject(
+  node: ProviderInterface,
+  proof: Proof,
+  subject: string,
+  blockIdentifier?: BlockIdentifier
+): Promise<Proof> {
+  const chainId = await node.getChainId();
+  const block = await node.getBlock(blockIdentifier ?? "latest");
+  const signature = signScreeningAttestation(
+    SCREENING_SIGNER_PRIVATE_KEY,
+    BigInt(chainId),
+    BigInt(subject),
+    Number(block.timestamp)
+  );
+  return { ...proof, additionalData: { signature } };
 }

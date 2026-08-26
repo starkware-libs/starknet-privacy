@@ -6,14 +6,20 @@ on:
     paths:
       - 'e2e/**'
       - 'sdk/**'
+      - 'client/**'
       - 'packages/**'
+      - 'proof-interceptor/**'
+      - 'crates/**'
       - '.github/workflows/e2e-devnet.yaml'
   push:
     branches: [main]
     paths:
       - 'e2e/**'
       - 'sdk/**'
+      - 'client/**'
       - 'packages/**'
+      - 'proof-interceptor/**'
+      - 'crates/**'
       - '.github/workflows/e2e-devnet.yaml'
 
 env:
@@ -98,6 +104,10 @@ jobs:
       # Build client (e2e depends on it via file: link; it resolves the built dist/, not source)
       - name: Build client
         run: cd client && npm ci && npm run build
+
+      # Build the proof interceptor (e2e resolves its built dist/ for the screening subject rule)
+      - name: Build proof interceptor
+        run: cd proof-interceptor && npm ci && npm run build
 
       # Install e2e deps + run devnet tests
       - name: Install e2e dependencies
