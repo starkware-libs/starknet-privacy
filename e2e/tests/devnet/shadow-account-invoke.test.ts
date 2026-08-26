@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { CallData, cairo, num, shortString } from "starknet";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  delegateOpenNoteDepositor,
+  openNoteScreeningPolicyOf,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { createPrivacyClient } from "@starkware-libs/starknet-privacy-client";
 import type {
   PrivacyClient,
@@ -19,7 +23,6 @@ import {
 } from "../../src/shadow-account-setup.js";
 import { u256Calldata } from "../../src/utils.js";
 import { E2E_TIMEOUTS } from "../../src/timeouts.js";
-import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 /**
  * End-to-end shadow account invoke through the dapp client on devnet, plus address validation.
@@ -55,16 +58,22 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       node,
       privacy.address,
     );
-    // Exempt the anonymizer so the devnet flow is not blocked on a screening attestation.
-    // The deployed posture is `Delegated` (the pool asks the anonymizer which shadow account to
-    // screen), which needs a mock prover able to attest that shadow account. Until that exists,
-    // `Exempt` keeps this suite exercising the shadow-account flow itself, not the screening gate.
-    await exemptOpenNoteDepositor(
+    // The deployed posture: the pool asks the anonymizer which shadow account to screen, and the
+    // prover derives that address with the interceptor's own rule.
+    await delegateOpenNoteDepositor(
       admin,
       node,
       privacy.address,
       shadowAccount.anonymizer,
     );
+    // The suite is only exercising the delegated path if the pool actually holds that policy.
+    expect(
+      await openNoteScreeningPolicyOf(
+        node,
+        privacy.address,
+        shadowAccount.anonymizer,
+      ),
+    ).toBe("Delegated");
 
     // Fund the dapp so its `transfer_to_caller` can pay the shadow account.
     const mintTx = await admin.execute({

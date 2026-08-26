@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  exemptOpenNoteDepositor,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import {
@@ -10,7 +13,6 @@ import {
   type VesuAddresses,
 } from "../../src/vesu-setup.js";
 import { u256Calldata } from "../../src/utils.js";
-import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 describe("Vesu lending on devnet", () => {
   let devnet: Devnet;
