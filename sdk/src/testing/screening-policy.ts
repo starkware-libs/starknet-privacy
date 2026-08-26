@@ -1,7 +1,14 @@
-import type { Account, RpcProvider } from "starknet";
+import { CairoCustomEnum, CallData } from "starknet";
+import type { Account, Calldata, RpcProvider } from "starknet";
+import { PrivacyPoolABI } from "../internal/abi.js";
 
-/** `OpenNoteScreeningPolicy::Exempt` — the second variant, so index 1. */
-const POLICY_EXEMPT = 1n;
+const POLICY_TYPE = "privacy::objects::OpenNoteScreeningPolicy";
+
+/** The pool's policy variant names, as the committed ABI declares them. */
+type OpenNoteScreeningPolicy = Extract<
+  (typeof PrivacyPoolABI)[number],
+  { name: typeof POLICY_TYPE }
+>["variants"][number]["name"];
 
 /**
  * `Role::AppRoleAdmin` and `Role::AppGovernor`, as the chain expects them.
@@ -33,6 +40,30 @@ export async function exemptOpenNoteDepositor(
   poolAddress: string,
   depositor: string
 ): Promise<void> {
+  await setOpenNoteScreeningPolicy(admin, provider, poolAddress, depositor, "Exempt");
+}
+
+/**
+ * Lists `depositor` as `Delegated`, so the pool screens the addresses its invoke returns rather
+ * than the depositor itself — for the anonymizer, the shadow account the interaction ran through.
+ * A prover that cannot attest that address will see the deposit revert with `SCREENING_REQUIRED`.
+ */
+export async function delegateOpenNoteDepositor(
+  admin: Account,
+  provider: RpcProvider,
+  poolAddress: string,
+  depositor: string
+): Promise<void> {
+  await setOpenNoteScreeningPolicy(admin, provider, poolAddress, depositor, "Delegated");
+}
+
+async function setOpenNoteScreeningPolicy(
+  admin: Account,
+  provider: RpcProvider,
+  poolAddress: string,
+  depositor: string,
+  policy: OpenNoteScreeningPolicy
+): Promise<void> {
   const { transaction_hash } = await admin.execute([
     {
       contractAddress: poolAddress,
@@ -47,11 +78,44 @@ export async function exemptOpenNoteDepositor(
     {
       contractAddress: poolAddress,
       entrypoint: "set_open_note_screening_policy",
-      calldata: [depositor, POLICY_EXEMPT],
+      calldata: screeningPolicyCalldata(depositor, policy),
     },
   ]);
   const receipt = await provider.waitForTransaction(transaction_hash);
   if (!receipt.isSuccess()) {
-    throw new Error(`Failed to exempt ${depositor}: ${transaction_hash}`);
+    throw new Error(`Failed to set the policy for ${depositor}: ${transaction_hash}`);
   }
+}
+
+/** The calldata entries listing `depositor` under `policy`, compiled through the committed ABI. */
+function screeningPolicyCalldata(depositor: string, policy: OpenNoteScreeningPolicy): Calldata {
+  return new CallData(PrivacyPoolABI).compile("set_open_note_screening_policy", [
+    depositor,
+    new CairoCustomEnum({ [policy]: {} }),
+  ]);
+}
+
+/**
+ * The policy the pool currently holds for `depositor`, as its Cairo variant name.
+ *
+ * A suite that sets a policy asserts it through this: the setters report only that the transaction
+ * succeeded, so without a read-back a suite keeps passing when it is silently listed under a
+ * different policy than the one its name claims.
+ */
+export async function openNoteScreeningPolicyOf(
+  provider: RpcProvider,
+  poolAddress: string,
+  depositor: string
+): Promise<OpenNoteScreeningPolicy> {
+  const felts = await provider.callContract({
+    contractAddress: poolAddress,
+    entrypoint: "get_open_note_screening_policy",
+    calldata: [depositor],
+  });
+  const decoded = new CallData(PrivacyPoolABI).decodeParameters(
+    POLICY_TYPE,
+    felts as string[]
+  ) as CairoCustomEnum;
+  // `decodeParameters` rejects an index the enum does not have, so the name is one of its variants.
+  return decoded.activeVariant() as OpenNoteScreeningPolicy;
 }

@@ -143,7 +143,7 @@ export class OpenNoteScreeningPolicyClient {
  * The pool answers with one felt, the variant index of its policy enum, decoded through the
  * committed ABI.
  */
-function parsePolicy(felts: unknown): OpenNoteScreeningPolicy | null {
+export function parsePolicy(felts: unknown): OpenNoteScreeningPolicy | null {
   if (!Array.isArray(felts) || felts.length !== 1) return null;
   if (typeof felts[0] !== "string") return null;
 
