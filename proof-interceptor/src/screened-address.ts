@@ -3,7 +3,7 @@ import { CairoCustomEnum, num } from "starknet";
 import { decodeClientActions, normalizeFelt } from "./pool-transaction.js";
 import type { PoolCallActions } from "./pool-transaction.js";
 import type { ProveTxnV3 } from "./types.js";
-import { getShadowAccountAddress } from "./shadow-account.js";
+import { createsOpenNotes, getShadowAccountAddress } from "./shadow-account.js";
 import type { OpenNoteScreeningPolicyClient } from "./screening-policy.js";
 
 type PolicyReader = Pick<OpenNoteScreeningPolicyClient, "getPolicy">;
@@ -110,6 +110,13 @@ function getDelegatedAddress(
   if (openNoteDepositor.address !== normalizeFelt(anonymizerAddress)) {
     console.error(JSON.stringify({ error: "unknown_delegated_depositor" }));
     return { kind: "unknownDelegate" };
+  }
+
+  // The pool assigns a subject only for an invoke that returns deposits, so an interaction
+  // creating no open note puts up nobody. Screening one anyway is what `UNEXPECTED_SCREENING`
+  // rejects, and refusing here would withhold a co-riding deposit's own subject.
+  if (!createsOpenNotes(poolCall.actions, anonymizerAddress)) {
+    return { kind: "none" };
   }
 
   const shadowAccount = getShadowAccountAddress(poolCall, anonymizerAddress);

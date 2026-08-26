@@ -79,9 +79,12 @@ export function getShadowAccountAddress(
 
 /**
  * The shadow account interaction among `actions`, or `null` when they run
- * none: no `ComputeAndInvoke` targets `anonymizerAddress`, the one that does
- * settles no open note (nothing is deposited, so nobody is screened), or its
- * data does not decode.
+ * none: no `ComputeAndInvoke` targets `anonymizerAddress`, or its data does not
+ * decode.
+ *
+ * Whether the invoke creates any open note is not consulted: the identity
+ * commitment determines the address either way. Whether the pool asks to screen
+ * that address is a policy question, answered by the caller.
  *
  * Undecodable data counts as no interaction rather than as an error, since the
  * pool cannot execute it either and the transaction reverts on its own.
@@ -114,7 +117,6 @@ export function getShadowAccountInteraction(
 
 function shadowAccountInteraction(input: {
   compute_additional_data: bigint[];
-  invoke_additional_data: bigint[];
 }): ShadowAccountInteraction | null {
   try {
     if (
@@ -126,15 +128,56 @@ function shadowAccountInteraction(input: {
       COMPUTE_ARGUMENT_TYPES,
       input.compute_additional_data.map(num.toHex)
     ) as bigint[];
+    return { dappName, nonce };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether the `ComputeAndInvoke` on `anonymizerAddress` creates any open note.
+ *
+ * The pool assigns a screening subject only for an invoke that returns deposits
+ * (`_apply_invoke_and_deposits` in `packages/privacy/src/privacy.cairo`), and
+ * the anonymizer returns one deposit per open note it is handed. An invoke
+ * creating none therefore deposits nothing, and the pool asks to screen nobody.
+ *
+ * Data that does not decode counts as creating none: the pool cannot execute it
+ * either, and the transaction reverts on its own.
+ */
+export function createsOpenNotes(
+  actions: CairoCustomEnum[],
+  anonymizerAddress: string
+): boolean {
+  for (const action of actions) {
+    if (action.activeVariant() !== "ComputeAndInvoke") continue;
+    const input = action.unwrap() as {
+      contract_address: bigint;
+      invoke_additional_data: bigint[];
+    };
+    if (
+      normalizeFelt(num.toHex(input.contract_address)) !==
+      normalizeFelt(anonymizerAddress)
+    ) {
+      continue;
+    }
+    return createdOpenNotes(input.invoke_additional_data).length > 0;
+  }
+  return false;
+}
+
+/** The open notes an invoke creates, empty when its data does not decode. */
+function createdOpenNotes(invokeData: bigint[]): unknown[] {
+  try {
     // `calls` is unread: which shadow account acts is what decides the address
     // to screen, not what it does.
     const [, openNotes] = anonymizerDecoder.decodeParameters(
       INVOKE_ARGUMENT_TYPES,
-      input.invoke_additional_data.map(num.toHex)
+      invokeData.map(num.toHex)
     ) as [unknown, unknown[]];
-    return openNotes.length === 0 ? null : { dappName, nonce };
+    return openNotes;
   } catch {
-    return null;
+    return [];
   }
 }
 

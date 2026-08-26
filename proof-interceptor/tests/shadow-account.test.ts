@@ -8,6 +8,7 @@ import {
 } from "@starkware-libs/starknet-privacy-sdk";
 import { decodeClientActions } from "../src/pool-transaction.js";
 import {
+  createsOpenNotes,
   getShadowAccountAddress,
   getShadowAccountInteraction,
 } from "../src/shadow-account.js";
@@ -68,11 +69,16 @@ describe("getShadowAccountInteraction", () => {
     });
   });
 
-  it("returns null when the interaction settles no open note", () => {
+  it("returns the compute arguments even when the invoke creates no open note", () => {
+    // The identity commitment determines the address; the note count does not enter the
+    // derivation. Whether the pool asks to screen that address is decided by the caller.
     const action = computeAndInvoke({
       invoke_additional_data: invokeAdditionalData([]),
     });
-    expect(interactionOf([action])).toBeNull();
+    expect(interactionOf([action])).toEqual({
+      dappName: DAPP_NAME,
+      nonce: NONCE,
+    });
   });
 
   it("returns null when the compute-invoke targets another contract", () => {
@@ -97,23 +103,6 @@ describe("getShadowAccountInteraction", () => {
       dappName: DAPP_NAME,
       nonce: NONCE,
     });
-  });
-
-  it("returns null when the invoke data is truncated", () => {
-    const truncated = invokeAdditionalData(OPEN_NOTES).slice(0, 2);
-    expect(
-      interactionOf([computeAndInvoke({ invoke_additional_data: truncated })])
-    ).toBeNull();
-  });
-
-  it("returns null when the invoke data claims more open notes than it carries", () => {
-    const data = invokeAdditionalData(OPEN_NOTES);
-    // The open notes follow the calls; their length prefix is the felt after them.
-    const openNotesLengthIndex = data.length - 1 - 3;
-    data[openNotesLengthIndex] = "2";
-    expect(
-      interactionOf([computeAndInvoke({ invoke_additional_data: data })])
-    ).toBeNull();
   });
 
   it("returns null when the compute data is not a dapp name and a nonce", () => {
@@ -159,11 +148,14 @@ describe("getShadowAccountAddress", () => {
 
   it("returns null when the transaction runs no interaction", () => {
     expect(addressOf([depositAction()])).toBeNull();
+  });
+
+  it("derives the address even when the invoke creates no open note", () => {
     expect(
       addressOf([
         computeAndInvoke({ invoke_additional_data: invokeAdditionalData([]) }),
       ])
-    ).toBeNull();
+    ).toBe(addressOf([computeAndInvoke({})]));
   });
 
   it("gives each nonce its own address", () => {
@@ -188,5 +180,57 @@ describe("getShadowAccountAddress", () => {
     expect(addressOf([depositAction(), computeAndInvoke({})])).toBe(
       addressOf([computeAndInvoke({})])
     );
+  });
+});
+
+describe("createsOpenNotes", () => {
+  const createsOpenNotesOf = (
+    actions: CairoCustomEnum[],
+    anonymizerAddress = ANONYMIZER_ADDR
+  ) => {
+    const poolCall = decodeClientActions(
+      poolCallTransaction(actions),
+      POOL_ADDR
+    );
+    expect(poolCall).not.toBeNull();
+    return createsOpenNotes(poolCall!.actions, anonymizerAddress);
+  };
+
+  it("is true for an interaction carrying an open note", () => {
+    expect(createsOpenNotesOf([computeAndInvoke({})])).toBe(true);
+  });
+
+  it("is false for an interaction carrying none", () => {
+    expect(
+      createsOpenNotesOf([
+        computeAndInvoke({ invoke_additional_data: invokeAdditionalData([]) }),
+      ])
+    ).toBe(false);
+  });
+
+  it("is false when the invoke data does not decode", () => {
+    // The pool cannot execute it either, so nothing it would have deposited needs screening.
+    const truncated = invokeAdditionalData(OPEN_NOTES).slice(0, 2);
+    expect(
+      createsOpenNotesOf([
+        computeAndInvoke({ invoke_additional_data: truncated }),
+      ])
+    ).toBe(false);
+  });
+
+  it("is false when the invoke data claims more open notes than it carries", () => {
+    const data = invokeAdditionalData(OPEN_NOTES);
+    // The open notes follow the calls; their length prefix is the felt after them.
+    const openNotesLengthIndex = data.length - 1 - 3;
+    data[openNotesLengthIndex] = "2";
+    expect(
+      createsOpenNotesOf([computeAndInvoke({ invoke_additional_data: data })])
+    ).toBe(false);
+  });
+
+  it("is false when the compute-invoke targets another contract", () => {
+    expect(
+      createsOpenNotesOf([computeAndInvoke({ contract_address: "0x4321" })])
+    ).toBe(false);
   });
 });
