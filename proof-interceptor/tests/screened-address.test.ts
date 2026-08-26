@@ -186,18 +186,43 @@ describe("getScreenedAddress", () => {
     expect(screened).toEqual({ kind: "one", address: ANONYMIZER_ADDR });
   });
 
-  it("cannot determine a shadow account for an interaction that settles no open note", async () => {
-    // The open note is created here, so the empty note list is what the resolver reacts to rather
-    // than the missing `CreateOpenNote`. The policy is still read — the invoke is the transaction's
-    // open-note depositor — but the interaction settles nothing, so no shadow account acts and the
-    // pool is left asking for a subject the interceptor cannot name.
+  it("screens nobody for an interaction that creates no open note", async () => {
+    // The `CreateOpenNote` is here, so the empty note list is what the resolver reacts to.
     const { screened, asked } = await subjectOf(
       [createOpenNoteAction(), computeAndInvokeAction(ANONYMIZER_ADDR, [])],
       { [ANONYMIZER_ADDR]: "Delegated" }
     );
 
-    expect(screened).toEqual({ kind: "undeterminedShadowAccount" });
+    expect(screened).toEqual({ kind: "none" });
     expect(asked).toEqual([ANONYMIZER_ADDR]);
+  });
+
+  it("still screens a deposit riding an interaction that creates no open note", async () => {
+    const { screened } = await subjectOf(
+      [
+        depositAction(),
+        createOpenNoteAction(),
+        computeAndInvokeAction(ANONYMIZER_ADDR, []),
+      ],
+      { [ANONYMIZER_ADDR]: "Delegated" }
+    );
+
+    expect(screened).toEqual({ kind: "one", address: USER_ADDR });
+  });
+
+  it("screens nobody when a transaction creating no open note is otherwise underivable", async () => {
+    // The note count is read before the felts the derivation needs.
+    const transaction = poolCallTransaction([
+      createOpenNoteAction(),
+      computeAndInvokeAction(ANONYMIZER_ADDR, []),
+    ]);
+    transaction.calldata[5] = "not-a-felt";
+
+    const screened = await getScreenedAddress(transaction, CONFIG, {
+      getPolicy: async () => "Delegated" as const,
+    });
+
+    expect(screened).toEqual({ kind: "none" });
   });
 
   it("reads no policy for a transaction that creates no open note", async () => {

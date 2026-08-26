@@ -3,7 +3,7 @@ import { CairoCustomEnum, num } from "starknet";
 import { decodeClientActions, normalizeFelt } from "./pool-transaction.js";
 import type { PoolCallActions } from "./pool-transaction.js";
 import type { ProveTxnV3 } from "./types.js";
-import { getShadowAccountAddress } from "./shadow-account.js";
+import { createsOpenNotes, getShadowAccountAddress } from "./shadow-account.js";
 import type { OpenNoteScreeningPolicyClient } from "./screening-policy.js";
 
 type PolicyReader = Pick<OpenNoteScreeningPolicyClient, "getPolicy">;
@@ -21,7 +21,8 @@ type InvokeAction = "InvokeExternal" | "ComputeAndInvoke";
  */
 interface OpenNoteDepositor {
   address: string;
-  action: InvokeAction;
+  invokeVariant: InvokeAction;
+  action: CairoCustomEnum;
 }
 
 /** The pool takes one attestation per transaction, so a delegated depositor puts up at most one address. */
@@ -105,11 +106,18 @@ function getDelegatedAddress(
   { anonymizerAddress }: ScreenedAddressConfig
 ): DelegatedAddress {
   // A plain invoke is exempt under `Delegated`; only a compute-invoke puts up an address.
-  if (openNoteDepositor.action !== "ComputeAndInvoke") return { kind: "none" };
+  if (openNoteDepositor.invokeVariant !== "ComputeAndInvoke") {
+    return { kind: "none" };
+  }
 
   if (openNoteDepositor.address !== normalizeFelt(anonymizerAddress)) {
     console.error(JSON.stringify({ error: "unknown_delegated_depositor" }));
     return { kind: "unknownDelegate" };
+  }
+
+  // The pool assigns a subject only for an invoke that returns deposits.
+  if (!createsOpenNotes(openNoteDepositor.action)) {
+    return { kind: "none" };
   }
 
   const shadowAccount = getShadowAccountAddress(poolCall, anonymizerAddress);
@@ -139,7 +147,8 @@ function getOpenNoteDepositor(
     };
     return {
       address: normalizeFelt(num.toHex(contract_address)),
-      action: variant,
+      invokeVariant: variant,
+      action,
     };
   }
   return null;

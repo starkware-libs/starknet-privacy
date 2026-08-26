@@ -79,9 +79,8 @@ export function getShadowAccountAddress(
 
 /**
  * The shadow account interaction among `actions`, or `null` when they run
- * none: no `ComputeAndInvoke` targets `anonymizerAddress`, the one that does
- * settles no open note (nothing is deposited, so nobody is screened), or its
- * data does not decode.
+ * none: no `ComputeAndInvoke` targets `anonymizerAddress`, or its data does not
+ * decode.
  *
  * Undecodable data counts as no interaction rather than as an error, since the
  * pool cannot execute it either and the transaction reverts on its own.
@@ -114,7 +113,6 @@ export function getShadowAccountInteraction(
 
 function shadowAccountInteraction(input: {
   compute_additional_data: bigint[];
-  invoke_additional_data: bigint[];
 }): ShadowAccountInteraction | null {
   try {
     if (
@@ -126,15 +124,27 @@ function shadowAccountInteraction(input: {
       COMPUTE_ARGUMENT_TYPES,
       input.compute_additional_data.map(num.toHex)
     ) as bigint[];
+    return { dappName, nonce };
+  } catch {
+    return null;
+  }
+}
+
+/** Whether `action`, a `ComputeAndInvoke`, creates any open note. Undecodable data creates none. */
+export function createsOpenNotes(action: CairoCustomEnum): boolean {
+  const { invoke_additional_data: invokeData } = action.unwrap() as {
+    invoke_additional_data: bigint[];
+  };
+  try {
     // `calls` is unread: which shadow account acts is what decides the address
     // to screen, not what it does.
     const [, openNotes] = anonymizerDecoder.decodeParameters(
       INVOKE_ARGUMENT_TYPES,
-      input.invoke_additional_data.map(num.toHex)
+      invokeData.map(num.toHex)
     ) as [unknown, unknown[]];
-    return openNotes.length === 0 ? null : { dappName, nonce };
+    return openNotes.length > 0;
   } catch {
-    return null;
+    return false;
   }
 }
 
