@@ -1,7 +1,24 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
-import { Open } from "@starkware-libs/starknet-privacy-sdk";
-import { CairoCustomEnum, CallData, cairo, hash, shortString } from "starknet";
+import {
+  CallMockProofProvider,
+  Devnet,
+  IndexerDiscoveryProvider,
+  delegateOpenNoteDepositor,
+  openNoteScreeningPolicyOf,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Open,
+  createPrivateTransfers,
+  type PrivateTransfersInterface,
+} from "@starkware-libs/starknet-privacy-sdk";
+import {
+  CairoCustomEnum,
+  CallData,
+  cairo,
+  constants,
+  hash,
+  shortString,
+} from "starknet";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
 import {
@@ -9,7 +26,6 @@ import {
   type ShadowAccountAddresses,
 } from "../../src/shadow-account-setup.js";
 import { u256Calldata } from "../../src/utils.js";
-import { exemptOpenNoteDepositor } from "../../src/screening-policy.js";
 
 describe("shadow account anonymizer compute-and-invoke on devnet", () => {
   let devnet: Devnet;
@@ -21,6 +37,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     devnet = new Devnet();
     env = await createE2eTestEnv(devnet, {
       indexer: { logFile: "shadow-account-compute-invoke-indexer.log" },
+      interceptorBackedScreening: true,
     });
 
     const { admin, node, privacy } = env.env;
@@ -30,16 +47,22 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
       node,
       privacy.address,
     );
-    // Exempt the anonymizer so the devnet flow is not blocked on a screening attestation.
-    // The deployed posture is `Delegated` (the pool asks the anonymizer which shadow account to
-    // screen), which needs a mock prover able to attest that shadow account. Until that exists,
-    // `Exempt` keeps this suite exercising the shadow-account flow itself, not the screening gate.
-    await exemptOpenNoteDepositor(
+    // The deployed posture: the pool asks the anonymizer which shadow account to screen, and the
+    // proving provider derives that address with the interceptor's own rule.
+    await delegateOpenNoteDepositor(
       admin,
       node,
       privacy.address,
       shadowAccount.anonymizer,
     );
+    // The suite is only exercising the delegated path if the pool actually holds that policy.
+    expect(
+      await openNoteScreeningPolicyOf(
+        node,
+        privacy.address,
+        shadowAccount.anonymizer,
+      ),
+    ).toBe("Delegated");
   });
 
   afterAll(async () => {
@@ -47,19 +70,28 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     await devnet?.cleanup();
   });
 
-  it("dapp payout collected via the shadow account settles into an open note", async () => {
-    const { env: de, transfers } = env;
-    const ONE_TOKEN = 10n ** 18n;
-    const payoutAmount = 100n * ONE_TOKEN;
+  const ONE_TOKEN = 10n ** 18n;
+  const payoutAmount = 100n * ONE_TOKEN;
 
-    const balanceOf = async (owner: string): Promise<bigint> => {
-      const result = await de.node.callContract({
-        contractAddress: tokens.usdToken,
-        entrypoint: "balance_of",
-        calldata: [owner],
-      });
-      return BigInt(result[0]) + (BigInt(result[1]) << 128n);
-    };
+  const balanceOf = async (owner: string): Promise<bigint> => {
+    const result = await env.env.node.callContract({
+      contractAddress: tokens.usdToken,
+      entrypoint: "balance_of",
+      calldata: [owner],
+    });
+    return BigInt(result[0]) + (BigInt(result[1]) << 128n);
+  };
+
+  /**
+   * Funds the dapp with `payoutAmount`, then proves one transaction that creates the open note the
+   * payout settles into and runs compute-and-invoke to collect it — through whichever prover
+   * `transfers` carries.
+   */
+  async function provePayoutCollection(
+    transfers: PrivateTransfersInterface,
+    seqNonce: bigint,
+  ) {
+    const { env: de } = env;
 
     // Fund the dapp so its `transfer_to_caller` can transfer the payout to the shadow account.
     const mintTx = await de.admin.execute({
@@ -72,16 +104,13 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     // `compute_data` feeds privacy_compute(identity_key, dapp_name, nonce); the pool prepends
     // the derived identity key. The commitment it returns selects the per-commitment shadow account.
     const dappName = BigInt(shortString.encodeShortString("DAPP"));
-    const seqNonce = 0n;
     const transferToCallerSelector = BigInt(
       hash.getSelectorFromName("transfer_to_caller"),
     );
     const usdToken = BigInt(tokens.usdToken);
 
-    const poolBalanceBefore = await balanceOf(de.privacy.address);
-
     // Single tx: create the open note the payout settles into, and run compute-and-invoke.
-    const { callAndProof } = await transfers.alice
+    return transfers
       .build({
         autoRegister: true,
         autoSetup: true,
@@ -128,6 +157,15 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
         };
       })
       .execute();
+  }
+
+  it("dapp payout collected via the shadow account settles into an open note", async () => {
+    const { env: de, transfers } = env;
+    const usdToken = BigInt(tokens.usdToken);
+
+    const poolBalanceBefore = await balanceOf(de.privacy.address);
+
+    const { callAndProof } = await provePayoutCollection(transfers.alice, 0n);
     await devnet.executeOutside(callAndProof);
     await env.indexer.waitForBlock(devnet.url);
 
@@ -142,5 +180,31 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     expect(poolBalanceAfter - poolBalanceBefore).toBe(payoutAmount);
     expect(await balanceOf(shadowAccount.mockDapp)).toBe(0n);
     expect(await balanceOf(shadowAccount.anonymizer)).toBe(0n);
+  });
+
+  it("pool rejects the collection when the prover attests no shadow account", async () => {
+    const { env: de } = env;
+
+    // This prover attests nobody at all, while the pool expects an attestation for the shadow
+    // account.
+    const unattestingAlice = createPrivateTransfers({
+      account: de.alice,
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
+      provingProvider: new CallMockProofProvider(
+        de.node,
+        constants.StarknetChainId.SN_SEPOLIA,
+      ),
+      discoveryProvider: new IndexerDiscoveryProvider(
+        env.indexer.apiUrl,
+        de.privacy.address,
+      ),
+      poolContractAddress: de.privacy.address,
+    });
+
+    await expect(
+      provePayoutCollection(unattestingAlice, 1n).then(({ callAndProof }) =>
+        devnet.executeOutside(callAndProof),
+      ),
+    ).rejects.toThrow(/SCREENING_REQUIRED/);
   });
 });

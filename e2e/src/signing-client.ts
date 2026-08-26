@@ -12,6 +12,7 @@ import {
   createEmptyRegistry,
   type StarknetAddress,
 } from "@starkware-libs/starknet-privacy-sdk";
+import { InterceptorSubjectProofProvider } from "./interceptor-subject-proof-provider.js";
 import {
   createPrivacyClient,
   CorePrivateTransfersProver,
@@ -39,7 +40,11 @@ export interface CoreProverParams {
   node: ProviderInterface;
   indexerApiUrl: string;
   poolAddress: string;
-  /** Only needed when the flow calls `shadowAccounts(...)`; unused otherwise. */
+  /**
+   * Only needed when the flow calls `shadowAccounts(...)`; unused otherwise. Supplying it also
+   * selects the interceptor-backed prover, which is what a `Delegated` anonymizer needs — the
+   * SDK's mock cannot attest a shadow account.
+   */
   shadowAccountAnonymizerAddress?: string;
 }
 
@@ -56,7 +61,12 @@ export function makeCoreProver(
       params.indexerApiUrl,
       params.poolAddress,
     ),
-    prover: new ScreeningCallMockProofProvider(params.node, CHAIN_ID),
+    prover:
+      params.shadowAccountAnonymizerAddress === undefined
+        ? new ScreeningCallMockProofProvider(params.node, CHAIN_ID)
+        : new InterceptorSubjectProofProvider(params.node, CHAIN_ID, {
+            poolAddress: params.poolAddress,
+          }),
     poolContractAddress: params.poolAddress,
     shadowAccountAnonymizerAddress:
       params.shadowAccountAnonymizerAddress ?? "0x1",
