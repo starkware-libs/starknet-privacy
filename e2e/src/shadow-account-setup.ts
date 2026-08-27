@@ -71,6 +71,9 @@ export async function deployShadowAccountAnonymizer(
   admin: Account,
   node: RpcProvider,
   privacyAddress: string,
+  // A second deployment in one devnet needs its own salts, or the UDC addresses collide.
+  anonymizerSalt: string = "0x900",
+  mockDappSalt: string = "0x901",
 ): Promise<ShadowAccountAddresses> {
   const primerDirectory = join(repoRoot(), "artifacts");
   await declareClass(
@@ -106,7 +109,7 @@ export async function deployShadowAccountAnonymizer(
     node,
     anonymizerClassHash,
     [privacyAddress, shadowAccountClassHash, admin.address],
-    "0x900",
+    anonymizerSalt,
   );
 
   const mockDappClassHash = await declareTestBuildContract(
@@ -119,7 +122,7 @@ export async function deployShadowAccountAnonymizer(
     node,
     mockDappClassHash,
     [],
-    "0x901",
+    mockDappSalt,
   );
 
   return { anonymizer, mockDapp, anonymizerAbi };
