@@ -1,6 +1,7 @@
+import type { ProviderInterface } from "starknet";
 import { hash as starknetHash } from "starknet";
 
-import { hash as poseidonHash, toBigInt } from "../utils/index.js";
+import { hash as poseidonHash, toBigInt, toHex } from "../utils/index.js";
 import { compute_identity_key } from "../utils/hashes.js";
 
 /**
@@ -43,9 +44,14 @@ export function shadowAccountCommitment(partialCommitment: bigint, nonce: bigint
  * commitment.
  *
  * The anonymizer deploys with `deploy_from_zero: false` and no constructor arguments, so the
- * address derives from (commitment, `PRIMER_CLASS_HASH`, empty calldata, the anonymizer). Callers
- * that need the address of an *already deployed* account can read it from the anonymizer's
- * `get_shadow_account` view instead. The two agree for anything deployed under the primer pattern.
+ * address derives from (commitment, `PRIMER_CLASS_HASH`, empty calldata, the anonymizer). This
+ * assumes the primer pattern: an anonymizer deployed *before* the primer pattern existed deploys
+ * the shadow account class directly, so this returns the wrong address for it — the constant is
+ * unconditional, there is no on-chain check that `anonymizerAddress` actually uses it. Callers
+ * that cannot assume every anonymizer post-dates the primer pattern should use
+ * {@link shadowAccountAddressOnChain} instead, which reads the deploy class from the anonymizer
+ * itself. Callers that only need the address of an *already deployed* account can read it from the
+ * anonymizer's `get_shadow_account` view directly.
  */
 export function shadowAccountAddress(commitment: bigint, anonymizerAddress: bigint): bigint {
   return toBigInt(
@@ -56,4 +62,55 @@ export function shadowAccountAddress(commitment: bigint, anonymizerAddress: bigi
       anonymizerAddress
     )
   );
+}
+
+/**
+ * Same as {@link shadowAccountAddress}, but reads the deploy class straight from the anonymizer
+ * instead of assuming {@link PRIMER_CLASS_HASH}, so it is correct for anonymizers deployed before
+ * the primer pattern too.
+ *
+ * Prefers the anonymizer's `get_primer_class_hash` view where it exists; anonymizers that predate
+ * the primer pattern have no such entrypoint (the call reverts with `ENTRYPOINT_NOT_FOUND`) and
+ * deploy the shadow account class directly, so this falls back to `get_shadow_account_class_hash`
+ * for them. Costs a round trip to `provider`; callers deriving many addresses for the same
+ * anonymizer should cache the resolved class hash rather than call this per commitment.
+ */
+export async function shadowAccountAddressOnChain(
+  commitment: bigint,
+  anonymizerAddress: bigint,
+  provider: ProviderInterface
+): Promise<bigint> {
+  const classHash = await deployClassHash(anonymizerAddress, provider);
+  return toBigInt(
+    starknetHash.calculateContractAddressFromHash(commitment, classHash, [], anonymizerAddress)
+  );
+}
+
+/**
+ * The class hash `anonymizerAddress` deploys shadow accounts from, read from the anonymizer
+ * itself: `get_primer_class_hash` where it exists, otherwise `get_shadow_account_class_hash` for a
+ * pre-primer anonymizer that deploys the shadow account class directly.
+ */
+async function deployClassHash(
+  anonymizerAddress: bigint,
+  provider: ProviderInterface
+): Promise<bigint> {
+  const contractAddress = toHex(anonymizerAddress);
+  try {
+    const [classHash] = await provider.callContract({
+      contractAddress,
+      entrypoint: "get_primer_class_hash",
+      calldata: [],
+    });
+    return toBigInt(classHash);
+  } catch {
+    // Pre-primer anonymizers expose no `get_primer_class_hash` entrypoint at all; they deploy the
+    // shadow account class directly, so that class hash is the correct deploy class for them.
+    const [classHash] = await provider.callContract({
+      contractAddress,
+      entrypoint: "get_shadow_account_class_hash",
+      calldata: [],
+    });
+    return toBigInt(classHash);
+  }
 }

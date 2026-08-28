@@ -5,6 +5,7 @@ export { ShadowAccountAnonymizerABI } from "./internal/anonymizer-abi.js";
 export {
   PRIMER_CLASS_HASH,
   shadowAccountAddress,
+  shadowAccountAddressOnChain,
   shadowAccountCommitment,
   shadowAccountPartialCommitment,
 } from "./internal/shadow-account-address.js";
