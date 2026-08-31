@@ -1,5 +1,12 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { CallData, hash, num, shortString, type Call } from "starknet";
+import {
+  CairoFelt252,
+  CallData,
+  hash,
+  num,
+  shortString,
+  type Call,
+} from "starknet";
 import {
   Devnet,
   type DevnetEnvironment,
@@ -47,7 +54,9 @@ describe("StarknetEth712Account custom-signature validation on devnet", () => {
       const approveCalldata = ["0x1234", "0x1f4", "0x0"];
       const signer = new Eip712HashSigner({
         accountAddress: account.address,
-        snChainName: "SN_SEPOLIA", // devnet chain id — keccak'd into the EIP-712 domain name
+        // The account decodes the domain name from `get_tx_info().chain_id`, so read it from the
+        // chain rather than naming it.
+        snChainName: new CairoFelt252(env.chainId).decodeUtf8(),
         evmChainId: 1n,
         sign: secp256k1SignFn(EVM_KEY),
       });

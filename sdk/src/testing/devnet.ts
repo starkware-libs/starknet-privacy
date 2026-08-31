@@ -44,7 +44,7 @@ import { AddressMap } from "../utils/maps.js";
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-export const DEVNET_CHAIN_ID = "TESTNET";
+export const DEVNET_CHAIN_ID = "SN_DEVNET";
 
 // Contract paths
 const CONTRACT_CLASS_PATH = join(
