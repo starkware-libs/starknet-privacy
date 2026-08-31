@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { constants } from "starknet";
 import type { DevnetEnvironment } from "@starkware-libs/starknet-privacy-sdk/testing";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -41,7 +40,7 @@ describe("Payment Service Discovery", () => {
     env = await createE2eTestEnv(devnet, { indexer: { logFile: INDEXER_LOG } });
 
     const { env: de } = env;
-    const chainId = constants.StarknetChainId.SN_SEPOLIA;
+    const chainId = env.env.chainId;
     const indexerDiscovery = new IndexerDiscoveryProvider(
       env.indexer.apiUrl,
       de.privacy.address,
@@ -222,7 +221,7 @@ describe("Payment Service Discovery", () => {
       env.indexer.apiUrl,
       de.privacy.address,
     );
-    const chainId = constants.StarknetChainId.SN_SEPOLIA;
+    const chainId = env.env.chainId;
 
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
@@ -251,7 +250,7 @@ describe("Payment Service Discovery", () => {
       env.indexer.apiUrl,
       de.privacy.address,
     );
-    const chainId = constants.StarknetChainId.SN_SEPOLIA;
+    const chainId = env.env.chainId;
 
     const aliceDiscover = createPrivateTransfers({
       account: de.alice,
@@ -278,7 +277,7 @@ describe("Payment Service Discovery", () => {
       env.indexer.apiUrl,
       de.privacy.address,
     );
-    const chainId = constants.StarknetChainId.SN_SEPOLIA;
+    const chainId = env.env.chainId;
 
     for (let i = 0; i < users.length; i++) {
       const userDiscover = createPrivateTransfers({
@@ -305,7 +304,7 @@ describe("Payment Service Discovery", () => {
       env.indexer.apiUrl,
       de.privacy.address,
     );
-    const chainId = constants.StarknetChainId.SN_SEPOLIA;
+    const chainId = env.env.chainId;
 
     for (let i = 0; i < users.length; i++) {
       const userDiscover = createPrivateTransfers({

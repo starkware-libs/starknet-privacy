@@ -31,8 +31,6 @@ import type {
  * seam differ between tests, so those stay in each test.
  */
 
-const CHAIN_ID = constants.StarknetChainId.SN_SEPOLIA;
-
 export interface CoreProverParams {
   signer: SignerInterface;
   address: StarknetAddress;
@@ -40,6 +38,7 @@ export interface CoreProverParams {
   node: ProviderInterface;
   indexerApiUrl: string;
   poolAddress: string;
+  chainId: constants.StarknetChainId;
   /**
    * Only needed when the flow calls `shadowAccounts(...)`; unused otherwise. Supplying it also
    * selects the interceptor-backed prover, which is what a `Delegated` anonymizer needs — the
@@ -63,8 +62,8 @@ export function makeCoreProver(
     ),
     prover:
       params.shadowAccountAnonymizerAddress === undefined
-        ? new ScreeningCallMockProofProvider(params.node, CHAIN_ID)
-        : new InterceptorSubjectProofProvider(params.node, CHAIN_ID, {
+        ? new ScreeningCallMockProofProvider(params.node, params.chainId)
+        : new InterceptorSubjectProofProvider(params.node, params.chainId, {
             poolAddress: params.poolAddress,
           }),
     poolContractAddress: params.poolAddress,

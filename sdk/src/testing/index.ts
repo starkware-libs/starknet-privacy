@@ -51,6 +51,7 @@ export {
 } from "./concurrency-profiler.js";
 export {
   Devnet,
+  DEVNET_CHAIN_ID,
   createDevnetTestEnv,
   createUnattestedAliceTransfers,
   type DevnetConfig,
