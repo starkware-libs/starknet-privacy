@@ -53,14 +53,6 @@ All components in a row are tested together. Use matching revisions when deployi
 
 † Optional deposit-screening sidecar to the transaction prover; deploy only for screening-enabled pools.
 
-### Contracts
-
-| Contract         | Docs                                                                                                    | Tag                                                                                                  | Class Hash                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x52107fadffab71bdcbb6b2ccb68ba3e1b5558d94036538053e159d3076ad633` |
-| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x2a4ac595283d4d64b9952f5ef5c0da1775bfdb7c9d92237524a21dd8d19ebd7` |
-| Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x3751128dc3ebd36215f982766f14aaca8f78793e4b0f42a73e49372a8e24aae` |
-
 ## Repository map
 
 | Directory                                                            | Description                                                                           |
