@@ -6,8 +6,8 @@
 
 - `screeningErrorFromProvingError` maps `screening_policy_unavailable` to `ScreeningUnavailable`:
   the pool's policy list is as much a screening dependency as the screener, so a read the
-  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`,
-  `unknown_delegated_depositor` and `shadow_account_undetermined` are deliberately left
+  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`
+  and `shadow_account_undetermined` are deliberately left
   unmapped — terminal for the transaction as built, but silent about the address, so reporting them
   as `ScreeningRejected` would tell a caller they are sanctioned.
 - `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and

@@ -13,7 +13,6 @@ function setScreeningEnv(): void {
   process.env.SCREENING_PARTNER_SECRET = "c2VjcmV0";
   process.env.SCREENING_POOL_ADDRESS = "0xpool";
   process.env.SCREENING_RPC_URL = "http://starknet-rpc:5050";
-  process.env.SCREENING_ANONYMIZER_ADDRESS = "0xanonymizer";
 }
 
 describe("loadConfig", () => {
@@ -105,14 +104,13 @@ describe("loadConfig", () => {
       totalTimeoutMs: 10000,
       poolAddress: "0xpool",
       rpcUrl: "http://starknet-rpc:5050",
-      anonymizerAddress: "0xanonymizer",
       policyTtlMs: DEFAULT_POLICY_TTL_MS,
       policyTimeoutMs: DEFAULT_POLICY_TIMEOUT_MS,
       blockNonPoolTx: false,
     });
   });
 
-  it.each(["SCREENING_RPC_URL", "SCREENING_ANONYMIZER_ADDRESS"])(
+  it.each(["SCREENING_RPC_URL"])(
     "refuses to start with screening on and %s missing",
     (missing) => {
       // Failing at startup beats failing per transaction: without either value the interceptor

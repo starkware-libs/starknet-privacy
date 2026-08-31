@@ -8,7 +8,6 @@ import {
   type ScreeningConfig,
 } from "../src/screening-interceptor.js";
 import {
-  ANONYMIZER_ADDR,
   POOL_ADDR,
   SWAP_EXECUTOR,
   computeAndInvokeAction,
@@ -80,7 +79,6 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     // Unreachable on purpose: none of these transactions runs an invoke, so no policy is read. A
     // test that reached for one would fail closed instead of silently screening the wrong address.
     rpcUrl: "http://127.0.0.1:1",
-    anonymizerAddress: ANONYMIZER_ADDR,
     policyTtlMs: 60_000,
     policyTimeoutMs: 50,
     blockNonPoolTx: false,
