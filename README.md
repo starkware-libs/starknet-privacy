@@ -55,11 +55,12 @@ All components in a row are tested together. Use matching revisions when deployi
 
 ### Contracts
 
-| Contract         | Docs                                                                                                    | Tag                                                                                                  | Class Hash                                                          |
-| ---------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| Privacy Pool     | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x52107fadffab71bdcbb6b2ccb68ba3e1b5558d94036538053e159d3076ad633` |
-| Ekubo Anonymizer | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x2a4ac595283d4d64b9952f5ef5c0da1775bfdb7c9d92237524a21dd8d19ebd7` |
-| Vesu Anonymizer  | [README](https://github.com/starkware-libs/starknet-privacy/tree/main/packages/vesu_lending_anonymizer) | [`PRIVACY-0.14.3-RC.0`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.0) | `0x3751128dc3ebd36215f982766f14aaca8f78793e4b0f42a73e49372a8e24aae` |
+| Contract                  | Docs                                                                                                    | Tag                                                                                                  | Class Hash                                                          |
+| ------------------------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| Privacy Pool              | [README](packages/privacy/README.md)                                                                    | [`PRIVACY-0.14.3-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.6) | `0x7e2bbd7ccc1e68b2695caef70aeb2a3be6cd017b5d5159278ba08f2d8de33f`  |
+| Ekubo Anonymizer          | [README](packages/ekubo_swap_anonymizer/README.md)                                                      | [`PRIVACY-0.14.3-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.6) | `0x229792f74aeb602d5dc57d51a9ca82f23bd514f44a1dcc06cffa5c768fcc28b` |
+| Vesu Anonymizer           | [README](packages/vesu_lending_anonymizer/README.md)                                                    | [`PRIVACY-0.14.3-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.6) | `0x516b5a1d1b694bbd0ba413da73d85c3c236f92ca24b7f809c51f87cc02e4d7c` |
+| Shadow Account Anonymizer | [README](packages/shadow_account_anonymizer/README.md)                                                  | [`PRIVACY-0.14.3-RC.6`](https://github.com/starkware-libs/starknet-privacy/tree/PRIVACY-0.14.3-RC.6) | `0xb61dee4f9f6b243f5310fbfab4224128db5c4815077b6329c232f8fc9af409`  |
 
 ## Repository map
 
