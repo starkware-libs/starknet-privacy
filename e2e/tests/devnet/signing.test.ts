@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { constants, ec, num } from "starknet";
+import { ec, num } from "starknet";
 import type { TypedData } from "starknet";
 import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
 import type {
@@ -146,7 +146,7 @@ describe("dapp client: SNIP-12 CallSet signer deposit on devnet", () => {
     const { alice, privacy, node } = env.env;
     const signer = new Snip12CallSetSigner({
       accountAddress: alice.address,
-      chainId: constants.StarknetChainId.SN_SEPOLIA,
+      chainId: env.env.chainId,
       sign: (messageHash) =>
         ec.starkCurve.sign(num.toHex(messageHash), signingKey),
     });
@@ -157,6 +157,7 @@ describe("dapp client: SNIP-12 CallSet signer deposit on devnet", () => {
       node,
       indexerApiUrl: env.indexer.apiUrl,
       poolAddress: privacy.address,
+      chainId: env.env.chainId,
       paymaster: mockPaymaster(),
     });
   }

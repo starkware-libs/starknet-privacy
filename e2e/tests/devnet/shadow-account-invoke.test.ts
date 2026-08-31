@@ -92,6 +92,7 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       node: node,
       indexerApiUrl: env.indexer.apiUrl,
       poolAddress: privacy.address,
+      chainId: env.env.chainId,
       shadowAccountAnonymizerAddress: shadowAccount.anonymizer,
     });
     const wallet = {

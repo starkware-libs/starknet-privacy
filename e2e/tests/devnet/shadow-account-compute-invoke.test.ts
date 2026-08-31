@@ -18,7 +18,6 @@ import {
   CairoCustomEnum,
   CallData,
   cairo,
-  constants,
   hash,
   shortString,
   type BlockIdentifier,
@@ -199,10 +198,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     const unattestingAlice = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new CallMockProofProvider(
-        de.node,
-        constants.StarknetChainId.SN_SEPOLIA,
-      ),
+      provingProvider: new CallMockProofProvider(de.node, env.env.chainId),
       discoveryProvider: new IndexerDiscoveryProvider(
         env.indexer.apiUrl,
         de.privacy.address,
@@ -240,10 +236,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     const wrongSubjectAlice = createPrivateTransfers({
       account: de.alice,
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
-      provingProvider: new WrongSubjectProofProvider(
-        de.node,
-        constants.StarknetChainId.SN_SEPOLIA,
-      ),
+      provingProvider: new WrongSubjectProofProvider(de.node, env.env.chainId),
       discoveryProvider: new IndexerDiscoveryProvider(
         env.indexer.apiUrl,
         de.privacy.address,

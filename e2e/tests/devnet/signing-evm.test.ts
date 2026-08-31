@@ -164,6 +164,7 @@ describe("dapp client: Eth712Account (EVM) deposit on devnet", () => {
       node,
       indexerApiUrl: env.indexer.apiUrl,
       poolAddress: privacy.address,
+      chainId: env.env.chainId,
       paymaster: efoMockPaymaster(),
     });
   }

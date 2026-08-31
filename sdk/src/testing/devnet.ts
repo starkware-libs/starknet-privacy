@@ -45,6 +45,13 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 // Contract paths
+/**
+ * The chain devnet launches as. Devnet resolves the name to a felt through its own alias table
+ * (`TESTNET` is `SN_SEPOLIA`), which nothing here can derive — so the felt is never written down:
+ * the provider and every suite read it back from the node instead.
+ */
+export const DEVNET_CHAIN_ID = "TESTNET";
+
 const CONTRACT_CLASS_PATH = join(
   __dirname,
   "../../../target/dev/privacy_Privacy.contract_class.json"
@@ -86,6 +93,8 @@ export interface DevnetEnvironment {
   eth: string;
   privacy: PrivacyPoolContract;
   node: RpcProvider;
+  /** The chain devnet reports, read from it rather than named, so a suite cannot pin a stale one. */
+  chainId: constants.StarknetChainId;
 }
 
 export class Devnet {
@@ -135,7 +144,7 @@ export class Devnet {
       "--dump-on",
       "request", // Enable devnet_dump RPC (no-op unless explicitly called)
       "--chain-id",
-      "TESTNET",
+      DEVNET_CHAIN_ID,
       "--proof-mode",
       "none",
     ];
@@ -167,7 +176,6 @@ export class Devnet {
       nodeUrl: this.devnet.provider.url,
       transactionRetryIntervalFallback: 50,
       batch: 0,
-      chainId: "0x534e5f5345504f4c4941",
     });
     // Get predeployed accounts using JSON-RPC directly
     const response = await fetch(this.devnet.provider.url, {
@@ -250,6 +258,7 @@ export class Devnet {
       eth,
       privacy,
       node: this.node,
+      chainId: (await this.node.getChainId()) as constants.StarknetChainId,
     };
 
     debugLog("devnet", "initialize", () =>
@@ -488,7 +497,7 @@ export async function createDevnetTestEnv(
   config?: DevnetTestEnvConfig
 ): Promise<DevnetTestEnv> {
   const env = await devnet.initialize();
-  const chainId = constants.StarknetChainId.SN_SEPOLIA;
+  const chainId = env.chainId;
 
   // The pool screens deposits, so use a proving provider that signs each deposit's attestation
   // with the screener key the pool was deployed with.
@@ -523,7 +532,7 @@ export function createUnattestedAliceTransfers(env: DevnetEnvironment): PrivateT
   return createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => toBigInt("0xA11CE") },
-    provingProvider: new CallMockProofProvider(env.node, constants.StarknetChainId.SN_SEPOLIA),
+    provingProvider: new CallMockProofProvider(env.node, env.chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   });
