@@ -1,6 +1,6 @@
 import { hash as starknetHash } from "starknet";
 
-import { hash as poseidonHash, toBigInt } from "../utils/index.js";
+import { hash as poseidonHash, toHex } from "../utils/index.js";
 import { compute_identity_key } from "../utils/hashes.js";
 
 /**
@@ -46,9 +46,11 @@ export function shadowAccountCommitment(partialCommitment: bigint, nonce: bigint
  * address derives from (commitment, `PRIMER_CLASS_HASH`, empty calldata, the anonymizer). Callers
  * that need the address of an *already deployed* account can read it from the anonymizer's
  * `get_shadow_account` view instead. The two agree for anything deployed under the primer pattern.
+ *
+ * Returned as a felt in hex with no leading zeros; the commitments above stay felts.
  */
-export function shadowAccountAddress(commitment: bigint, anonymizerAddress: bigint): bigint {
-  return toBigInt(
+export function shadowAccountAddress(commitment: bigint, anonymizerAddress: bigint): string {
+  return toHex(
     starknetHash.calculateContractAddressFromHash(
       commitment,
       PRIMER_CLASS_HASH,

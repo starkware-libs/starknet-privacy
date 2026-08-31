@@ -40,10 +40,21 @@ function fakePolicies(policies: Record<string, OpenNoteScreeningPolicy>) {
   };
 }
 
-const CONFIG = {
-  poolAddress: POOL_ADDR,
-  anonymizerAddress: ANONYMIZER_ADDR,
-};
+const CONFIG = { poolAddress: POOL_ADDR };
+
+/** The shadow account `deployer`'s compute-invoke runs through, from the fixture's felts. */
+function derivedShadowAccount(deployer: string): string {
+  const commitment = shadowAccountCommitment(
+    shadowAccountPartialCommitment(
+      BigInt(USER_ADDR),
+      BigInt(PRIVATE_KEY),
+      BigInt(deployer),
+      DAPP_NAME
+    ),
+    NONCE
+  );
+  return shadowAccountAddress(commitment, BigInt(deployer));
+}
 
 async function subjectOf(
   actions: CairoCustomEnum[],
@@ -85,7 +96,7 @@ describe("getScreenedAddress", () => {
   it("screens nobody for a call to a contract other than the pool", async () => {
     const screened = await getScreenedAddress(
       poolCallTransaction([depositAction()]),
-      { poolAddress: "0x4321", anonymizerAddress: ANONYMIZER_ADDR },
+      { poolAddress: "0x4321" },
       fakePolicies({})
     );
 
@@ -141,18 +152,6 @@ describe("getScreenedAddress", () => {
     // Composed here from the transaction's own felts rather than asserted to be "not the
     // anonymizer": only the value pins which felts the derivation reads, so feeding it the wrong
     // user address or nonce fails this.
-    const expected = shadowAccountAddress(
-      shadowAccountCommitment(
-        shadowAccountPartialCommitment(
-          BigInt(USER_ADDR),
-          BigInt(PRIVATE_KEY),
-          BigInt(ANONYMIZER_ADDR),
-          DAPP_NAME
-        ),
-        NONCE
-      ),
-      BigInt(ANONYMIZER_ADDR)
-    );
     const { screened } = await subjectOf(
       [createOpenNoteAction(), computeAndInvokeAction()],
       { [ANONYMIZER_ADDR]: "Delegated" }
@@ -160,7 +159,7 @@ describe("getScreenedAddress", () => {
 
     expect(screened).toEqual({
       kind: "one",
-      address: "0x" + expected.toString(16),
+      address: derivedShadowAccount(ANONYMIZER_ADDR),
     });
   });
 
@@ -242,18 +241,17 @@ describe("getScreenedAddress", () => {
     expect(screened).toEqual({ kind: "unreadablePolicy" });
   });
 
-  it("refuses a delegated compute-invoke whose address it cannot compute", async () => {
-    const errorSpy = silenceErrorLog();
-    // Only the anonymizer's shadow account is derivable here. For any other delegated target the
-    // pool asks for an address nothing off chain can name, so refuse rather than let the
-    // transaction reach the pool unattested.
+  it("screens any Delegated target's compute-invoke on its own shadow account", async () => {
+    // Listing a target `Delegated` makes it the deployer felt the derivation uses.
     const { screened } = await subjectOf(
       [createOpenNoteAction(), computeAndInvokeAction(SWAP_EXECUTOR)],
       { [SWAP_EXECUTOR]: "Delegated" }
     );
 
-    expect(screened).toEqual({ kind: "unknownDelegate" });
-    errorSpy.mockRestore();
+    expect(screened).toEqual({
+      kind: "one",
+      address: derivedShadowAccount(SWAP_EXECUTOR),
+    });
   });
 
   it("screens nobody for a delegated target driven through a plain invoke", async () => {
@@ -268,9 +266,8 @@ describe("getScreenedAddress", () => {
   });
 
   it("never screens a shadow account under another target's policy", async () => {
-    const errorSpy = silenceErrorLog();
     // Two invoke-phase actions is a transaction the pool rejects, but the interceptor sees it before
-    // the pool does. Both are compute-invokes, so only comparing the funding invoke's own target
+    // the pool does. Both are compute-invokes, so deriving from the funding invoke's own target
     // keeps the anonymizer's shadow account from riding in on the swap executor's listing: the
     // derivation would otherwise scan on and find the anonymizer's action by itself.
     const { screened, asked } = await subjectOf(
@@ -283,23 +280,13 @@ describe("getScreenedAddress", () => {
     );
 
     expect(asked).toEqual([SWAP_EXECUTOR]);
-    expect(screened).toEqual({ kind: "unknownDelegate" });
-    errorSpy.mockRestore();
-  });
-
-  it("says the delegated depositor is unknown when it refuses, without revealing an address", async () => {
-    const errorSpy = silenceErrorLog();
-
-    await subjectOf(
-      [createOpenNoteAction(), computeAndInvokeAction(SWAP_EXECUTOR)],
-      { [SWAP_EXECUTOR]: "Delegated" }
+    expect(screened).toEqual({
+      kind: "one",
+      address: derivedShadowAccount(SWAP_EXECUTOR),
+    });
+    expect(derivedShadowAccount(SWAP_EXECUTOR)).not.toBe(
+      derivedShadowAccount(ANONYMIZER_ADDR)
     );
-
-    expect(errorSpy).toHaveBeenCalledTimes(1);
-    const logged = String(errorSpy.mock.calls[0][0]);
-    expect(logged).toContain("unknown_delegated_depositor");
-    expect(logged).not.toContain(SWAP_EXECUTOR);
-    errorSpy.mockRestore();
   });
 
   it("refuses separately when the anonymizer's shadow account cannot be determined", async () => {

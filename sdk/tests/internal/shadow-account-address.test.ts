@@ -27,7 +27,13 @@ describe("shadow account derivation", () => {
   it("matches the committed Cairo vector", () => {
     expect(poseidonHash(IDENTITY_KEY, DAPP_NAME)).toBe(PARTIAL_COMMITMENT);
     expect(shadowAccountCommitment(PARTIAL_COMMITMENT, NONCE)).toBe(COMMITMENT);
-    expect(shadowAccountAddress(COMMITMENT, ANONYMIZER)).toBe(ADDRESS);
+    // The vector stays the felt Cairo asserts; the function returns that felt in hex.
+    expect(BigInt(shadowAccountAddress(COMMITMENT, ANONYMIZER))).toBe(ADDRESS);
+  });
+
+  it("returns the address as a felt in hex with no leading zeros", () => {
+    // A padded or upper-case form would silently never match a canonicalized address.
+    expect(shadowAccountAddress(COMMITMENT, ANONYMIZER)).toMatch(/^0x(0|[1-9a-f][0-9a-f]*)$/);
   });
 
   it("reaches the same commitment from the user's own inputs", () => {

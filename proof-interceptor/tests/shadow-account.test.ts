@@ -128,9 +128,7 @@ describe("getShadowAccountAddress", () => {
       ),
       BigInt(ANONYMIZER_ADDR)
     );
-    expect(addressOf([computeAndInvoke({})])).toBe(
-      "0x" + expected.toString(16)
-    );
+    expect(addressOf([computeAndInvoke({})])).toBe(expected);
   });
 
   it("returns null for an unparseable user address instead of throwing", () => {

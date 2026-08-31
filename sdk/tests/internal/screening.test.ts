@@ -133,11 +133,7 @@ describe("screeningErrorFromProvingError", () => {
     // These are terminal for the transaction as built but say nothing about the address. Mapping
     // them to ScreeningRejected would tell the caller they are sanctioned and must never retry; the
     // caller rethrows the prover's own error instead, whose message already carries the reason.
-    for (const data of [
-      "multiple_screening_subjects",
-      "unknown_delegated_depositor",
-      "shadow_account_undetermined",
-    ]) {
+    for (const data of ["multiple_screening_subjects", "shadow_account_undetermined"]) {
       const mapped = screeningErrorFromProvingError(
         new ProvingServiceError(10000, "Transaction rejected", data)
       );

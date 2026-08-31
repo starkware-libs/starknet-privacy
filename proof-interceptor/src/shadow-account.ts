@@ -74,7 +74,8 @@ export function getShadowAccountAddress(
     ),
     interaction.nonce
   );
-  return normalizeFelt(num.toHex(shadowAccountAddress(commitment, anonymizer)));
+  // Already a canonical felt in hex, the same spelling `normalizeFelt` produces.
+  return shadowAccountAddress(commitment, anonymizer);
 }
 
 /**
