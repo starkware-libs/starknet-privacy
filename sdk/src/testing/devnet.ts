@@ -46,11 +46,15 @@ const __dirname = dirname(__filename);
 
 // Contract paths
 /**
- * The chain devnet launches as. Devnet resolves the name to a felt through its own alias table
- * (`TESTNET` is `SN_SEPOLIA`), which nothing here can derive — so the felt is never written down:
- * the provider and every suite read it back from the node instead.
+ * The chain devnet launches as; the felt it resolves to is read back from the node, never written
+ * down here.
+ *
+ * Deliberately not `SN_SEPOLIA`: the devnet pool is deployed with the canonical *test* screener key,
+ * whose private half is public in this repo, so anything signed here would otherwise verify against
+ * a Sepolia pool holding the same key. The chain id is bound into the attestation's SNIP-12 domain,
+ * so a devnet-only chain id makes those signatures worthless anywhere else.
  */
-export const DEVNET_CHAIN_ID = "TESTNET";
+export const DEVNET_CHAIN_ID = "SN_DEVNET";
 
 const CONTRACT_CLASS_PATH = join(
   __dirname,

@@ -47,7 +47,9 @@ describe("StarknetEth712Account custom-signature validation on devnet", () => {
       const approveCalldata = ["0x1234", "0x1f4", "0x0"];
       const signer = new Eip712HashSigner({
         accountAddress: account.address,
-        snChainName: "SN_SEPOLIA", // devnet chain id — keccak'd into the EIP-712 domain name
+        // The account decodes the domain name from `get_tx_info().chain_id`, so read it from the
+        // chain rather than naming it.
+        snChainName: shortString.decodeShortString(env.chainId),
         evmChainId: 1n,
         sign: secp256k1SignFn(EVM_KEY),
       });
