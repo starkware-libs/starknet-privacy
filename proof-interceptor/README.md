@@ -68,8 +68,7 @@ Required when screening is enabled (the production case):
 | `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
 | `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
 | `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
-| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint predates the list and enforces its own block list on chain, so every read answers `Exempt` and this service can deploy before the pool upgrades. |
-| `SCREENING_ANONYMIZER_ADDRESS` | Shadow account anonymizer. Its interactions are screened on the shadow account they run through, derived locally.                                    |
+| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint predates the list and enforces its own block list on chain, so every read answers `Exempt` and this service can deploy before the pool upgrades. A `Delegated` depositor is taken to be a shadow account anonymizer, and its interactions are screened on the shadow account they run through, derived locally. |
 
 Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `SCREENING_POLICY_TTL_MS`, `SCREENING_POLICY_TIMEOUT_MS`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
 
@@ -172,7 +171,6 @@ SCREENING_PARTNER_NAME=<partner-name> \
 SCREENING_PARTNER_SECRET=<base64-secret> \
 SCREENING_POOL_ADDRESS=0x... \
 SCREENING_RPC_URL=https://<starknet-rpc> \
-SCREENING_ANONYMIZER_ADDRESS=0x... \
 PORT=8080 \
 npm start
 ```
