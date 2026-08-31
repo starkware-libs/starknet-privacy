@@ -1,5 +1,11 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { CallData, num, shortString, type TypedData } from "starknet";
+import {
+  CairoFelt252,
+  CallData,
+  num,
+  shortString,
+  type TypedData,
+} from "starknet";
 import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
 import type {
   Paymaster,
@@ -96,10 +102,10 @@ describe("dapp client: Eth712Account (EVM) deposit on devnet", () => {
           calls: build.calls,
         };
         // Build the OutsideExecution typed data with the real domain the account verifies against
-        // (SN_SEPOLIA / evm chain 1 / this account) — the signer now reads the domain from here.
+        // (this chain / evm chain 1 / this account) — the signer now reads the domain from here.
         const typedData = outsideExecutionTypedData({
           accountAddress: account.address,
-          snChainName: "SN_SEPOLIA",
+          snChainName: new CairoFelt252(env.env.chainId).decodeUtf8(),
           evmChainId: 1n,
           calls: outsideExecution.calls.map((call) => ({
             address: call.to,
@@ -153,7 +159,7 @@ describe("dapp client: Eth712Account (EVM) deposit on devnet", () => {
     const { privacy, node } = env.env;
     const signer = new Eip712HashSigner({
       accountAddress: account.address,
-      snChainName: "SN_SEPOLIA",
+      snChainName: new CairoFelt252(env.env.chainId).decodeUtf8(),
       evmChainId: 1n,
       sign: secp256k1SignFn(EVM_KEY),
     });
