@@ -1,5 +1,4 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { constants } from "starknet";
 import {
   Devnet,
   ScreeningCallMockProofProvider,
@@ -70,7 +69,7 @@ describe("E2E Smoke", () => {
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
       provingProvider: new ScreeningCallMockProofProvider(
         de.node,
-        constants.StarknetChainId.SN_SEPOLIA,
+        env.env.chainId,
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,
@@ -101,7 +100,7 @@ describe("E2E Smoke", () => {
       viewingKeyProvider: { getViewingKey: async () => BigInt("0xB0B") },
       provingProvider: new ScreeningCallMockProofProvider(
         de.node,
-        constants.StarknetChainId.SN_SEPOLIA,
+        env.env.chainId,
       ),
       discoveryProvider: indexerDiscovery,
       poolContractAddress: de.privacy.address,

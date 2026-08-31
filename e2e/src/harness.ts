@@ -1,6 +1,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
-import { constants, hash, type Account } from "starknet";
+import { hash, type Account } from "starknet";
 import { nodeOf, repoRoot } from "./utils.js";
 import {
   Devnet,
@@ -118,7 +118,7 @@ export async function createE2eTestEnv(
   config?: E2eTestEnvConfig,
 ): Promise<E2eTestEnv> {
   const env = await devnet.initialize();
-  const chainId = constants.StarknetChainId.SN_SEPOLIA;
+  const chainId = env.chainId;
 
   const indexer = await IndexerClient.spawn({
     wsUrl: devnet.wsUrl,
