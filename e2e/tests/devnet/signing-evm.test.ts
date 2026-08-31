@@ -99,7 +99,7 @@ describe("dapp client: Eth712Account (EVM) deposit on devnet", () => {
         // (SN_SEPOLIA / evm chain 1 / this account) — the signer now reads the domain from here.
         const typedData = outsideExecutionTypedData({
           accountAddress: account.address,
-          snChainName: "SN_SEPOLIA",
+          snChainName: shortString.decodeShortString(env.env.chainId),
           evmChainId: 1n,
           calls: outsideExecution.calls.map((call) => ({
             address: call.to,
@@ -153,7 +153,7 @@ describe("dapp client: Eth712Account (EVM) deposit on devnet", () => {
     const { privacy, node } = env.env;
     const signer = new Eip712HashSigner({
       accountAddress: account.address,
-      snChainName: "SN_SEPOLIA",
+      snChainName: shortString.decodeShortString(env.env.chainId),
       evmChainId: 1n,
       sign: secp256k1SignFn(EVM_KEY),
     });

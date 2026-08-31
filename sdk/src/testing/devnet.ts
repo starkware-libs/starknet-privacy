@@ -45,10 +45,15 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 /**
- * The chain devnet launches as. `TESTNET` is devnet's own alias for `SN_SEPOLIA`, a mapping nothing
- * here can derive, so the felt is read back from the node rather than written down.
+ * The chain devnet launches as; the felt it resolves to is read back from the node, never written
+ * down here.
+ *
+ * Deliberately not `SN_SEPOLIA`: the devnet pool is deployed with the canonical *test* screener key,
+ * whose private half is public in this repo, so anything signed here would otherwise verify against
+ * a Sepolia pool holding the same key. The chain id is bound into the attestation's SNIP-12 domain,
+ * so a devnet-only chain id makes those signatures worthless anywhere else.
  */
-export const DEVNET_CHAIN_ID = "TESTNET";
+export const DEVNET_CHAIN_ID = "SN_DEVNET";
 
 // Contract paths
 const CONTRACT_CLASS_PATH = join(
