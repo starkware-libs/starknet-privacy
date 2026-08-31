@@ -15,6 +15,15 @@
   felts can predict a shadow account's address without deploying it or reading the chain.
   `shadowAccounts(dapp).partialCommitment()` / `.commitment(nonce)` now delegate to them, and a
   committed cross-language vector pins all three against the anonymizer's Cairo.
+- `shadowAccountAddressOnChain(commitment, anonymizerAddress, provider)`, which looks `commitment`
+  up in the anonymizer's `get_shadow_account` registry first (authoritative, and era-agnostic, once
+  something is deployed) and only falls back to `shadowAccountAddress`'s `PRIMER_CLASS_HASH` formula
+  when nothing is deployed yet. `shadowAccountAddress` predicts the wrong address for an anonymizer
+  deployed before the primer pattern, because it deploys the shadow account class directly, and
+  there is no on-chain view that tells the two generations apart ahead of deployment. Also adds
+  `shadowAccountAddressFromClassHash(commitment, classHash, anonymizerAddress)`, the address formula
+  generalized to an explicit class hash, for a caller who knows out of band that
+  `anonymizerAddress` predates the primer pattern and has its shadow account class hash in hand.
 - Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new
   `privacy_invoke_with_computation` return shape, `(Span<OpenNoteDeposit>, Span<ContractAddress>)`.
   The invoke now returns the shadow account its deposits passed through, which is the address the
