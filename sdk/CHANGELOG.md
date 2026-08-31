@@ -6,13 +6,15 @@
 
 - `screeningErrorFromProvingError` maps `screening_policy_unavailable` to `ScreeningUnavailable`:
   the pool's policy list is as much a screening dependency as the screener, so a read the
-  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`,
-  `unknown_delegated_depositor` and `shadow_account_undetermined` are deliberately left
+  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`
+  and `shadow_account_undetermined` are deliberately left
   unmapped — terminal for the transaction as built, but silent about the address, so reporting them
   as `ScreeningRejected` would tell a caller they are sanctioned.
 - `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and
   `PRIMER_CLASS_HASH`, the shadow account derivation as pure functions, so a caller holding the raw
   felts can predict a shadow account's address without deploying it or reading the chain.
+  `shadowAccountAddress` returns the address as a felt in hex with no leading zeros — the spelling
+  addresses are compared and transmitted in; the two commitments are hash inputs and stay felts.
   `shadowAccounts(dapp).partialCommitment()` / `.commitment(nonce)` now delegate to them, and a
   committed cross-language vector pins all three against the anonymizer's Cairo.
 - Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new

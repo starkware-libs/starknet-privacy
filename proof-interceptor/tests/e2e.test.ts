@@ -10,7 +10,6 @@ import * as ff from "@google-cloud/functions-framework";
 import { getTestServer } from "@google-cloud/functions-framework/testing";
 import { createHandler } from "../src/proxy.js";
 import { ScreeningInterceptor } from "../src/screening-interceptor.js";
-import { ANONYMIZER_ADDR } from "./pool-call.js";
 
 import { createHandler as createEllipticHandler } from "../../elliptic-proxy/src/handler.js";
 import { forwardToElliptic } from "../../elliptic-proxy/src/elliptic.js";
@@ -115,7 +114,6 @@ async function startInterceptor(): Promise<void> {
     poolAddress: "0xpool",
     // Unreachable on purpose: a plain `Deposit` is screened on its own depositor, reading no policy.
     rpcUrl: "http://127.0.0.1:1",
-    anonymizerAddress: ANONYMIZER_ADDR,
     policyTtlMs: 60_000,
     policyTimeoutMs: 50,
     blockNonPoolTx: false,

@@ -30,7 +30,6 @@ export interface ScreeningConfig {
   totalTimeoutMs: number;
   poolAddress: string;
   rpcUrl: string;
-  anonymizerAddress: string;
   policyTtlMs: number;
   policyTimeoutMs: number;
   // When true, transactions that are not a single direct INVOKE call to
@@ -53,7 +52,6 @@ const UNRESOLVED_SUBJECT_REASONS: Record<
 > = {
   conflict: "multiple_screening_subjects",
   unreadablePolicy: "screening_policy_unavailable",
-  unknownDelegate: "unknown_delegated_depositor",
   undeterminedShadowAccount: "shadow_account_undetermined",
 };
 
