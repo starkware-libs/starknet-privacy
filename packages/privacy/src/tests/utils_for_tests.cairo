@@ -2528,8 +2528,8 @@ pub(crate) fn deploy_mock_custom_account(
 }
 
 /// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
-/// `returns_legacy_bool` selects whether it accepts with a pre-SNIP-6 boolean or with `VALIDATED`;
-/// `panics_on_reject` selects whether it rejects by panicking instead of returning 0.
+/// `returns_legacy_bool` selects whether it reports acceptance as the boolean `1` instead of
+/// `VALIDATED`; `panics_on_reject` selects whether it rejects by panicking instead of returning 0.
 pub(crate) fn deploy_mock_stark_account(
     salt: felt252, public_key: felt252, returns_legacy_bool: bool, panics_on_reject: bool,
 ) -> ContractAddress {
