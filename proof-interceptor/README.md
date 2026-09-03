@@ -40,7 +40,7 @@ The prover runs the screening round-trip in parallel with proving. The sidecar r
 
 | Category                      | Verdict                                             | When                                                                                                                                                                                                                                                                  |
 | ----------------------------- | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Screened**                  | depends on Elliptic                                 | Single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` that puts up an address: a Deposit's depositor (`user_addr`), the shadow account an interaction runs through, or an invoke target whose open-note policy is `Required`.                                                                                                    |
+| **Screened**                  | depends on Elliptic                                 | Single direct INVOKE-v3 to `SCREENING_POOL_ADDRESS` that puts up an address: a Deposit's depositor (`user_addr`), the shadow account a compute-invoke to the configured anonymizer runs through, or the invoke target itself — whether its policy is `Required`, or `Delegated` through a plain invoke.                                                                                                    |
 | **Bypass (non-pool)**         | `allow`                                             | Multi-call INVOKEs and calls to contracts other than `SCREENING_POOL_ADDRESS`. Set `SCREENING_BLOCK_NON_POOL_TX=true` to block these instead. Non-canonical felt encodings (`"0x01"`, `"0X1"`, a case-mismatched address) are *not* in this category: `normalizeFelt` folds case, the `0X` prefix and leading zeros, so such a pool call is screened like any other. |
 | **Bypass (pool, no Deposit)** | `allow`                                             | Pool calls with no Deposit action (withdraw-only) or whose action span fails to decode (most often ABI drift). **Not affected by `SCREENING_BLOCK_NON_POOL_TX`** — this toggle only changes the non-pool branch.                                                      |
 | **Blocked**                   | RPC error `10000`                                   | Sanctioned `user_addr`, screening-pipeline failure with fail-closed defaults, or any unhandled exception inside an interceptor (caught and converted to a block whose reason is the opaque `interceptor_error`; the exception's message is logged, not returned).                                                            |
@@ -68,7 +68,8 @@ Required when screening is enabled (the production case):
 | `SCREENING_PARTNER_NAME`   | Partner identifier issued by the proxy operator.                                                                                                        |
 | `SCREENING_PARTNER_SECRET` | Base64-encoded HMAC key issued by the proxy operator.                                                                                                   |
 | `SCREENING_POOL_ADDRESS`   | Privacy-pool contract address — only direct calls to this address are screened.                                                                         |
-| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint predates the list and enforces its own block list on chain, so every read answers `Exempt` and this service can deploy before the pool upgrades. A `Delegated` depositor is taken to be a shadow account anonymizer, and its interactions are screened on the shadow account they run through, derived locally. |
+| `SCREENING_RPC_URL`        | Starknet JSON-RPC endpoint, used to read the pool's open-note screening policies. A pool without the policy entrypoint predates the list and enforces its own block list on chain, so every read answers `Exempt` and this service can deploy before the pool upgrades. |
+| `SCREENING_ANONYMIZER_ADDRESS` | Shadow account anonymizer. Its compute-invokes are screened on the shadow account they run through, derived locally; a compute-invoke to any other `Delegated` target is refused. |
 
 Plus the production toggle `SCREENING_BLOCK_NON_POOL_TX=true` discussed above. Optional knobs (`SCREENING_TIMEOUT_MS`, `SCREENING_TOTAL_TIMEOUT_MS`, `SCREENING_MAX_RETRIES`, `SCREENING_FAIL_OPEN`, `SCREENING_POLICY_TTL_MS`, `SCREENING_POLICY_TIMEOUT_MS`, `PORT`, `HOST`, `MAX_BODY_BYTES`, `TLS_CERT_PATH`/`TLS_KEY_PATH`) and their defaults are in `src/config.ts`. Note: `SCREENING_FAIL_OPEN` does **not** apply to the screening-v2 signing path — a deposit without a signature cannot proceed on-chain, so a signing failure always fails closed.
 
@@ -171,6 +172,7 @@ SCREENING_PARTNER_NAME=<partner-name> \
 SCREENING_PARTNER_SECRET=<base64-secret> \
 SCREENING_POOL_ADDRESS=0x... \
 SCREENING_RPC_URL=https://<starknet-rpc> \
+SCREENING_ANONYMIZER_ADDRESS=0x... \
 PORT=8080 \
 npm start
 ```

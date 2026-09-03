@@ -86,6 +86,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - The failure is silent at deploy time and only surfaces later, when an access check reads the never-written slot
 - *Example:* deploying a shadow account via a Primer leaves `owner` zero, so every `execute` reverts with `NOT OWNER` and the account can never move the funds it holds
 
+### Check a cross-layer mirror case by case against the rule it mirrors
+- When one layer re-implements a rule another layer enforces (an off-chain resolver mirroring an on-chain match), enumerate the source rule's cases and state the mirror's answer for each. Do not reason from the mirror's own model of the world, which is where the blind spots live
+- A case the mirror folds into another (three different inputs all answering "nobody") is exactly where the two layers drift once the source rule changes
+- *Example:* the pool's `Delegated` arm gained a fallback to the depositor when no address span follows the deposits. The interceptor's compute path looked unchanged under its model "a Delegated target is the anonymizer, which always returns an address", but its decode helper answered "nobody" for calldata it could not decode, so a depositor the pool now screens on itself was left unattested
+
 ---
 
 ## Brevity

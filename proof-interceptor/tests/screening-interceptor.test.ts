@@ -8,6 +8,7 @@ import {
   type ScreeningConfig,
 } from "../src/screening-interceptor.js";
 import {
+  ANONYMIZER_ADDR,
   POOL_ADDR,
   SWAP_EXECUTOR,
   computeAndInvokeAction,
@@ -79,6 +80,7 @@ function makeConfig(overrides?: Partial<ScreeningConfig>): ScreeningConfig {
     // Unreachable on purpose: none of these transactions runs an invoke, so no policy is read. A
     // test that reached for one would fail closed instead of silently screening the wrong address.
     rpcUrl: "http://127.0.0.1:1",
+    anonymizerAddress: ANONYMIZER_ADDR,
     policyTtlMs: 60_000,
     policyTimeoutMs: 50,
     blockNonPoolTx: false,
@@ -453,6 +455,32 @@ describe("ScreeningInterceptor", () => {
       }
       await policyNode.close();
       logSpy.mockRestore();
+    });
+
+    it("blocks a foreign Delegated target's compute-invoke", async () => {
+      // A target is listed `Delegated` because its compute-invoke names an address; nothing off
+      // chain can derive one for a contract other than the configured anonymizer.
+      const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+      const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const policyNode = await startDelegatedPolicyNode();
+      const interceptor = new ScreeningInterceptor(
+        makeConfig({ poolAddress: POOL_ADDR, rpcUrl: policyNode.url })
+      );
+
+      const verdict = await interceptor.intercept(
+        poolCallTransaction([
+          createOpenNoteAction(),
+          computeAndInvokeAction(SWAP_EXECUTOR),
+        ])
+      );
+
+      expect(verdict.action).toBe("block");
+      if (verdict.action === "block") {
+        expect(verdict.reason).toBe("unknown_delegated_depositor");
+      }
+      await policyNode.close();
+      logSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it("blocks when an invoke target's policy cannot be read", async () => {
