@@ -537,8 +537,6 @@ pub trait IServer<T> {
     /// the tx's actions require screening of more than one distinct address — two deposits with
     /// different `from_addr`, a deposit combined with an Invoke whose target requires screening of
     /// its own address, or a delegated target naming two addresses.
-    /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if a screening
-    /// subject is the zero address.
     /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx's actions
     /// require screening but `screening` is [`Option::None`].
     /// - [`UNEXPECTED_SCREENING`](privacy::errors::UNEXPECTED_SCREENING): Thrown if `screening` is
