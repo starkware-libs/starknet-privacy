@@ -65,6 +65,7 @@ export function makeCoreProver(
         ? new ScreeningCallMockProofProvider(params.node, params.chainId)
         : new InterceptorSubjectProofProvider(params.node, params.chainId, {
             poolAddress: params.poolAddress,
+            anonymizerAddress: params.shadowAccountAnonymizerAddress,
           }),
     poolContractAddress: params.poolAddress,
     shadowAccountAnonymizerAddress:
