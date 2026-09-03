@@ -99,14 +99,13 @@ pub struct Note {
     pub token: ContractAddress,
 }
 
-/// The table below details how the pool applies screening on open-note deposits, given the
-/// screening policy of the depositor and the actual invoke method used.
+/// The list below details how the pool applies screening on open-note deposits, given the
+/// screening policy of the depositor:
 ///
-/// | policy      | `privacy_invoke`     | `privacy_invoke_with_computation` |
-/// |-------------|----------------------|-----------------------------------|
-/// | `Required`  | screen the depositor | screen the depositor              |
-/// | `Exempt`    | no screening         | no screening                      |
-/// | `Delegated` | no screening         | screen the provided addresses     |
+/// - `Required`: screen the depositor.
+/// - `Exempt`: no screening.
+/// - `Delegated`: screen the addresses the invoke returns after the deposits, or the depositor
+///   itself when none are returned.
 ///
 /// No policy rejects a depositor outright. Under the default `Required`, a depositor the screening
 /// provider refuses gets no attestation, so its deposits are blocked anyway.

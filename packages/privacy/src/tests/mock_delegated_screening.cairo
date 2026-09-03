@@ -2,12 +2,11 @@
 //! [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) is `Delegated`.
 //!
 //! A delegated depositor returns the addresses its deposits are associated with after those
-//! deposits, in the same return data, so these mocks differ from an ordinary depositor only in
-//! what their compute-invoke returns.
+//! deposits, in the same return data, regardless of which invoke entry point funds them.
 //!
 //! [`MockDelegatedTarget`] implements both `privacy_invoke` and
-//! `privacy_invoke_with_computation`, standing in for a target that offers both: only the latter
-//! appends addresses, since only the latter is delegated.
+//! `privacy_invoke_with_computation`, appending the same addresses after either one's deposits.
+//! [`MockDelegatedWithoutAddresses`] implements both too, appending nothing after either.
 
 use privacy::objects::OpenNoteDeposit;
 use starknet::ContractAddress;
@@ -22,16 +21,18 @@ pub trait IMockDelegatedTarget<T> {
     fn privacy_invoke_with_computation(
         ref self: T, commitment: felt252, deposits: Span<OpenNoteDeposit>,
     ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>);
-    /// Funds open notes without a computation — never delegated, so these deposits are exempt and
-    /// no addresses follow them.
-    fn privacy_invoke(ref self: T, deposits: Span<OpenNoteDeposit>) -> Span<OpenNoteDeposit>;
+    /// Funds open notes without a computation, followed by the same addresses as
+    /// `privacy_invoke_with_computation`.
+    fn privacy_invoke(
+        ref self: T, deposits: Span<OpenNoteDeposit>,
+    ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>);
 }
 
 #[starknet::contract]
 pub mod MockDelegatedTarget {
     use privacy::objects::OpenNoteDeposit;
     use starknet::ContractAddress;
-    use starknet::storage::{MutableVecTrait, StoragePointerReadAccess, Vec};
+    use starknet::storage::{MutableVecTrait, StoragePointerReadAccess, Vec, VecTrait};
     use super::IMockDelegatedTarget;
 
     #[storage]
@@ -55,29 +56,37 @@ pub mod MockDelegatedTarget {
         fn privacy_invoke_with_computation(
             ref self: ContractState, commitment: felt252, deposits: Span<OpenNoteDeposit>,
         ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
-            let mut associated_addresses: Array<ContractAddress> = array![];
-            for index in 0..self.associated_addresses.len() {
-                associated_addresses.append(self.associated_addresses.at(index).read());
-            }
-            (deposits, associated_addresses.span())
+            (deposits, self.collect_associated_addresses())
         }
 
         fn privacy_invoke(
             ref self: ContractState, deposits: Span<OpenNoteDeposit>,
-        ) -> Span<OpenNoteDeposit> {
-            deposits
+        ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
+            (deposits, self.collect_associated_addresses())
+        }
+    }
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        fn collect_associated_addresses(self: @ContractState) -> Span<ContractAddress> {
+            let mut associated_addresses: Array<ContractAddress> = array![];
+            for index in 0..self.associated_addresses.len() {
+                associated_addresses.append(self.associated_addresses.at(index).read());
+            }
+            associated_addresses.span()
         }
     }
 }
 
-/// A depositor listed `Delegated` that returns only its deposits — the misconfiguration the
-/// policy invites, since nothing stops a governor from listing a depositor that names nobody.
+/// A depositor listed `Delegated` that never names an associated address, on either invoke kind —
+/// the pool screens it on itself under the policy's fallback.
 #[starknet::interface]
 pub trait IMockDelegatedWithoutAddresses<T> {
     fn privacy_compute(self: @T, identity_key: felt252) -> felt252;
     fn privacy_invoke_with_computation(
         ref self: T, commitment: felt252, deposits: Span<OpenNoteDeposit>,
     ) -> Span<OpenNoteDeposit>;
+    fn privacy_invoke(ref self: T, deposits: Span<OpenNoteDeposit>) -> Span<OpenNoteDeposit>;
 }
 
 #[starknet::contract]
@@ -99,6 +108,12 @@ pub mod MockDelegatedWithoutAddresses {
 
         fn privacy_invoke_with_computation(
             ref self: ContractState, commitment: felt252, deposits: Span<OpenNoteDeposit>,
+        ) -> Span<OpenNoteDeposit> {
+            deposits
+        }
+
+        fn privacy_invoke(
+            ref self: ContractState, deposits: Span<OpenNoteDeposit>,
         ) -> Span<OpenNoteDeposit> {
             deposits
         }

@@ -573,13 +573,13 @@ pub trait IServer<T> {
     ///   - A target whose policy is `Required` (every unlisted address) makes the Invoke target
     ///   itself the tx's screening subject; a target that is `Exempt` raises no requirement. See
     ///   the screening errors above.
-    ///   - A depositor in `Delegated` mode provides the addresses associated with its deposits.
-    ///   The screening is performed on the associated addresses.
+    ///   - A depositor in `Delegated` mode is screened on the addresses returned after its
+    ///   deposits, or on itself when none follow.
     ///     - [`INVALID_ASSOCIATED_ADDRESSES`](privacy::errors::INVALID_ASSOCIATED_ADDRESSES):
-    ///       Thrown if no `Span<ContractAddress>` follows the deposits in the returned data, albeit
-    ///       expected. May indicate a depositor set to `Delegated` by mistake.
+    ///       Thrown if the data following the deposits is not a well-formed
+    ///       `Span<ContractAddress>`.
     ///     - [`NO_ASSOCIATED_ADDRESS`](privacy::errors::NO_ASSOCIATED_ADDRESS):
-    ///       Thrown when an associated address is required, but an empty span was provided.
+    ///       Thrown if that span is present but empty.
     ///     - [`INVALID_INVOKE_RETURN_DATA`](privacy::errors::INVALID_INVOKE_RETURN_DATA):
     ///       Thrown when the data returned from the call exceeds the expected one.
     ///
@@ -920,10 +920,9 @@ pub trait IAdmin<T> {
     /// default policy.
     /// - `Exempt`: the depositor's open-note deposits are exempted from screening.
     /// - `Delegated`: providing the addresses for screening is delegated to the depositor, which
-    /// lists them in the returned data following its deposits. The pool trusts the depositor to
-    /// report the associated addresses correctly.
-    /// See [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) for how each
-    /// policy behaves per invoke kind.
+    /// lists them in the returned data following its deposits, falling back to screening the
+    /// depositor itself when none follow. The pool trusts the depositor to report the associated
+    /// addresses correctly.
     ///
     /// #### Parameters
     /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract. Must be
