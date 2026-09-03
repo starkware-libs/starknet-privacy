@@ -44,9 +44,10 @@ export async function exemptOpenNoteDepositor(
 }
 
 /**
- * Lists `depositor` as `Delegated`, so the pool screens the addresses its invoke returns rather
- * than the depositor itself — for the anonymizer, the shadow account the interaction ran through.
- * A prover that cannot attest that address will see the deposit revert with `SCREENING_REQUIRED`.
+ * Lists `depositor` as `Delegated`, so the pool screens the addresses its invoke returns after its
+ * deposits, or the depositor itself when the invoke returns none — for the anonymizer, the shadow
+ * account the interaction ran through. A prover that cannot attest that address will see the
+ * deposit revert with `SCREENING_REQUIRED`.
  */
 export async function delegateOpenNoteDepositor(
   admin: Account,
