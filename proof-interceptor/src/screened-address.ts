@@ -10,6 +10,7 @@ type PolicyReader = Pick<OpenNoteScreeningPolicyClient, "getPolicy">;
 
 export interface ScreenedAddressConfig {
   poolAddress: string;
+  anonymizerAddress: string;
 }
 
 type InvokeAction = "InvokeExternal" | "ComputeAndInvoke";
@@ -24,11 +25,15 @@ interface OpenNoteDepositor {
   action: CairoCustomEnum;
 }
 
-/** The pool takes one attestation per transaction, so a delegated depositor puts up at most one address. */
+/** The pool takes one attestation per transaction, so a delegated depositor puts up one address, or its transaction is refused. */
 type DelegatedAddress = Extract<
   ScreenedAddress,
   {
-    kind: "one" | "none" | "undeterminedShadowAccount";
+    kind:
+      | "one"
+      | "unknownDelegate"
+      | "undepositedOpenNotes"
+      | "undeterminedShadowAccount";
   }
 >;
 
@@ -37,6 +42,8 @@ export type ScreenedAddress =
   | { kind: "one"; address: string }
   | { kind: "conflict" }
   | { kind: "unreadablePolicy" }
+  | { kind: "unknownDelegate" }
+  | { kind: "undepositedOpenNotes" }
   | { kind: "undeterminedShadowAccount" };
 
 /**
@@ -74,9 +81,13 @@ export async function getScreenedAddress(
         break;
 
       case "Delegated": {
-        const delegated = getDelegatedAddress(poolCall, openNoteDepositor);
-        if (delegated.kind === "one") addresses.add(delegated.address);
-        else if (delegated.kind !== "none") return delegated;
+        const delegated = getDelegatedAddress(
+          poolCall,
+          openNoteDepositor,
+          config
+        );
+        if (delegated.kind !== "one") return delegated;
+        addresses.add(delegated.address);
         break;
       }
 
@@ -96,26 +107,34 @@ export async function getScreenedAddress(
 /**
  * The address a delegated open-note depositor puts up for the deposits its invoke funds.
  *
- * A `Delegated` target is taken to be a shadow account anonymizer; one that is not fails closed.
+ * A plain invoke returns deposits alone, so the pool falls back to the depositor. A compute-invoke
+ * to the configured anonymizer names the shadow account derived here; one to any other `Delegated`
+ * target names an address nothing off chain can derive, so it is refused.
+ *
+ * The transaction carries a `CreateOpenNote`, and the pool reverts it with `UNDEPOSITED_OPEN_NOTES`
+ * unless the invoke deposits into that note. An anonymizer invoke naming no open note, or one whose
+ * data does not decode as the anonymizer's, is therefore refused rather than screened on nobody.
  */
 function getDelegatedAddress(
   poolCall: PoolCallActions,
-  openNoteDepositor: OpenNoteDepositor
+  openNoteDepositor: OpenNoteDepositor,
+  { anonymizerAddress }: ScreenedAddressConfig
 ): DelegatedAddress {
-  // A plain invoke is exempt under `Delegated`; only a compute-invoke puts up an address.
   if (openNoteDepositor.invokeVariant !== "ComputeAndInvoke") {
-    return { kind: "none" };
+    return { kind: "one", address: openNoteDepositor.address };
   }
 
-  // The pool assigns a subject only for an invoke that returns deposits.
+  if (openNoteDepositor.address !== normalizeFelt(anonymizerAddress)) {
+    console.error(JSON.stringify({ error: "unknown_delegated_depositor" }));
+    return { kind: "unknownDelegate" };
+  }
+
   if (!createsOpenNotes(openNoteDepositor.action)) {
-    return { kind: "none" };
+    console.error(JSON.stringify({ error: "undeposited_open_notes" }));
+    return { kind: "undepositedOpenNotes" };
   }
 
-  const shadowAccount = getShadowAccountAddress(
-    poolCall,
-    openNoteDepositor.address
-  );
+  const shadowAccount = getShadowAccountAddress(poolCall, anonymizerAddress);
   if (shadowAccount === null) {
     console.error(JSON.stringify({ error: "shadow_account_undetermined" }));
     return { kind: "undeterminedShadowAccount" };
