@@ -40,11 +40,11 @@ export class ScreeningUnavailable extends Error {
  * *only* values that denote a screening verdict — a wire contract with the proof interceptor; keep
  * both sides in sync.
  *
- * The interceptor also blocks with `multiple_screening_subjects` and
- * `shadow_account_undetermined`. Those are deliberately not
- * mapped: they are terminal for the transaction as built but say nothing about the address, so
- * reporting them as {@link ScreeningRejected} would tell a caller they are sanctioned. They reach
- * the caller as the prover's own error, whose message already carries the reason.
+ * The interceptor also blocks with `multiple_screening_subjects`, `unknown_delegated_depositor`,
+ * `undeposited_open_notes` and `shadow_account_undetermined`. Those are deliberately not mapped:
+ * they are terminal for the transaction as built but say nothing about the address, so reporting
+ * them as {@link ScreeningRejected} would tell a caller they are sanctioned. They reach the caller
+ * as the prover's own error, whose message already carries the reason.
  */
 const SCREENING_BLOCKED_REASON = "address_blocked";
 const SCREENING_UNAVAILABLE_REASON = "screening_unavailable";
