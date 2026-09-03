@@ -1365,8 +1365,8 @@ pub(crate) impl TestImpl of TestTrait {
         (user, note_id, actions)
     }
 
-    /// Like `funded_open_note_from`, but funding through the compute-invoke path — the one the
-    /// delegated policy acts on, so every delegated fixture funds this way.
+    /// Like `funded_open_note_from`, but funding through the compute-invoke path — one of the two
+    /// invoke kinds a `Delegated` depositor can fund through.
     fn compute_funded_open_note_from(
         ref self: Test, depositor: ContractAddress, token: Token, amount: u128,
     ) -> (User, felt252, Span<ServerAction>) {
@@ -1404,8 +1404,8 @@ pub(crate) impl TestImpl of TestTrait {
         delegated_target
     }
 
-    /// Lists `depositor` as `Delegated`, so the pool reads the addresses to screen from the return
-    /// data of the compute-invoke that funds its open notes.
+    /// Lists `depositor` as `Delegated`, so the pool reads the addresses to screen from whatever
+    /// return data follows the deposits `depositor`'s invoke returns.
     fn delegate_screening_to(self: @Test, depositor: ContractAddress) {
         self
             .privacy
