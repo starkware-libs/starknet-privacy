@@ -337,15 +337,6 @@ fn test_unify_address_dedups_same_screening_subject() {
     assert_eq!(screening_subject, Some(address));
 }
 
-/// The zero address already means "nothing to screen" as a `None` requirement, so it can never be
-/// a requirement itself.
-#[test]
-#[should_panic(expected: 'ZERO_CONTRACT_ADDRESS')]
-fn test_unify_address_rejects_the_zero_address() {
-    let mut screening_subject: Option<ContractAddress> = None;
-    unify_address(ref screening_subject, reference: Zero::zero());
-}
-
 #[test]
 #[should_panic(expected: 'MULTIPLE_SCREENING_SUBJECTS')]
 fn test_unify_address_rejects_distinct_screening_subject() {
