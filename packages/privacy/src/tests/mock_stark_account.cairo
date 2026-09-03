@@ -9,16 +9,16 @@ pub mod MockStarkAccount {
     use core::ecdsa::check_ecdsa_signature;
     use core::panic_with_felt252;
     use privacy::utils::IAccount;
-    use privacy::utils::constants::LEGACY_VALIDATED;
     use starknet::VALIDATED;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
 
     pub const INVALID_SIG: felt252 = 'INVALID_SIG';
+    const BOOLEAN_TRUE: felt252 = 1;
 
     #[storage]
     struct Storage {
         public_key: felt252,
-        // Whether acceptance is reported as a pre-SNIP-6 boolean instead of `VALIDATED`.
+        // Whether acceptance is reported as the boolean `1` instead of `VALIDATED`.
         returns_legacy_bool: bool,
         // Whether rejection is reported by panicking instead of returning 0.
         panics_on_reject: bool,
@@ -53,7 +53,7 @@ pub mod MockStarkAccount {
                 return 0;
             }
             if self.returns_legacy_bool.read() {
-                LEGACY_VALIDATED
+                BOOLEAN_TRUE
             } else {
                 VALIDATED
             }

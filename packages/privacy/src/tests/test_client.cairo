@@ -27,7 +27,7 @@ use privacy::tests::utils_for_tests::{
     deploy_mock_return_garbage, deploy_mock_stark_account,
 };
 use privacy::utils::constants::{
-    ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, LEGACY_VALIDATED, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
+    ERR_WRAPPER, ESTIMATION_BASE_TX_VERSION, OPEN_NOTE_SALT, TWO_POW_120, TX_V3,
 };
 use privacy::utils::{
     compute_message_hash, decode_note_amount, encrypt_channel_info, encrypt_user_addr,
@@ -6804,11 +6804,10 @@ fn test_deposit_account_without_src5_routes_to_legacy() {
     stop_cheat_chain_id_global();
 }
 
-/// A pre-SNIP-6 wallet accepts by returning the boolean `1` rather than the `VALIDATED` short
-/// string. SNIP-6 tells consumers to honor both, so a valid signature over the tx hash must
-/// authenticate at check II.
+/// Only `VALIDATED` authenticates: a wallet that answers the boolean `1` for a signature that is
+/// otherwise valid over the tx hash is still rejected with `INVALID_SIGNATURE`.
 #[test]
-fn test_deposit_legacy_bool_wallet_via_tx_hash() {
+fn test_deposit_boolean_answering_wallet_is_rejected() {
     let test: Test = Default::default();
     let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
     let depositor = deploy_mock_stark_account(
@@ -6828,64 +6827,8 @@ fn test_deposit_legacy_bool_wallet_via_tx_hash() {
     start_cheat_signature(test.privacy.address, array![r, s].span());
 
     let result = test.privacy.safe_execute_with_calls(calls);
-    assert!(result.is_ok(), "a boolean acceptance felt must authenticate at check II");
-    stop_cheat_transaction_hash(test.privacy.address);
-}
-
-/// The same boolean acceptance felt must also be honored at check III, reached only when the
-/// signature is over the SNIP-12 `CallSet` hash instead of the tx hash.
-#[test]
-fn test_deposit_legacy_bool_wallet_via_snip12_call_set() {
-    start_cheat_chain_id_global('TEST');
-    let test: Test = Default::default();
-    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
-    let depositor = deploy_mock_stark_account(
-        salt: 19, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
-    );
-
-    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
-    let calls = test
-        .privacy
-        .wrap_inputs_into_calls(
-            user_addr: depositor, user_private_key: 'BOOL_PROTOCOL_PK', :client_actions,
-        );
-
-    // The wallet signs the SNIP-12 CallSet message over exactly these calls.
-    let hash = compute_call_set_hash(depositor, calls.span(), [].span());
-    let (r, s) = key.sign(hash).unwrap();
-    start_cheat_signature(test.privacy.address, array![r, s].span());
-
-    let result = test.privacy.safe_execute_with_calls(calls);
-    assert!(result.is_ok(), "a boolean acceptance felt must authenticate at check III");
-    stop_cheat_chain_id_global();
-}
-
-/// Tolerating the boolean acceptance felt must not weaken rejection: a boolean-style wallet that
-/// rejects (returns 0) over every message still fails with `INVALID_SIGNATURE`.
-#[test]
-fn test_deposit_legacy_bool_wallet_wrong_call_set_reverts() {
-    start_cheat_chain_id_global('TEST');
-    let test: Test = Default::default();
-    let key: StarkCurveKeyPair = KeyPairTrait::from_secret_key('BOOL_WALLET_SK');
-    let depositor = deploy_mock_stark_account(
-        salt: 20, public_key: key.public_key, returns_legacy_bool: true, panics_on_reject: false,
-    );
-
-    let client_actions = [ClientAction::SetViewingKey(SetViewingKeyInput { random: 0x777 })].span();
-    let calls = test
-        .privacy
-        .wrap_inputs_into_calls(
-            user_addr: depositor, user_private_key: 'BOOL_PROTOCOL_PK', :client_actions,
-        );
-
-    // Sign a DIFFERENT CallSet (empty calls) — neither the tx hash nor the real CallSet hash.
-    let wrong_hash = compute_call_set_hash(depositor, [].span(), [].span());
-    let (r, s) = key.sign(wrong_hash).unwrap();
-    start_cheat_signature(test.privacy.address, array![r, s].span());
-
-    let result = test.privacy.safe_execute_with_calls(calls);
     assert_panic_with_felt_error(:result, expected_error: errors::INVALID_SIGNATURE);
-    stop_cheat_chain_id_global();
+    stop_cheat_transaction_hash(test.privacy.address);
 }
 
 /// Regression: a wallet that rejects a mismatched signature by panicking rather than returning 0
