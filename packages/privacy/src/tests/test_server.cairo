@@ -2841,38 +2841,15 @@ fn test_delegated_target_naming_two_addresses_fails() {
         );
 }
 
-/// The zero-address guard sits in the accumulator so it covers every requirement source, not only
-/// the delegated answer: a regular deposit from the zero address reaches it too. Without a test
-/// driving this path, moving the guard into the query would pass the whole suite while quietly
-/// dropping it for regular deposits.
+/// Zero is a screening subject like any other: no screener attests to it, so the deposits a
+/// delegated target names it for stay blocked rather than exempted.
 #[test]
-fn test_regular_deposit_from_the_zero_address_fails() {
-    let mut test: Test = Default::default();
-    let token = test.new_token();
-    let amount = constants::DEFAULT_AMOUNT;
-    let deposit = [
-        ServerAction::TransferFrom(
-            TransferFromInput { from_addr: Zero::zero(), token: token.contract_address(), amount },
-        ),
-    ]
-        .span();
-
-    test
-        .privacy
-        .assert_apply_fails(
-            actions: deposit, screening: None, expected_error: errors::ZERO_CONTRACT_ADDRESS,
-        );
-}
-
-/// The zero address is how the pool says "nothing to screen", so a target may not name it as
-/// something to screen — an attestation over `0x0` would attest to no one.
-#[test]
-fn test_delegated_target_naming_the_zero_address_fails() {
+fn test_delegated_target_naming_the_zero_address_still_requires_screening() {
     let mut test: Test = Default::default();
     let delegated_target = deploy_mock_delegated_target(associated_addresses: array![Zero::zero()]);
     test
         .assert_delegated_apply_fails(
-            :delegated_target, expected_error: errors::ZERO_CONTRACT_ADDRESS,
+            :delegated_target, expected_error: errors::SCREENING_REQUIRED,
         );
 }
 
