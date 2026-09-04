@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  exemptOpenNoteDepositor,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
@@ -28,6 +31,14 @@ describe("Ekubo swap on devnet", () => {
     tokens = await deployTestTokens(admin, node);
     ekubo = await deployEkuboInfra(admin, node, tokens);
     executorAddress = await deployEkuboExecutor(admin, node);
+    // The executor funds the swap's open notes, so without a policy the pool would require a
+    // screening attestation naming the executor itself.
+    await exemptOpenNoteDepositor(
+      admin,
+      node,
+      env.env.privacy.address,
+      executorAddress,
+    );
   });
 
   afterAll(async () => {

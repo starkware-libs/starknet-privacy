@@ -8,10 +8,12 @@
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
-    "outDir": "dist",
-    "rootDir": "src",
-    "declaration": true,
-    "types": ["node"]
+    "types": ["node"],
+    "noEmit": true
   },
-  "include": ["src"]
+  // Type checking covers the tests, not only what ships: `vitest` transpiles without checking, so a
+  // test left out of here is a test whose types nothing verifies. `tests/e2e.test.ts` imports
+  // `elliptic-proxy` source, so checking it needs that package's dependencies installed.
+  // `tsconfig.build.json` is the one that emits.
+  "include": ["src", "tests", "vitest.config.ts"]
 }

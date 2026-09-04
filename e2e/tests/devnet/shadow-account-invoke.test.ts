@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { CallData, cairo, num, shortString } from "starknet";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  delegateOpenNoteDepositor,
+  openNoteScreeningPolicyOf,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { createPrivacyClient } from "@starkware-libs/starknet-privacy-client";
 import type {
   PrivacyClient,
@@ -29,7 +33,7 @@ import { E2E_TIMEOUTS } from "../../src/timeouts.js";
  * the injected wallet proves via the SDK prover and broadcasts the proven call with an ordinary
  * account (`devnet.executeOutside`), which is all AVNU does in production. Afterwards
  * `build().shadowAccounts(dappName).addresses()` must report the now-deployed shadow account at the address
- * a `SubAccount` contract is actually deployed to.
+ * a `ShadowAccount` contract is actually deployed to.
  */
 describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", () => {
   let devnet: Devnet;
@@ -54,6 +58,22 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       node,
       privacy.address,
     );
+    // The deployed posture: the pool asks the anonymizer which shadow account to screen, and the
+    // prover derives that address with the interceptor's own rule.
+    await delegateOpenNoteDepositor(
+      admin,
+      node,
+      privacy.address,
+      shadowAccount.anonymizer,
+    );
+    // The suite is only exercising the delegated path if the pool actually holds that policy.
+    expect(
+      await openNoteScreeningPolicyOf(
+        node,
+        privacy.address,
+        shadowAccount.anonymizer,
+      ),
+    ).toBe("Delegated");
 
     // Fund the dapp so its `transfer_to_caller` can pay the shadow account.
     const mintTx = await admin.execute({
@@ -72,6 +92,7 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       node: node,
       indexerApiUrl: env.indexer.apiUrl,
       poolAddress: privacy.address,
+      chainId: env.env.chainId,
       shadowAccountAnonymizerAddress: shadowAccount.anonymizer,
     });
     const wallet = {
@@ -152,7 +173,7 @@ describe("dapp client: shadowAccounts(dappName).invoke + addresses on devnet", (
       expect(infos[1].is_deployed).toBe(false);
       expect(infos[2].is_deployed).toBe(false);
 
-      // The reported address is correct: a SubAccount contract of the anonymizer's class is actually
+      // The reported address is correct: a ShadowAccount of the anonymizer's class is actually
       // deployed there.
       const [expectedClassHash] = await env.env.node.callContract({
         contractAddress: shadowAccount.anonymizer,

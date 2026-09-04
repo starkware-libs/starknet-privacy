@@ -14,6 +14,7 @@ import {
   Devnet,
   createDevnetTestEnv,
   createUnattestedAliceTransfers,
+  exemptOpenNoteDepositor,
   type DevnetTestEnv,
 } from "../src/testing/index.js";
 import { SimplePrivateTransfersImpl } from "../src/simple-private-transfers.js";
@@ -215,6 +216,9 @@ describe("Devnet Integration", () => {
       salt: "0x102",
     });
     const mockExecutorAddress = mockExecutorDeploy.contract_address;
+
+    // The executor funds the open note, so the pool screens it unless it is listed exempt.
+    await exemptOpenNoteDepositor(env.admin, env.node, env.privacy.address, mockExecutorAddress);
 
     await env.admin.execute({
       contractAddress: env.eth,

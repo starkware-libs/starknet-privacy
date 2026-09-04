@@ -1,5 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { Devnet } from "@starkware-libs/starknet-privacy-sdk/testing";
+import {
+  Devnet,
+  exemptOpenNoteDepositor,
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 import { Open } from "@starkware-libs/starknet-privacy-sdk";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
 import {
@@ -28,6 +31,14 @@ describe("Vesu lending on devnet", () => {
     tokens = await deployTestTokens(admin, node);
     vesu = await deployVesuInfra(admin, node, tokens);
     anonymizerAddress = await deployVesuAnonymizer(admin, node);
+    // The anonymizer funds the lending flow's open notes, so without a policy the pool would
+    // require a screening attestation naming the anonymizer itself.
+    await exemptOpenNoteDepositor(
+      admin,
+      node,
+      env.env.privacy.address,
+      anonymizerAddress,
+    );
   });
 
   afterAll(async () => {

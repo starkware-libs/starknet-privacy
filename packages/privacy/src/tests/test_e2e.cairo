@@ -8,11 +8,11 @@ use privacy::actions::{
     ClientAction, ComputeAndInvokeInput, CreateEncNoteInput, DepositInput, InvokeExternalInput,
     OpenChannelInput, OpenSubchannelInput, SetViewingKeyInput, UseNoteInput, WithdrawInput,
 };
-use privacy::objects::OpenNoteDeposit;
+use privacy::objects::{OpenNoteDeposit, OpenNoteScreeningPolicy};
 use privacy::tests::utils_for_tests::{
     PrivacyCfgTrait, Test, TestTrait, User, UserTrait, VesuTrait,
     build_ekubo_swap_anonymizer_calldata, deploy_shadow_account_anonymizer,
-    deploy_shadow_account_mock_dapp, pool_key_for_tokens,
+    deploy_shadow_account_mock_dapp, pool_key_for_tokens, sign_screening_attestation,
 };
 use privacy::utils::constants::OPEN_NOTE_SALT;
 use privacy::utils::{encrypt_channel_info, unpack};
@@ -1922,6 +1922,14 @@ fn test_e2e_shadow_account_anonymizer_compute_invoke() {
     let mut user = test.new_user();
 
     let anonymizer = deploy_shadow_account_anonymizer(privacy_address: test.privacy.address);
+    // The anonymizer returns the shadow account its deposits are associated with, so it is listed
+    // `Delegated`. That is the policy it is deployed under in production, and the only one under
+    // which its invokes are accepted at all.
+    test
+        .privacy
+        .set_open_note_screening_policy(
+            depositor: anonymizer, policy: OpenNoteScreeningPolicy::Delegated,
+        );
     let mock_dapp = deploy_shadow_account_mock_dapp();
     // Fund the dapp so its `transfer_to_caller` can transfer `amount` to the shadow account.
     token.supply(address: mock_dapp, :amount);
@@ -1962,9 +1970,17 @@ fn test_e2e_shadow_account_anonymizer_compute_invoke() {
     assert_eq!(token.balance_of(address: mock_dapp), amount.into());
     assert_eq!(token.balance_of(address: anonymizer), 0);
 
+    // The address to attest is predicted before the interaction runs, exactly as the prover's
+    // interceptor does, from this identity and dapp at nonce 0.
+    let anonymizer_disp = IShadowAccountAnonymizerDispatcher { contract_address: anonymizer };
+    let identity_key = user.compute_identity_key(contract_address: anonymizer);
+    let predicted_shadow_account = *anonymizer_disp
+        .get_shadow_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1, false)[0];
+    assert!(!predicted_shadow_account.is_deployed);
+
     test
         .privacy
-        .execute_actions_e2e(
+        .execute_actions_e2e_screened(
             :user,
             client_actions: [
                 set_viewing_key_action(), open_channel_action(from: user, to: user, index: 0),
@@ -1972,6 +1988,11 @@ fn test_e2e_shadow_account_anonymizer_compute_invoke() {
                 ClientAction::CreateOpenNote(create_open_note), compute_and_invoke,
             ]
                 .span(),
+            screening: Option::Some(
+                sign_screening_attestation(
+                    depositor: predicted_shadow_account.address, issued_at: 0,
+                ),
+            ),
         );
 
     // The dapp payout, collected via the shadow account and anonymizer, settled into the open note.
@@ -1986,12 +2007,12 @@ fn test_e2e_shadow_account_anonymizer_compute_invoke() {
     assert_eq!(token.balance_of(address: mock_dapp), 0);
     assert_eq!(token.balance_of(address: anonymizer), 0);
 
-    // A shadow account was deployed for the derived commitment and holds nothing after collection.
-    let anonymizer_disp = IShadowAccountAnonymizerDispatcher { contract_address: anonymizer };
-    let identity_key = user.compute_identity_key(contract_address: anonymizer);
+    // The attestation covers the account the anonymizer went on to deploy, and it holds nothing
+    // after collection.
     let shadow_account_info = *anonymizer_disp
         .get_shadow_accounts(partial_commitment(:identity_key, :dapp_name), 0, 1, false)[0];
     assert!(shadow_account_info.is_deployed);
+    assert_eq!(shadow_account_info.address, predicted_shadow_account.address);
     assert_eq!(token.balance_of(address: shadow_account_info.address), 0);
 }
 

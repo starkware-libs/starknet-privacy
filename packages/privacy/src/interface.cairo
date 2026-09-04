@@ -1,6 +1,7 @@
 use privacy::actions::{ClientAction, ServerAction};
 use privacy::objects::{
     EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
+    OpenNoteScreeningPolicy,
 };
 use privacy::snip12::ScreeningAttestation;
 use starknet::ContractAddress;
@@ -441,11 +442,11 @@ pub trait IServer<T> {
     ///   [`NoteUsed`](privacy::events::NoteUsed) event.
     ///   - [`Invoke`](privacy::actions::ServerAction::Invoke): Invoke an external contract.
     /// - `screening` (`Option<`[`ScreeningAttestation`](privacy::snip12::ScreeningAttestation)`>`):
-    /// off-chain authorization for a regular-pool deposit. Signed by the configured screener over
-    /// the deposit's depositor (`TransferFrom.from_addr`, taken from the proven actions — not the
-    /// caller) and an `issued_at` timestamp, so it is bound to the depositor and cannot be
-    /// redirected. Must be [`Option::Some`] iff the tx contains a deposit, and [`Option::None`]
-    /// otherwise (e.g. transfers/withdrawals). See the Screening reverts below.
+    /// off-chain authorization for the tx's screening subject. Signed by the configured screener
+    /// over that address (taken from the proven actions — not the caller) and an `issued_at`
+    /// timestamp, so it is bound to the subject and cannot be redirected. Must be
+    /// [`Option::Some`] iff the tx's actions require screening, and [`Option::None`] otherwise
+    /// (e.g. transfers/withdrawals). See the Screening reverts below.
     ///
     /// #### Returns
     /// None
@@ -462,14 +463,16 @@ pub trait IServer<T> {
     /// - For [`Invoke`](privacy::actions::ServerAction::Invoke) actions, the invoked contract must
     /// have an [`INVOKE_SELECTOR`](privacy::utils::constants::INVOKE_SELECTOR) selector for a
     /// method that returns a `Span<`[`OpenNoteDeposit`](privacy::objects::OpenNoteDeposit)`>`.
-    /// - Every regular-pool deposit
-    /// ([`TransferFrom`](privacy::actions::ServerAction::TransferFrom))
-    /// must be accompanied by a fresh, valid `screening` attestation for its depositor, and all
-    /// deposits in one tx must share a single depositor.
+    /// - Every address the tx's actions require screening for must be covered by a fresh, valid
+    /// `screening` attestation, and the actions must not require more than one distinct address.
+    /// A regular-pool deposit ([`TransferFrom`](privacy::actions::ServerAction::TransferFrom))
+    /// requires its own depositor.
     /// - The open-note depositor (the target of the
     /// [`Invoke`](privacy::actions::ServerAction::Invoke) or
     /// [`InvokeWithComputation`](privacy::actions::ServerAction::InvokeWithComputation) action
-    /// that funds the deposit) must not be on the block list.
+    /// that funds the deposit) carries an
+    /// [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) that decides what its
+    /// deposits require.
     ///
     /// #### Events Emitted
     /// Events are emitted based on the server actions in the input:
@@ -524,20 +527,29 @@ pub trait IServer<T> {
     /// contract).
     /// - `INSUFFICIENT_ALLOWANCE`: Thrown if the sender has insufficient token allowance (from
     /// ERC20 contract).
-    /// - [`MULTIPLE_DEPOSITORS`](privacy::errors::internal_errors::MULTIPLE_DEPOSITORS): Thrown if
-    /// more than one distinct `from_addr` deposits in the same tx.
     ///
-    /// **Screening errors (for the regular-pool deposit's `screening` attestation):**
-    /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx contains a
-    /// deposit but `screening` is [`Option::None`].
+    /// **Screening errors (for the tx's `screening` attestation):**
+    /// A tx screens at most one address, its screening subject. Two actions raise a requirement: a
+    /// `TransferFrom` requires screening of its `from_addr`, and an Invoke returning deposits
+    /// requires whatever its target's
+    /// [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) dictates.
+    /// - [`MULTIPLE_SCREENING_SUBJECTS`](privacy::errors::MULTIPLE_SCREENING_SUBJECTS): Thrown if
+    /// the tx's actions require screening of more than one distinct address — two deposits with
+    /// different `from_addr`, a deposit combined with an Invoke whose target requires screening of
+    /// its own address, or a delegated target naming two addresses.
+    /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if a screening
+    /// subject is the zero address.
+    /// - [`SCREENING_REQUIRED`](privacy::errors::SCREENING_REQUIRED): Thrown if the tx's actions
+    /// require screening but `screening` is [`Option::None`].
     /// - [`UNEXPECTED_SCREENING`](privacy::errors::UNEXPECTED_SCREENING): Thrown if `screening` is
-    /// [`Option::Some`] but the tx contains no deposit.
+    /// [`Option::Some`] but nothing in the tx requires screening.
     /// - [`SCREENING_FUTURE_DATED`](privacy::errors::SCREENING_FUTURE_DATED): Thrown if the
     /// attestation's `issued_at` is in the future.
     /// - [`SCREENING_EXPIRED`](privacy::errors::SCREENING_EXPIRED): Thrown if the attestation is
     /// older than the maximum age.
     /// - [`SCREENING_INVALID_SIGNATURE`](privacy::errors::SCREENING_INVALID_SIGNATURE): Thrown if
-    /// the signature does not verify against the configured screener public key for the depositor.
+    /// the signature does not verify against the configured screener public key for the screening
+    /// subject.
     ///
     /// **Errors for [`Invoke`](privacy::actions::ServerAction::Invoke) action:**
     /// - The invoked contract may revert with any error.
@@ -558,9 +570,18 @@ pub trait IServer<T> {
     ///   ERC20 contract).
     ///   - `INSUFFICIENT_ALLOWANCE`: Thrown if the depositor has insufficient token allowance (from
     ///   ERC20 contract).
-    ///   - [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED): Thrown if
-    ///   the Invoke returned at least one deposit and the Invoke target (the open-note depositor)
-    ///   is on the block list.
+    ///   - A target whose policy is `Required` (every unlisted address) makes the Invoke target
+    ///   itself the tx's screening subject; a target that is `Exempt` raises no requirement. See
+    ///   the screening errors above.
+    ///   - A depositor in `Delegated` mode provides the addresses associated with its deposits.
+    ///   The screening is performed on the associated addresses.
+    ///     - [`INVALID_ASSOCIATED_ADDRESSES`](privacy::errors::INVALID_ASSOCIATED_ADDRESSES):
+    ///       Thrown if no `Span<ContractAddress>` follows the deposits in the returned data, albeit
+    ///       expected. May indicate a depositor set to `Delegated` by mistake.
+    ///     - [`NO_ASSOCIATED_ADDRESS`](privacy::errors::NO_ASSOCIATED_ADDRESS):
+    ///       Thrown when an associated address is required, but an empty span was provided.
+    ///     - [`INVALID_INVOKE_RETURN_DATA`](privacy::errors::INVALID_INVOKE_RETURN_DATA):
+    ///       Thrown when the data returned from the call exceeds the expected one.
     ///
     /// #### Access Control
     /// - Any address can call this function.
@@ -753,14 +774,17 @@ pub trait IViews<T> {
     /// - (`u64`): The number of blocks that a proof is valid for.
     fn get_proof_validity_blocks(self: @T) -> u64;
 
-    /// Returns whether a depositor is blocked from funding open-note deposits.
+    /// Returns the screening policy that the pool applies on open-note deposits from `depositor`.
     ///
     /// #### Parameters
-    /// - `depositor` (`ContractAddress`): The depositor address to query.
+    /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract.
     ///
     /// #### Returns
-    /// - (`bool`): `true` if the depositor is blocked, `false` otherwise.
-    fn is_open_note_depositor_blocked(self: @T, depositor: ContractAddress) -> bool;
+    /// - ([`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy)): The screening
+    /// policy applied on open-note deposits from `depositor`.
+    fn get_open_note_screening_policy(
+        self: @T, depositor: ContractAddress,
+    ) -> OpenNoteScreeningPolicy;
 }
 
 #[starknet::interface]
@@ -890,29 +914,37 @@ pub trait IAdmin<T> {
     /// - Only app governor.
     fn set_proof_validity_blocks(ref self: T, proof_validity_blocks: u64);
 
-    /// Add/Remove addresses to/from the block list of depositors to open-note.
+    /// Sets the screening policy which the pool applies on open-note deposits from `depositor`.
     ///
-    /// A blocked depositor cannot fund any open note: every `_deposit_to_open_note`
-    /// originating from that depositor reverts with
-    /// [`OPEN_NOTE_DEPOSITOR_BLOCKED`](privacy::errors::OPEN_NOTE_DEPOSITOR_BLOCKED).
+    /// - `Required`: the depositor's own address is the address requiring screening. This is the
+    /// default policy.
+    /// - `Exempt`: the depositor's open-note deposits are exempted from screening.
+    /// - `Delegated`: providing the addresses for screening is delegated to the depositor, which
+    /// lists them in the returned data following its deposits. The pool trusts the depositor to
+    /// report the associated addresses correctly.
+    /// See [`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy) for how each
+    /// policy behaves per invoke kind.
     ///
     /// #### Parameters
-    /// - `depositor` (`ContractAddress`): The depositor address to block or unblock. Must be
+    /// - `depositor` (`ContractAddress`): The depositor, e.g., an anonymizer contract. Must be
     /// non-zero.
-    /// - `blocked` (`bool`): `true` to block the depositor, `false` to unblock.
+    /// - `policy` ([`OpenNoteScreeningPolicy`](privacy::objects::OpenNoteScreeningPolicy)): The
+    /// screening policy to apply.
     ///
     /// #### Returns
     /// None
     ///
     /// #### Events Emitted
-    /// - [`OpenNoteDepositorBlockSet`](privacy::events::OpenNoteDepositorBlockSet): Emitted with
-    /// the depositor and the new block state.
+    /// - [`OpenNoteScreeningPolicySet`](privacy::events::OpenNoteScreeningPolicySet): Emitted with
+    /// the depositor and the new policy.
     ///
     /// #### Reverts
     /// - [`ZERO_CONTRACT_ADDRESS`](privacy::errors::ZERO_CONTRACT_ADDRESS): Thrown if `depositor`
     /// is zero.
     ///
     /// #### Access Control
-    /// - Only security governor.
-    fn set_open_note_depositor_blocked(ref self: T, depositor: ContractAddress, blocked: bool);
+    /// - Only app governor.
+    fn set_open_note_screening_policy(
+        ref self: T, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
+    );
 }

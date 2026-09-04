@@ -8,18 +8,26 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: software-mansion/setup-scarb@v1
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: software-mansion/setup-scarb@2a96b748888e3329ee44ac9ac073d930e692b3cd # v1
         with:
-          scarb-version: "2.17.0"
+          scarb-version: "2.18.0"
 
-      - uses: software-mansion/setup-universal-sierra-compiler@v1
+      - uses: software-mansion/setup-universal-sierra-compiler@30c139bca57cc0561cfae6f5353825bbc42c9f37 # v1
         with:
           universal-sierra-compiler-version: "v2.8.0"
 
       - name: Check formatting
         run: |
           scarb fmt -w --check
+
+      - name: Check the Primer class hash agrees between Cairo and TypeScript
+        run: |
+          python3 scripts/check_primer_class_hash.py
+
+      - name: Check the open-note screening policies agree across Cairo, the ABI and the interceptor
+        run: |
+          python3 scripts/check_screening_policies.py
 
       - name: Check unused imports and variables
         run: |

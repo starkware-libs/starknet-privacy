@@ -2,6 +2,58 @@
 
 ## Unreleased
 
+## 0.14.3-RC.6
+
+### Added
+
+- `screeningErrorFromProvingError` maps `screening_policy_unavailable` to `ScreeningUnavailable`:
+  the pool's policy list is as much a screening dependency as the screener, so a read the
+  interceptor could not complete is transient. The interceptor's `multiple_screening_subjects`
+  and `shadow_account_undetermined` are deliberately left
+  unmapped — terminal for the transaction as built, but silent about the address, so reporting them
+  as `ScreeningRejected` would tell a caller they are sanctioned.
+- `shadowAccountPartialCommitment`, `shadowAccountCommitment`, `shadowAccountAddress` and
+  `PRIMER_CLASS_HASH`, the shadow account derivation as pure functions, so a caller holding the raw
+  felts can predict a shadow account's address without deploying it or reading the chain.
+  `shadowAccountAddress` returns the address as a felt in hex with no leading zeros — the spelling
+  addresses are compared and transmitted in; the two commitments are hash inputs and stay felts.
+  `shadowAccounts(dapp).partialCommitment()` / `.commitment(nonce)` now delegate to them, and a
+  committed cross-language vector pins all three against the anonymizer's Cairo.
+- Regenerated `ShadowAccountAnonymizerABI` against the anonymizer's new
+  `privacy_invoke_with_computation` return shape, `(Span<OpenNoteDeposit>, Span<ContractAddress>)`.
+  The invoke now returns the shadow account its deposits passed through, which is the address the
+  pool screens for them. Calldata is unchanged, so code that only builds invoke calldata is
+  unaffected.
+- `exemptOpenNoteDepositor(admin, provider, pool, depositor)` and
+  `delegateOpenNoteDepositor(admin, provider, pool, depositor)` in `starknet-privacy-sdk/testing`,
+  which list a depositor as screening-exempt, or as providing the addresses to screen, on a devnet
+  pool. A harness deploying its own executor needs this, or its deposits revert with
+  `SCREENING_REQUIRED`. `openNoteScreeningPolicyOf(provider, pool, depositor)` reads a policy back.
+- Regenerated `PrivacyPoolABI` and `PoolContractInterface` for the pool's open-note screening
+  policies: `get_open_note_screening_policy` / `set_open_note_screening_policy`, carrying an
+  `OpenNoteScreeningPolicy` of `Required` (screen the depositor, the default), `Exempt` (screening
+  waived) or `Delegated` (the depositor provides the addresses). `MockPoolContract` answers
+  `Required`.
+- `generate-pool-interface` now maps Cairo enums to the `CairoCustomEnum` type starknet.js
+  actually returns, instead of falling back to `unknown`.
+
+### Changed
+
+- `ScreeningRejected` and `ScreeningUnavailable` messages drop their `Deposit` prefix. The screened
+  address is no longer always a deposit's depositor: it may be the shadow account an interaction
+  runs through, or an invoke target the pool requires screening for.
+
+### Fixed
+
+- `PoolContractInterface` was missing `get_screener_public_key` and `get_version`, which the pool
+  has exposed all along; `MockPoolContract` now implements them.
+
+### Breaking
+
+- The pool's boolean depositor block list is retired: `is_open_note_depositor_blocked` /
+  `set_open_note_depositor_blocked` are gone from the ABI, and from `MockPoolContract`. No policy
+  rejects a depositor; one the screener refuses simply gets no attestation.
+
 ## 0.14.3-RC.5
 
 ### Fixed
@@ -204,7 +256,7 @@
   original rather than mislabeling a transient fault as terminal.
 - Screening v2: `apply_actions` calldata carries the screening attestation as a
   trailing Serde-encoded `Option` — `[0x1]` when absent, `[0x0, issued_at,
-  sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
+sig_r, sig_s]` when the prove response carries a signature (Cairo's `Option`
   Serde tags: `Some` = 0, `None` = 1). `Proof` gains an
   optional `additionalData` relaying the prove response's `additional_data`.
   Emitted **only against a screening-capable pool**, identified with zero RPC

@@ -26,9 +26,8 @@ export interface ResolveShadowAccountsParams {
  * Resolves the shadow accounts under `partialCommitment` via the anonymizer's `get_shadow_accounts` view
  * for `[start, end)`, paginated across `MAX_SCAN_RANGE` windows.
  *
- * The address is deliberately not recomputed client-side: it depends on the shadow account class hash,
- * so a client-side derivation would stop matching accounts already deployed under a prior hash. The
- * view returns the address stored on chain, which is authoritative across a class-hash change.
+ * The address is not recomputed client-side: the view returns the address stored on chain,
+ * for deployed accounts, and calculated addresses for undeployed ones.
  *
  * With `untilUndeployed: true` the view stops at the first undeployed nonce and returns the
  * contiguous deployed prefix; a short window is the signal it stopped, so pagination ends there.

@@ -1,5 +1,5 @@
 // src/interceptor.ts
-import type { ProveTxnV3 } from "./types.js";
+import type { ProveTxnV3, RequestId } from "./types.js";
 import {
   interceptorVerdicts,
   interceptorDuration,
@@ -29,10 +29,14 @@ export interface TransactionInterceptor {
  * Runs all interceptors in parallel. Returns immediately on the first "block"
  * or error. Returns "allow" only if all interceptors return "allow".
  * Records per-interceptor metrics (verdict count and duration).
+ *
+ * `requestId` only labels the error log, so that the opaque `interceptor_error` a client receives
+ * can be traced back to the exception text that produced it.
  */
 export async function runInterceptors(
   interceptors: TransactionInterceptor[],
-  transaction: ProveTxnV3
+  transaction: ProveTxnV3,
+  requestId: RequestId = null
 ): Promise<Verdict> {
   if (interceptors.length === 0) return { action: "allow" };
 
@@ -43,9 +47,13 @@ export async function runInterceptors(
       verdict = await interceptor.intercept(transaction);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      console.error(JSON.stringify({ error: "interceptor_error", message }));
+      console.error(
+        JSON.stringify({ error: "interceptor_error", requestId, message })
+      );
       errorsTotal.inc({ type: "interceptor_error" });
-      verdict = { action: "block", reason: message };
+      // The message is logged, not returned: a reason reaches the client as JSON-RPC error `data`,
+      // where an exception's text could carry an address or an internal detail.
+      verdict = { action: "block", reason: "interceptor_error" };
     }
     const durationSeconds = (Date.now() - startTime) / 1000;
 

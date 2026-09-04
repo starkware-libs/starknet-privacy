@@ -54,10 +54,13 @@ async function declareTestBuildContract(
 }
 
 /**
- * Declare + deploy the contracts the compute-and-invoke flow needs on devnet:
- * - `SubAccount` (workspace test build) — the class the anonymizer deploys per commitment. It keeps
- *   that name because it lives in the `starkware-starknet-utils` git dependency
- *   (`starkware_accounts::sub_account::SubAccount`), outside this repo's rename.
+ * Declare + deploy the contracts for the compute-and-invoke flow on devnet:
+ * - `ShadowAccount` (workspace test build).
+ *   Lives in `starkware_accounts::shadow_account::ShadowAccount`, outside this repo.
+ * - `Primer` (pre-compiled artifact in `artifacts/`) — shadow account are deployed from this
+ *   class and then replaced, so their address do not depend on the shadow account class.
+ *   It is declared from the committed artifact because its class hash is only reproducible under the
+ *   toolchain it was originally built with.
  * - `ShadowAccountAnonymizer` (workspace build) — constructed with the privacy pool address, the
  *   deployed-account class hash, and `admin` as upgrade owner.
  * - `MockDapp` (workspace test build) — the target dapp the shadow account invokes.
@@ -68,11 +71,22 @@ export async function deployShadowAccountAnonymizer(
   admin: Account,
   node: RpcProvider,
   privacyAddress: string,
+  // A second deployment in one devnet needs its own salts, or the UDC addresses collide.
+  anonymizerSalt: string = "0x900",
+  mockDappSalt: string = "0x901",
 ): Promise<ShadowAccountAddresses> {
+  const primerDirectory = join(repoRoot(), "artifacts");
+  await declareClass(
+    admin,
+    node,
+    join(primerDirectory, "Primer.contract_class.json"),
+    join(primerDirectory, "Primer.compiled_contract_class.json"),
+  );
+
   const shadowAccountClassHash = await declareTestBuildContract(
     admin,
     node,
-    "SubAccount",
+    "ShadowAccount",
   );
 
   const anonymizerArtifact = artifactPair(
@@ -95,7 +109,7 @@ export async function deployShadowAccountAnonymizer(
     node,
     anonymizerClassHash,
     [privacyAddress, shadowAccountClassHash, admin.address],
-    "0x900",
+    anonymizerSalt,
   );
 
   const mockDappClassHash = await declareTestBuildContract(
@@ -108,7 +122,7 @@ export async function deployShadowAccountAnonymizer(
     node,
     mockDappClassHash,
     [],
-    "0x901",
+    mockDappSalt,
   );
 
   return { anonymizer, mockDapp, anonymizerAbi };

@@ -1,8 +1,11 @@
 use privacy::objects::OpenNoteDeposit;
 use shadow_account_anonymizer::shadow_account_anonymizer::{
     IShadowAccountAnonymizerDispatcher, IShadowAccountAnonymizerDispatcherTrait, OpenNote,
+    PRIMER_CLASS_HASH,
 };
-use snforge_std::{ContractClassTrait, DeclareResultTrait, Token, declare};
+use snforge_std::{
+    ContractClass, ContractClassTrait, DeclareResultTrait, Token, declare, declare_from_file,
+};
 use starknet::account::Call;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils_testing::test_utils::{cheat_caller_address_once, deploy_mock_erc20_token};
@@ -29,12 +32,27 @@ pub struct Components {
 #[generate_trait]
 pub impl ComponentsImpl of ComponentsTrait {
     /// Calls `privacy_invoke_with_computation` cheating the caller to be the privacy contract.
+    /// Runs the invoke and returns only its deposits, which is all most tests look at.
+    /// `invoke_returning_addresses` hands back the addresses too.
     fn invoke(
         self: @Components,
         identity_commitment: felt252,
         calls: Array<Call>,
         open_notes: Span<OpenNote>,
     ) -> Span<OpenNoteDeposit> {
+        let (deposits, _) = self
+            .invoke_returning_addresses(:identity_commitment, :calls, :open_notes);
+        deposits
+    }
+
+    /// Runs the invoke and returns both halves of what it answers, the deposits and the addresses
+    /// the privacy contract screens for them.
+    fn invoke_returning_addresses(
+        self: @Components,
+        identity_commitment: felt252,
+        calls: Array<Call>,
+        open_notes: Span<OpenNote>,
+    ) -> (Span<OpenNoteDeposit>, Span<ContractAddress>) {
         cheat_caller_address_once(contract_address: *self.anonymizer, caller_address: PRIVACY);
         anonymizer_disp(*self.anonymizer)
             .privacy_invoke_with_computation(:identity_commitment, :calls, :open_notes)
@@ -60,8 +78,24 @@ pub fn transfer_to_caller_call(
     }
 }
 
+/// Declares the `Primer` class the anonymizer deploys shadow accounts from. It is loaded from the
+/// pre-compiled artifact rather than built from source, because its class hash is cemented on-chain
+/// and only reproducible under the toolchain it was originally built with; recompiling it here
+/// would yield a different hash than [`PRIMER_CLASS_HASH`].
+pub fn declare_primer() -> ContractClass {
+    let primer = *declare_from_file("../../artifacts/Primer.contract_class.json")
+        .unwrap_syscall()
+        .contract_class();
+    assert!(
+        primer.class_hash == PRIMER_CLASS_HASH,
+        "vendored Primer artifact is not the cemented class",
+    );
+    primer
+}
+
 pub fn deploy_shadow_account_anonymizer() -> ContractAddress {
-    let shadow_account_class_hash = *declare("SubAccount")
+    declare_primer();
+    let shadow_account_class_hash = *declare("ShadowAccount")
         .unwrap_syscall()
         .contract_class()
         .class_hash;

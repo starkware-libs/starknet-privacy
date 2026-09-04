@@ -87,6 +87,12 @@ type AbiInterface = {
 const findStruct = (name: string): AbiStruct | undefined =>
   PrivacyPoolABI.find((e) => e.type === "struct" && e.name === name) as AbiStruct | undefined;
 
+const isCustomEnum = (cairoType: string): boolean =>
+  PrivacyPoolABI.some((e) => e.type === "enum" && e.name === cairoType);
+
+// starknet.js hands back Cairo enums as CairoCustomEnum, so that is the type a caller receives.
+const starknetImports = new Set<string>(["BigNumberish"]);
+
 const findInterface = (name: string): AbiInterface | undefined =>
   PrivacyPoolABI.find((e) => e.type === "interface" && e.name === name) as AbiInterface | undefined;
 
@@ -109,6 +115,10 @@ const mapOutputType = (cairoType: string): string => {
   if (mapped) return mapped;
   // Check if it's a known struct
   if (STRUCTS_TO_GENERATE.includes(cairoType)) return getTypeName(cairoType);
+  if (isCustomEnum(cairoType)) {
+    starknetImports.add("CairoCustomEnum");
+    return "CairoCustomEnum";
+  }
   console.warn(`  Warning: Unknown output type "${cairoType}", using "unknown"`);
   return "unknown";
 };
@@ -162,7 +172,7 @@ ${struct.members.map((m) => `  ${m.name}: ${mapOutputType(m.type)};`).join("\n")
  * Run: npx tsx scripts/generate-pool-interface.ts
  */
 
-import { BigNumberish } from "starknet";
+import { ${[...starknetImports].join(", ")} } from "starknet";
 
 // ============ Struct Types ============
 

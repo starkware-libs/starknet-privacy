@@ -99,6 +99,31 @@ pub struct Note {
     pub token: ContractAddress,
 }
 
+/// The table below details how the pool applies screening on open-note deposits, given the
+/// screening policy of the depositor and the actual invoke method used.
+///
+/// | policy      | `privacy_invoke`     | `privacy_invoke_with_computation` |
+/// |-------------|----------------------|-----------------------------------|
+/// | `Required`  | screen the depositor | screen the depositor              |
+/// | `Exempt`    | no screening         | no screening                      |
+/// | `Delegated` | no screening         | screen the provided addresses     |
+///
+/// No policy rejects a depositor outright. Under the default `Required`, a depositor the screening
+/// provider refuses gets no attestation, so its deposits are blocked anyway.
+///
+/// **Never reorder the variants and never move `#[default]`.** A stored policy is read back by
+/// variant index, so reordering reinterprets every policy already stored under the previous class.
+#[derive(Drop, Serde, starknet::Store, PartialEq, Debug, Copy, Default)]
+pub enum OpenNoteScreeningPolicy {
+    /// The depositor's own address is the address requiring screening.
+    #[default]
+    Required,
+    /// The depositor's open-note deposits are exempted from screening.
+    Exempt,
+    /// Providing the addresses for screening is delegated to the depositor.
+    Delegated,
+}
+
 /// Input for depositing to an open note (returned by invoked contract).
 #[derive(Serde, Copy, Drop, PartialEq, Debug)]
 pub struct OpenNoteDeposit {

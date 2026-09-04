@@ -84,7 +84,7 @@ impl<C: ChainState> Indexer<C> {
     ///
     /// Only recoverable errors (connection, subscription, receive) trigger a retry.
     /// Non-recoverable errors (unsubscribe, close) cause immediate failure.
-    pub async fn run(&mut self) -> Result<(), ()> {
+    pub async fn run(&mut self) -> Result<(), IndexerError> {
         info!("Indexer started");
 
         loop {
@@ -108,7 +108,7 @@ impl<C: ChainState> Indexer<C> {
                 }
                 Err(e) => {
                     error!("Indexer error (non-recoverable): {}", e);
-                    return Err(());
+                    return Err(e);
                 }
             }
         }

@@ -1,4 +1,4 @@
-use privacy::objects::{EncPrivateKey, EncUserAddr};
+use privacy::objects::{EncPrivateKey, EncUserAddr, OpenNoteScreeningPolicy};
 use starknet::ContractAddress;
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
@@ -125,10 +125,10 @@ pub struct ProofValidityBlocksSet {
 }
 
 #[derive(Serde, Copy, Debug, Drop, PartialEq, starknet::Event)]
-pub struct OpenNoteDepositorBlockSet {
-    /// The open-note depositor address whose block state changed.
+pub struct OpenNoteScreeningPolicySet {
+    /// The open-note depositor address whose screening policy changed.
     #[key]
     pub depositor: ContractAddress,
-    /// Whether the depositor is now blocked.
-    pub blocked: bool,
+    /// New screening policy.
+    pub policy: OpenNoteScreeningPolicy,
 }

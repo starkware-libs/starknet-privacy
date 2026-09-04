@@ -112,6 +112,11 @@ async function startInterceptor(): Promise<void> {
     maxRetries: 0,
     totalTimeoutMs: 10000,
     poolAddress: "0xpool",
+    // Unreachable on purpose: a plain `Deposit` is screened on its own depositor, reading no policy.
+    rpcUrl: "http://127.0.0.1:1",
+    policyTtlMs: 60_000,
+    policyTimeoutMs: 50,
+    blockNonPoolTx: false,
   });
 
   const handler = createHandler({ interceptors: [interceptor] });

@@ -21,7 +21,7 @@ pub mod Privacy {
     use privacy::interface::{IAdmin, IClient, IServer, IViews};
     use privacy::objects::{
         EncChannelInfo, EncOutgoingChannelInfo, EncPrivateKey, EncSubchannelInfo, Note,
-        OpenNoteDeposit, TokenBalances, TokenBalancesTrait,
+        OpenNoteDeposit, OpenNoteScreeningPolicy, TokenBalances, TokenBalancesTrait,
     };
     use privacy::snip12::{ScreeningAttestation, is_screening_attestation_valid};
     use privacy::utils::constants::{
@@ -31,11 +31,13 @@ pub mod Privacy {
     };
     use privacy::utils::{
         ProofFacts, assert_valid_os_call, assert_valid_signature, compute_message_hash,
-        decode_note_amount, derive_public_key, enc_note_packed_value, encrypt_channel_info,
-        encrypt_outgoing_channel_info, encrypt_private_key, encrypt_subchannel_info,
-        encrypt_user_addr, extract_compile_actions_inputs, extract_server_actions_from_panic,
-        is_canonical_key, open_note, pack, panic_with_server_actions, propagate_external_panic,
-        send_message_to_server, storage_path_to_felt252, to_write_once_action, unpack,
+        decode_note_amount, derive_public_key, deserialize_invoke_return_data,
+        enc_note_packed_value, encrypt_channel_info, encrypt_outgoing_channel_info,
+        encrypt_private_key, encrypt_subchannel_info, encrypt_user_addr,
+        extract_compile_actions_inputs, extract_server_actions_from_panic, is_canonical_key,
+        open_note, pack, panic_with_server_actions, propagate_external_panic,
+        send_message_to_server, storage_path_to_felt252, to_write_once_action, unify_address,
+        unpack,
     };
     use privacy::{errors, events};
     use starknet::account::Call;
@@ -98,8 +100,8 @@ pub mod Privacy {
         notes: Map<felt252, Note>,
         /// Map of nullifier to whether it exists.
         nullifiers: Map<felt252, bool>,
-        /// Map of depositor addresses blocked from funding open-note deposits.
-        blocked_open_note_depositors: Map<ContractAddress, bool>,
+        /// Map of open-note depositor to screening policy.
+        open_note_depositor_screening_policies: Map<ContractAddress, OpenNoteScreeningPolicy>,
         /// Map of user addresses to their public viewing keys.
         public_key: Map<ContractAddress, felt252>,
         /// Map of user addresses to their encrypted private key.
@@ -144,7 +146,7 @@ pub mod Privacy {
         FeeAmountSet: events::FeeAmountSet,
         FeeCollectorSet: events::FeeCollectorSet,
         ProofValidityBlocksSet: events::ProofValidityBlocksSet,
-        OpenNoteDepositorBlockSet: events::OpenNoteDepositorBlockSet,
+        OpenNoteScreeningPolicySet: events::OpenNoteScreeningPolicySet,
     }
 
     #[constructor]
@@ -788,11 +790,13 @@ pub mod Privacy {
             self.pausable.assert_not_paused();
             self.validate_proof(:actions);
             self.collect_fee();
-            if let Some(depositor) = self._apply_actions(:actions) {
-                // A regular-pool deposit must carry a screening attestation.
-                self._verify_screening(screening.expect(errors::SCREENING_REQUIRED), depositor);
+            if let Some(screening_subject) = self._apply_actions(:actions) {
+                // The actions require screening.
+                self
+                    ._verify_screening(
+                        screening.expect(errors::SCREENING_REQUIRED), :screening_subject,
+                    );
             } else {
-                // No deposit: there must be nothing to screen.
                 assert(screening.is_none(), errors::UNEXPECTED_SCREENING);
             }
             self.reentrancy_guard.end();
@@ -851,34 +855,33 @@ pub mod Privacy {
             }
         }
 
-        /// Applies all server actions and returns the regular-pool depositor (the single
-        /// `TransferFrom.from_addr`), or `None` when the tx contains no deposit.
+        /// Applies all server actions and returns the tx's screening subject: the address its
+        /// screening attestation must cover, or `None` when nothing in the tx requires screening.
+        ///
+        /// A regular-pool deposit (`TransferFrom`) requires screening of its depositor
+        /// (`from_addr`). At most one address per tx may be a screening subject
+        /// (`MULTIPLE_SCREENING_SUBJECTS`).
         fn _apply_actions(
             ref self: ContractState, actions: Span<ServerAction>,
         ) -> Option<ContractAddress> {
             let mut undeposited_open_notes: usize = Zero::zero();
-            // The single regular-pool depositor (`TransferFrom.from_addr`); every `TransferFrom`
-            // in the tx must share it (`MULTIPLE_DEPOSITORS` otherwise).
-            let mut user_depositor: Option<ContractAddress> = None;
+            let mut screening_subject: Option<ContractAddress> = None;
             for action in actions {
                 match *action {
                     ServerAction::WriteOnce(input) => self._apply_write_once(:input),
                     ServerAction::Append(input) => self._apply_append(:input),
                     ServerAction::TransferFrom(input) => {
-                        if let Some(depositor) = user_depositor {
-                            assert(
-                                depositor == input.from_addr, internal_errors::MULTIPLE_DEPOSITORS,
-                            );
-                        } else {
-                            user_depositor = Some(input.from_addr);
-                        }
+                        unify_address(ref screening_subject, reference: input.from_addr);
                         self._apply_transfer_from(:input);
                     },
                     ServerAction::TransferTo(input) => self._apply_transfer_to(:input),
                     ServerAction::Invoke(input) => {
                         self
                             ._apply_invoke_and_deposits(
-                                :input, selector: INVOKE_SELECTOR, ref :undeposited_open_notes,
+                                :input,
+                                selector: INVOKE_SELECTOR,
+                                ref :undeposited_open_notes,
+                                ref :screening_subject,
                             );
                     },
                     ServerAction::InvokeWithComputation(input) => {
@@ -887,6 +890,7 @@ pub mod Privacy {
                                 :input,
                                 selector: INVOKE_WITH_COMPUTATION_SELECTOR,
                                 ref :undeposited_open_notes,
+                                ref :screening_subject,
                             );
                     },
                     ServerAction::EmitViewingKeySet(event) => self.emit(event),
@@ -901,16 +905,23 @@ pub mod Privacy {
                 };
             }
             assert(undeposited_open_notes == Zero::zero(), errors::UNDEPOSITED_OPEN_NOTES);
-            user_depositor
+            screening_subject
         }
 
-        /// Verifies a regular-pool deposit's screening attestation: it must be fresh (not older
-        /// than `DEPOSITOR_VALIDATION_MAX_AGE`, and not dated more than
+        /// Verifies the tx's screening attestation: it must be fresh (not older than
+        /// `DEPOSITOR_VALIDATION_MAX_AGE`, and not dated more than
         /// `DEPOSITOR_VALIDATION_MAX_FUTURE`
         /// ahead of `now` to tolerate clock skew) and signed by the configured screener over
-        /// `{depositor, issued_at}`. The depositor is proof-bound via `TransferFrom`.
+        /// `screening_subject`, the address the applied actions require screening for. The
+        /// screening subject is proof-bound because it is derived from the proven actions.
+        ///
+        /// The signed message's address field is named `depositor`, and carries the required
+        /// screening subject — which is the depositor's address only when a deposit is what
+        /// requires the screening.
         fn _verify_screening(
-            self: @ContractState, attestation: ScreeningAttestation, depositor: ContractAddress,
+            self: @ContractState,
+            attestation: ScreeningAttestation,
+            screening_subject: ContractAddress,
         ) {
             let now = get_block_timestamp();
             assert(
@@ -923,7 +934,9 @@ pub mod Privacy {
             );
             assert(
                 is_screening_attestation_valid(
-                    depositor, attestation, self.screener_public_key.read(),
+                    depositor: screening_subject,
+                    :attestation,
+                    signer_public_key: self.screener_public_key.read(),
                 ),
                 errors::SCREENING_INVALID_SIGNATURE,
             );
@@ -969,7 +982,9 @@ pub mod Privacy {
 
         /// Executes the external invoke on `contract_address` with `selector`, emits an
         /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
-        /// returned open notes.
+        /// returned open notes. The return data is the deposits, optionally followed by the
+        /// addresses they are associated with; only a `Delegated` compute-invoke's addresses are
+        /// screened, but whatever follows the deposits must be a well-formed address span.
         /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
         /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
@@ -977,25 +992,39 @@ pub mod Privacy {
             input: InvokeInput,
             selector: felt252,
             ref undeposited_open_notes: usize,
+            ref screening_subject: Option<ContractAddress>,
         ) {
             let InvokeInput { contract_address, calldata } = input;
-            let mut return_data = call_contract_syscall(
+            let return_data = call_contract_syscall(
                 address: contract_address, entry_point_selector: selector, :calldata,
             )
                 .unwrap_syscall();
             self.emit(events::ExternalContractInvoked { contract_address, selector });
 
-            let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data)
-                .expect(errors::INVALID_INVOKE_RETURN_DATA);
-            assert(return_data.is_empty(), errors::INVALID_INVOKE_RETURN_DATA);
+            let (deposits, associated_addresses) = deserialize_invoke_return_data(return_data);
 
             // Apply deposits to open notes returned by Invoke. `contract_address` is the depositor.
+            // Screening, if required, has its subject defined by the depositor's screening policy.
             if !deposits.is_empty() {
-                assert(
-                    !self.blocked_open_note_depositors.read(contract_address),
-                    errors::OPEN_NOTE_DEPOSITOR_BLOCKED,
-                );
-                // Apply deposits to open notes returned by Invoke.
+                match self.open_note_depositor_screening_policies.read(contract_address) {
+                    OpenNoteScreeningPolicy::Required => unify_address(
+                        ref screening_subject, reference: contract_address,
+                    ),
+                    OpenNoteScreeningPolicy::Exempt => {},
+                    OpenNoteScreeningPolicy::Delegated => {
+                        // Only a compute-invoke is delegated; a plain invoke is exempt.
+                        if selector == INVOKE_WITH_COMPUTATION_SELECTOR {
+                            let associated_addresses = associated_addresses
+                                .expect(errors::INVALID_ASSOCIATED_ADDRESSES);
+                            assert(!associated_addresses.is_empty(), errors::NO_ASSOCIATED_ADDRESS);
+                            for associated_address in associated_addresses {
+                                unify_address(
+                                    ref screening_subject, reference: *associated_address,
+                                );
+                            }
+                        }
+                    },
+                }
                 for deposit in deposits {
                     self._deposit_to_open_note(depositor: contract_address, deposit: *deposit);
                 }
@@ -1110,10 +1139,10 @@ pub mod Privacy {
             self.proof_validity_blocks.read()
         }
 
-        fn is_open_note_depositor_blocked(
+        fn get_open_note_screening_policy(
             self: @ContractState, depositor: ContractAddress,
-        ) -> bool {
-            self.blocked_open_note_depositors.read(depositor)
+        ) -> OpenNoteScreeningPolicy {
+            self.open_note_depositor_screening_policies.read(depositor)
         }
     }
 
@@ -1152,13 +1181,13 @@ pub mod Privacy {
             self._set_proof_validity_blocks(:proof_validity_blocks);
         }
 
-        fn set_open_note_depositor_blocked(
-            ref self: ContractState, depositor: ContractAddress, blocked: bool,
+        fn set_open_note_screening_policy(
+            ref self: ContractState, depositor: ContractAddress, policy: OpenNoteScreeningPolicy,
         ) {
-            self.common_roles.only_security_governor();
+            self.common_roles.only_app_governor();
             assert(depositor.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
-            self.blocked_open_note_depositors.entry(depositor).write(blocked);
-            self.emit(events::OpenNoteDepositorBlockSet { depositor, blocked });
+            self.open_note_depositor_screening_policies.entry(depositor).write(policy);
+            self.emit(events::OpenNoteScreeningPolicySet { depositor, policy });
         }
     }
 

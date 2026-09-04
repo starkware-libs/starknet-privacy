@@ -81,6 +81,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Use operations that handle edge cases gracefully, even if guards exist
 - *Example:* `saturating_sub` instead of subtraction that could underflow if guards are later refactored
 
+### Class replacement does not run constructors
+- `replace_class_syscall` swaps code, not state: any invariant a contract establishes in its `#[constructor]` is simply absent when that class is reached by replacement instead of deployment. Before routing a contract through a deploy-then-replace flow, check what its constructor writes and provide an explicit initializer for it
+- The failure is silent at deploy time and only surfaces later, when an access check reads the never-written slot
+- *Example:* deploying a shadow account via a Primer leaves `owner` zero, so every `execute` reverts with `NOT OWNER` and the account can never move the funds it holds
+
 ---
 
 ## Brevity
@@ -150,6 +155,27 @@ Apply these guidelines when writing or reviewing code in this codebase.
 ### Use accurate test names
 - Test names should precisely describe the scenario being verified
 - *Example:* `test_empty_collection` vs `test_no_new_items` convey different conditions
+
+### A test must perform the transition its name claims
+- If the name says a property survives some change, the test has to *make* that change and assert the property on both sides of it. A test that only asserts the property in the steady state proves nothing about the change and silently duplicates whatever already covers the steady state
+- Assert that the change actually took effect, otherwise the surviving property is vacuous
+- Missing setter? Write the storage slot directly from the test (e.g. snforge `store` with `selector!("var_name")`) rather than adding a production setter that exists only for tests
+- *Example:* `test_predicted_address_survives_a_shadow_account_class_change` never changed `shadow_account_class_hash`; it predicted an address, deployed, and compared — a copy of the plain prediction test. The real version deploys one account either side of a class-hash change and asserts both landed on their predicted addresses *and* that the two accounts run different classes
+
+### Self-consistency is not verification — pin derived values with an independent oracle
+- When a contract both predicts a value and produces it, tests comparing the two only prove the code agrees with itself. Every input to the derivation can change together and the tests still pass
+- Add one test that recomputes the value from its named inputs and asserts equality. This matters most when off-chain callers must reproduce the derivation, since it is then a published contract rather than an internal detail
+- *Example:* every shadow-account address test compared the anonymizer's predicted address against its own deployed address. Changing the deploy salt in both places kept all of them green; only a test recomputing from (salt, primer class, empty calldata, deployer) caught it
+
+### When a derivation changes, test values produced by the old one
+- Records written under a previous derivation must stay reachable, and the new derivation will not reproduce them. Seed one such record and assert it resolves to its stored value
+- Every post-migration test uses freshly produced records, where stored and recomputed values coincide — so none of them can tell "returns what is stored" from "recomputes it", which is exactly the behaviour legacy records depend on
+- To seed state a contract has no code path to produce, mirror the storage variable in a test-only contract with the same name and types and write it inside `interact_with_state`; storage addresses derive from names, so the write lands in the target's storage without slot arithmetic
+- *Example:* shadow accounts deployed before the Primer pattern have addresses derived from the account class. Making the view recompute instead of reading storage would strand them and their funds, and the whole suite stayed green until a seeded pre-primer entry was tested
+
+### Prove a new test can fail before trusting it
+- After writing a regression test, mutate the code under test so the invariant genuinely breaks, confirm the test fails, then revert. A test that has never been observed failing is an assumption, not coverage
+- Check the failure is the *intended* one: a mutation that trips an unrelated assertion first (an entrypoint that no longer resolves, a panic during setup) proves nothing about the assertions you care about. Pick a mutation that reaches them
 
 ### Match assertions to fixture guarantees
 - Only assert on data presence when the fixture explicitly guarantees that data exists

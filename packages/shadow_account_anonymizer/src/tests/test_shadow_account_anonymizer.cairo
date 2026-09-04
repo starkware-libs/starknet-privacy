@@ -9,15 +9,17 @@ use shadow_account_anonymizer::shadow_account_anonymizer::{
     commitment_from_partial, errors, partial_commitment,
 };
 use shadow_account_anonymizer::tests::test_utils::{
-    Components, ComponentsTrait, PRIVACY, anonymizer_disp, deploy_components,
-    deploy_shadow_account_anonymizer, deploy_token, transfer_to_caller_call,
+    Components, ComponentsTrait, GOVERNANCE_ADMIN, PRIVACY, anonymizer_disp, declare_primer,
+    deploy_components, deploy_shadow_account_anonymizer, deploy_token, transfer_to_caller_call,
 };
 use snforge_std::{
-    DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare, spy_events,
+    ContractClassTrait, DeclareResultTrait, EventSpyTrait, EventsFilterTrait, TokenTrait, declare,
+    spy_events,
 };
 use starknet::account::Call;
-use starknet::{ContractAddress, SyscallResultTrait};
-use starkware_accounts::sub_account::{ISubAccountDispatcher, ISubAccountDispatcherTrait};
+use starknet::syscalls::call_contract_syscall;
+use starknet::{ContractAddress, SyscallResult, SyscallResultTrait};
+use starkware_accounts::shadow_account::{IShadowAccountDispatcher, IShadowAccountDispatcherTrait};
 use starkware_utils_testing::test_utils::{
     TokenHelperTrait, assert_expected_event_emitted, assert_panic_with_felt_error,
     cheat_caller_address_once,
@@ -42,7 +44,7 @@ fn test_get_privacy_contract() {
 #[test]
 fn test_get_shadow_account_class_hash() {
     let anonymizer = deploy_shadow_account_anonymizer();
-    let expected = *declare("SubAccount").unwrap_syscall().contract_class().class_hash;
+    let expected = *declare("ShadowAccount").unwrap_syscall().contract_class().class_hash;
     assert_eq!(anonymizer_disp(anonymizer).get_shadow_account_class_hash(), expected);
 }
 
@@ -52,13 +54,16 @@ fn test_get_shadow_account_unknown_identity_commitment_is_zero() {
     assert!(anonymizer_disp(anonymizer).get_shadow_account('UNKNOWN').is_zero());
 }
 
+/// `get_shadow_account` reports only what is stored, so an undeployed commitment reads back as
+/// zero. The address such a commitment *would* deploy to comes from the range view instead, which
+/// `test_get_shadow_accounts_computed_address_matches_deploy` covers.
 #[test]
-fn test_undeployed_shadow_account_resolves_to_computed_address() {
+fn test_undeployed_shadow_account_has_no_stored_address() {
     let anonymizer = deploy_shadow_account_anonymizer();
-    let info = shadow_account_info(anonymizer, 0);
-    // Undeployed, but still resolves to the deterministic address it would deploy to.
-    assert!(!info.is_deployed);
-    assert!(info.address.is_non_zero());
+    let commitment = commitment_from_partial(partial_commitment('USER', 'DAPP'), 0);
+
+    assert!(!shadow_account_info(anonymizer, 0).is_deployed);
+    assert!(anonymizer_disp(anonymizer).get_shadow_account(commitment).is_zero());
 }
 
 #[test]
@@ -275,7 +280,8 @@ fn test_deployed_shadow_account_owned_by_anonymizer() {
     let shadow_account = shadow_account_info(components.anonymizer, 1).address;
     // The anonymizer is the shadow account's deployer, so it is the only authorized controller.
     assert_eq!(
-        ISubAccountDispatcher { contract_address: shadow_account }.owner(), components.anonymizer,
+        IShadowAccountDispatcher { contract_address: shadow_account }.owner(),
+        components.anonymizer,
     );
 }
 
@@ -730,4 +736,140 @@ fn test_get_shadow_accounts_inverted_range_reverts() {
     let components = deploy_components();
     anonymizer_disp(components.anonymizer)
         .get_shadow_accounts(partial_commitment('USER', 'DAPP'), 5, 3, false);
+}
+
+/// A single open note collecting the shadow account's whole `token` balance.
+fn collect_all_note(token: ContractAddress) -> Span<OpenNote> {
+    array![OpenNote { note_id: NOTE_ID, token, collect_policy: CollectPolicy::All }].span()
+}
+
+/// The calldata the privacy contract calls `privacy_invoke_with_computation` with.
+fn invoke_calldata(
+    identity_commitment: felt252, calls: Array<Call>, open_notes: Span<OpenNote>,
+) -> Span<felt252> {
+    let mut calldata = array![identity_commitment];
+    calls.serialize(ref calldata);
+    open_notes.serialize(ref calldata);
+    calldata.span()
+}
+
+/// Runs the invoke over a raw syscall, the way the privacy contract does, and hands back its
+/// undecoded return data.
+fn invoke_return_data(
+    anonymizer: ContractAddress, invoke_calldata: Span<felt252>,
+) -> SyscallResult<Span<felt252>> {
+    cheat_caller_address_once(contract_address: anonymizer, caller_address: PRIVACY);
+    call_contract_syscall(
+        address: anonymizer,
+        entry_point_selector: selector!("privacy_invoke_with_computation"),
+        calldata: invoke_calldata,
+    )
+}
+
+#[test]
+fn test_invoke_returns_the_shadow_account_it_ran_through() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
+    // The address is known before the account exists, so an attestation can be minted ahead of the
+    // interaction.
+    let predicted = shadow_account_info(components.anonymizer, 1).address;
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+
+    let (deposits, associated_addresses) = components
+        .invoke_returning_addresses(
+            :identity_commitment,
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: collect_all_note(token),
+        );
+
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(associated_addresses.len(), 1);
+    // The funds passed through this account, and it is the one the prediction pointed at.
+    assert_eq!(*associated_addresses[0], anonymizer.get_shadow_account(identity_commitment));
+    assert_eq!(*associated_addresses[0], predicted);
+}
+
+#[test]
+fn test_invoke_without_open_notes_returns_no_address() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+
+    // An interaction settling no note funds no deposit, so it returns no address. The dapp call
+    // still runs, and whatever it leaves in the shadow account goes uncollected.
+    let (deposits, associated_addresses) = components
+        .invoke_returning_addresses(
+            identity_commitment: anonymizer.privacy_compute('USER', 'DAPP', 1),
+            calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+            open_notes: array![].span(),
+        );
+
+    assert!(deposits.is_empty());
+    assert!(associated_addresses.is_empty());
+}
+
+#[test]
+fn test_invoke_return_data_is_the_deposits_then_the_addresses() {
+    let components = deploy_components();
+    let anonymizer = anonymizer_disp(components.anonymizer);
+    let token = components.token.contract_address();
+    let identity_commitment = anonymizer.privacy_compute('USER', 'DAPP', 1);
+    components.token.supply(address: components.mock_dapp, amount: AMOUNT);
+    let calldata = invoke_calldata(
+        identity_commitment,
+        calls: array![transfer_to_caller_call(components.mock_dapp, token, AMOUNT)],
+        open_notes: collect_all_note(token),
+    );
+
+    // The privacy contract deserializes the deposits, then the addresses, and rejects anything left
+    // over. Read the raw return data in that order to pin the layout it depends on.
+    let mut return_data = invoke_return_data(components.anonymizer, calldata).unwrap_syscall();
+    let deposits: Span<OpenNoteDeposit> = Serde::deserialize(ref return_data).unwrap();
+    let associated_addresses: Span<ContractAddress> = Serde::deserialize(ref return_data).unwrap();
+    assert!(return_data.is_empty());
+    assert_eq!(deposits.len(), 1);
+    assert_eq!(associated_addresses.len(), 1);
+    assert_eq!(*associated_addresses[0], anonymizer.get_shadow_account(identity_commitment));
+}
+
+
+/// A committed cross-language vector. The SDK's `shadow-account-address` test derives the same
+/// felts from the same inputs, so the off-chain derivation cannot drift from the contract's. This
+/// test deploys the anonymizer at the vector's own address and goes through its entry points, so
+/// the expected felts pin the deployed contract rather than restate its recipe.
+#[test]
+fn test_shadow_account_derivation_matches_the_committed_vector() {
+    let anonymizer_address: ContractAddress = 0x444.try_into().unwrap();
+    declare_primer();
+    let shadow_account_class_hash = *declare("ShadowAccount")
+        .unwrap_syscall()
+        .contract_class()
+        .class_hash;
+    declare("ShadowAccountAnonymizer")
+        .unwrap_syscall()
+        .contract_class()
+        .deploy_at(
+            @array![PRIVACY.into(), shadow_account_class_hash.into(), GOVERNANCE_ADMIN.into()],
+            anonymizer_address,
+        )
+        .unwrap_syscall();
+    let anonymizer = anonymizer_disp(anonymizer_address);
+
+    let partial = partial_commitment(identity_key: 0x111, dapp_name: 0x222);
+    assert_eq!(partial, 0xdbb320724c2f71919310007cc2ee821e9b234b98535d24dae197124c2ef4fb);
+
+    let commitment = anonymizer.privacy_compute(identity_key: 0x111, dapp_name: 0x222, nonce: 0x3);
+    assert_eq!(commitment, 0x418bf56bebf218ffa365531394e68b3336a9557b5b8be8ad6a21f44e79833b);
+
+    let shadow_accounts = anonymizer
+        .get_shadow_accounts(
+            partial_commitment: partial, start_nonce: 3, end_nonce: 4, until_undeployed: false,
+        );
+    assert_eq!(
+        *shadow_accounts[0].address,
+        0x5e1a753154c6cbb012b819c0362921b7040df54b90bb9241f54e7d946cf9708.try_into().unwrap(),
+    );
 }
