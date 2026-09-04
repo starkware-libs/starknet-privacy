@@ -250,7 +250,7 @@ export function usePrivateState(
       // Build outgoing cards
       const tokenNameByBigInt = new Map(config.tokens.map((t) => [BigInt(t.address), t.name]));
       const outgoingCards: OutgoingChannelCard[] = [];
-      for (const [recipient, channel] of channelsResult.channels) {
+      for (const [recipient, channel] of channelsResult.channels ?? []) {
         const internal = readChannel(channel);
         const tokens: OutgoingChannelCard["tokens"] = [];
         for (const [tokenAddr, tokenChannel] of internal.tokens) {
