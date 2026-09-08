@@ -292,6 +292,10 @@ export class ActionCompiler {
         debugLog("compiler", "open channel x", action.recipient);
         const channel = pool.getChannel(action.recipient);
         assert(channel, () => `Missing channel context for recipient ${toHex(action.recipient)}`);
+        if (channel.key) {
+          debugLog("compiler", "open channel skipped (already exists)", action.recipient);
+          continue;
+        }
         const input = {
           type: "OpenChannel",
           input: {
