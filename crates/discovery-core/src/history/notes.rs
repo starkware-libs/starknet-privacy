@@ -309,8 +309,8 @@ mod tests {
         assert!(cursor.subchannels[0].next_index.is_none());
     }
 
-    #[tokio::test]
-    async fn next_block_returns_highest_block_first() {
+    /// Two subchannels whose next notes sit at blocks 100 and 80.
+    fn two_subchannel_fixture() -> (MockBackend, HistoryCursor) {
         let channel_key_a = SecretFelt::new(Felt::from_hex_unchecked("0xA1"));
         let channel_key_b = SecretFelt::new(Felt::from_hex_unchecked("0xB2"));
         let token = test_token();
@@ -320,10 +320,16 @@ mod tests {
         insert_note(&mut backend, &channel_key_a, token, 0, packed_value, 100);
         insert_note(&mut backend, &channel_key_b, token, 0, packed_value, 80);
 
-        let mut cursor = test_cursor(vec![
+        let cursor = test_cursor(vec![
             test_subchannel(channel_key_a, token, Some(0)),
             test_subchannel(channel_key_b, token, Some(0)),
         ]);
+        (backend, cursor)
+    }
+
+    #[tokio::test]
+    async fn next_block_returns_highest_block_first() {
+        let (backend, mut cursor) = two_subchannel_fixture();
         let mut scanner = BufferedNoteScanner::new();
         let budget = IoBudget::new(100);
 
@@ -347,23 +353,13 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn peek_next_block_returns_highest_block_without_draining() {
-        // Two subchannel heads at different blocks: peek reports the higher one
-        // and leaves every `next_index` untouched, so a repeated peek reads
-        // nothing new and reports the same block.
-        let channel_key_a = SecretFelt::new(Felt::from_hex_unchecked("0xA1"));
-        let channel_key_b = SecretFelt::new(Felt::from_hex_unchecked("0xB2"));
-        let token = test_token();
-        let packed_value = non_zero_packed();
-
-        let mut backend = MockBackend::empty();
-        insert_note(&mut backend, &channel_key_a, token, 0, packed_value, 100);
-        insert_note(&mut backend, &channel_key_b, token, 0, packed_value, 80);
-
-        let cursor = test_cursor(vec![
-            test_subchannel(channel_key_a, token, Some(0)),
-            test_subchannel(channel_key_b, token, Some(0)),
-        ]);
+    async fn peek_is_free_to_repeat_and_agrees_with_drain() {
+        // Peek reports the higher of two subchannel heads, reads nothing new
+        // when repeated (the buffers are already full), and names exactly the
+        // block the following drain yields — the agreement that keeps a note
+        // block out of the gap scanned above it. After the drain, peek moves to
+        // the next-highest head, and an exhausted scanner peeks nothing.
+        let (backend, mut cursor) = two_subchannel_fixture();
         let mut scanner = BufferedNoteScanner::new();
         let budget = IoBudget::new(100);
 
@@ -372,48 +368,18 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(peeked, Some(100));
-        assert_eq!(cursor.subchannels[0].next_index, Some(0));
-        assert_eq!(cursor.subchannels[1].next_index, Some(0));
 
         let budget_before = budget.remaining();
         let peeked_again = scanner
             .peek_next_block(&backend, &cursor, &budget)
             .await
             .unwrap();
-        assert_eq!(peeked_again, Some(100));
+        assert_eq!(peeked_again, peeked);
         assert_eq!(
             budget.remaining(),
             budget_before,
             "full buffers cost nothing to re-peek"
         );
-    }
-
-    #[tokio::test]
-    async fn peek_then_next_block_drains_the_peeked_block() {
-        // The block peek reports is exactly the one the following drain yields;
-        // that agreement is what keeps a note block out of the gap scanned
-        // above it. After the drain, peek moves to the next-highest head, and
-        // an exhausted scanner peeks nothing.
-        let channel_key_a = SecretFelt::new(Felt::from_hex_unchecked("0xA1"));
-        let channel_key_b = SecretFelt::new(Felt::from_hex_unchecked("0xB2"));
-        let token = test_token();
-        let packed_value = non_zero_packed();
-
-        let mut backend = MockBackend::empty();
-        insert_note(&mut backend, &channel_key_a, token, 0, packed_value, 100);
-        insert_note(&mut backend, &channel_key_b, token, 0, packed_value, 80);
-
-        let mut cursor = test_cursor(vec![
-            test_subchannel(channel_key_a, token, Some(0)),
-            test_subchannel(channel_key_b, token, Some(0)),
-        ]);
-        let mut scanner = BufferedNoteScanner::new();
-        let budget = IoBudget::new(100);
-
-        let peeked = scanner
-            .peek_next_block(&backend, &cursor, &budget)
-            .await
-            .unwrap();
         let (drained_block, notes) = scanner
             .next_block(&backend, &mut cursor, &budget)
             .await
