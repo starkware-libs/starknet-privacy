@@ -92,7 +92,7 @@ jobs:
       # contracts, or this workflow itself change (the last so a change to the job below is exercised by
       # its own PR). Client-only PRs skip it (the steps no-op and the job still reports green, keeping a
       # required check satisfied) rather than being gated on the unrelated Cairo/devnet build.
-      - uses: dorny/paths-filter@v3
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
           filters: |
