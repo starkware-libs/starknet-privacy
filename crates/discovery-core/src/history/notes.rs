@@ -61,19 +61,13 @@ impl BufferedNoteScanner {
         let mut block_notes: Vec<HistoryNote> = Vec::new();
         let mut block_number: Option<u64> = None;
         loop {
-            self.fill_buffers(views, &cursor.subchannels, budget)
-                .await?;
-
-            let target_block = match block_number {
-                Some(b) => b,
-                None => match self.buffered_notes.values().map(|(b, _)| *b).max() {
-                    Some(b) => {
-                        block_number = Some(b);
-                        b
-                    }
-                    None => break,
-                },
+            // Refill and read the highest buffered block through the same path
+            // callers use to peek, so peek and drain always agree on the block.
+            let max_buffered_block = self.peek_next_block(views, cursor, budget).await?;
+            let Some(target_block) = block_number.or(max_buffered_block) else {
+                break;
             };
+            block_number = Some(target_block);
 
             if !self
                 .buffered_notes
@@ -350,6 +344,100 @@ mod tests {
             .unwrap();
         assert_eq!(block_number, 80);
         assert_eq!(notes.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn peek_next_block_returns_highest_block_without_draining() {
+        // Two subchannel heads at different blocks: peek reports the higher one
+        // and leaves every `next_index` untouched, so a repeated peek reads
+        // nothing new and reports the same block.
+        let channel_key_a = SecretFelt::new(Felt::from_hex_unchecked("0xA1"));
+        let channel_key_b = SecretFelt::new(Felt::from_hex_unchecked("0xB2"));
+        let token = test_token();
+        let packed_value = non_zero_packed();
+
+        let mut backend = MockBackend::empty();
+        insert_note(&mut backend, &channel_key_a, token, 0, packed_value, 100);
+        insert_note(&mut backend, &channel_key_b, token, 0, packed_value, 80);
+
+        let cursor = test_cursor(vec![
+            test_subchannel(channel_key_a, token, Some(0)),
+            test_subchannel(channel_key_b, token, Some(0)),
+        ]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(100);
+
+        let peeked = scanner
+            .peek_next_block(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked, Some(100));
+        assert_eq!(cursor.subchannels[0].next_index, Some(0));
+        assert_eq!(cursor.subchannels[1].next_index, Some(0));
+
+        let budget_before = budget.remaining();
+        let peeked_again = scanner
+            .peek_next_block(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked_again, Some(100));
+        assert_eq!(
+            budget.remaining(),
+            budget_before,
+            "full buffers cost nothing to re-peek"
+        );
+    }
+
+    #[tokio::test]
+    async fn peek_then_next_block_drains_the_peeked_block() {
+        // The block peek reports is exactly the one the following drain yields;
+        // that agreement is what keeps a note block out of the gap scanned
+        // above it. After the drain, peek moves to the next-highest head, and
+        // an exhausted scanner peeks nothing.
+        let channel_key_a = SecretFelt::new(Felt::from_hex_unchecked("0xA1"));
+        let channel_key_b = SecretFelt::new(Felt::from_hex_unchecked("0xB2"));
+        let token = test_token();
+        let packed_value = non_zero_packed();
+
+        let mut backend = MockBackend::empty();
+        insert_note(&mut backend, &channel_key_a, token, 0, packed_value, 100);
+        insert_note(&mut backend, &channel_key_b, token, 0, packed_value, 80);
+
+        let mut cursor = test_cursor(vec![
+            test_subchannel(channel_key_a, token, Some(0)),
+            test_subchannel(channel_key_b, token, Some(0)),
+        ]);
+        let mut scanner = BufferedNoteScanner::new();
+        let budget = IoBudget::new(100);
+
+        let peeked = scanner
+            .peek_next_block(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        let (drained_block, notes) = scanner
+            .next_block(&backend, &mut cursor, &budget)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(Some(drained_block), peeked);
+        assert_eq!(drained_block, 100);
+        assert_eq!(notes.len(), 1);
+
+        let peeked = scanner
+            .peek_next_block(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked, Some(80));
+
+        scanner
+            .next_block(&backend, &mut cursor, &budget)
+            .await
+            .unwrap();
+        let peeked = scanner
+            .peek_next_block(&backend, &cursor, &budget)
+            .await
+            .unwrap();
+        assert_eq!(peeked, None);
     }
 
     #[tokio::test]

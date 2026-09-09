@@ -297,7 +297,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
   - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
-  - `begin_block_number`: Inclusive upper bound for the next scan window. Set to `0` on first request (server resolves from chain head). On subsequent requests, use the value from the previous response cursor — note this may land partway through a long gap above a note, since the gap is scanned in budget-bounded windows (see Cursor lifecycle).
+  - `begin_block_number`: Inclusive upper bound for the next scan window. Omit it (or send `null`) on the first request so the server resolves it from chain head — a literal `0` bounds the scan at block 0, skips every note, and returns an empty page marked complete. On subsequent requests, use the value from the previous response cursor — note this may land partway through a long gap above a note, since the gap is scanned in budget-bounded windows (see Cursor lifecycle).
   - `history_complete`: `false` on initial request.
 
 **Response:**
@@ -343,7 +343,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 **Cursor lifecycle:**
 
-1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Set `begin_block_number` to `0` and `history_complete` to `false`.
+1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Leave `begin_block_number` unset (`null`) and set `history_complete` to `false`.
 2. **First request:** Server resolves `begin_block_number` from chain head. For each note block (newest first) it scans the gap **above** it for standalone withdrawals first, then the note block's own events, advancing `begin_block_number` as each step commits.
 3. **Pagination:** Pass back cursor from response. Server continues scanning from where it left off.
 4. **Done:** When `history_complete` is `true`, all history has been retrieved.
