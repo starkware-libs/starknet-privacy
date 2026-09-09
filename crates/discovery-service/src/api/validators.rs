@@ -540,6 +540,12 @@ mod tests {
     }
 
     #[test]
+    fn test_history_cursor_min_max_transactions_accepted() {
+        let limits = ValidationLimits::default();
+        validate_history_cursor(&HistoryCursor::default(), 1, &limits).unwrap();
+    }
+
+    #[test]
     fn test_history_cursor_valid() {
         let limits = ValidationLimits::default();
         let subchannels: Vec<_> = (0..5).map(|_| dummy_history_subchannel()).collect();
