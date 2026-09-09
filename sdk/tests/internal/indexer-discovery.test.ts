@@ -581,6 +581,33 @@ describe("IndexerDiscoveryProvider", () => {
       expect(requestBody.viewing_key).toBe("0xbeef");
       expect(requestBody.decryption_key).toBeUndefined();
     });
+
+    it("sends blockIdentifier as block_ref in fetchHistory requests", async () => {
+      const provider = createProvider();
+      const fetchMock = mockFetchJson({
+        body: {
+          block_ref: BLOCK_REF,
+          transactions: [],
+          cursor: { subchannels: [], history_complete: true },
+        },
+      });
+
+      const notesCursor: NotesCursor = { blockId: BLOCK_REF, incomingChannels: new AddressMap() };
+      const page = await provider.fetchHistory(
+        USER_ADDRESS,
+        notesCursor,
+        { channels: new AddressMap() },
+        { maxTransactions: 5, blockIdentifier: BLOCK_REF }
+      );
+
+      const requestBody = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(requestBody.contract_address).toBe("0x123");
+      expect(requestBody.block_ref).toBe(BLOCK_REF);
+      expect(requestBody.max_transactions).toBe(5);
+      expect(requestBody.last_known_block).toBeUndefined();
+      expect(page.blockRef).toBe(BLOCK_REF);
+      expect(page.cursor.historyComplete).toBe(true);
+    });
   });
 
   describe("exported helpers", () => {

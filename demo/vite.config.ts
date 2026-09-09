@@ -18,10 +18,6 @@ export default defineConfig({
         sdkDist,
         "internal/mock-proving.js",
       ),
-      "starknet-sdk/dist/internal/indexer-discovery.js": resolve(
-        sdkDist,
-        "internal/indexer-discovery.js",
-      ),
     },
   },
 });

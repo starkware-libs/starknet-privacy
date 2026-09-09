@@ -7,16 +7,10 @@ import {
 } from "starknet";
 import {
   createPrivateTransfers,
+  IndexerDiscoveryProvider,
   ProvingServiceProofProvider,
   type PrivateTransfersInterface,
 } from "starknet-sdk";
-// Type-only, so it costs nothing at runtime but keeps calls through the
-// provider checked — the deep import below is untyped, which silently swallows
-// misnamed options like `blockRef` for `blockIdentifier`.
-import type { IndexerDiscoveryProvider as TypedIndexerDiscoveryProvider } from "starknet-sdk";
-// Direct import avoids pulling in Node-only modules from the testing barrel
-// @ts-expect-error — deep import into dist, not part of the declared exports
-import { IndexerDiscoveryProvider } from "starknet-sdk/dist/internal/indexer-discovery.js";
 import type { AppConfig } from "./config.ts";
 import { NoValidateProofProvider } from "./proof-provider.ts";
 
@@ -41,7 +35,7 @@ export const WAIT_OPTIONS: waitForTransactionOptions = {
 export function createDiscoveryProvider(
   config: AppConfig,
   poolAddress: string
-): TypedIndexerDiscoveryProvider {
+): IndexerDiscoveryProvider {
   if (config.ohttpEnabled === false) {
     return new IndexerDiscoveryProvider(config.indexerUrl, poolAddress);
   }
