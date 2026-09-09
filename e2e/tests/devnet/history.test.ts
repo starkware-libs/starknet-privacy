@@ -150,8 +150,11 @@ describe("E2E History", () => {
     historyCursor = firstPage.cursor;
     blockIdentifier = firstPage.blockRef;
 
-    // Continue fetching until complete
-    while (!historyCursor.historyComplete) {
+    // Continue fetching until complete. Bounded so a service that stops
+    // advancing the cursor fails the assertion below instead of hanging CI.
+    const MAX_PAGES = 5;
+    let pageCount = 1;
+    while (!historyCursor.historyComplete && pageCount < MAX_PAGES) {
       const page = await indexerDiscovery.fetchHistory(
         aliceAddress,
         notesCursor,
@@ -161,7 +164,9 @@ describe("E2E History", () => {
       allTransactions.push(...page.transactions);
       historyCursor = page.cursor;
       blockIdentifier = page.blockRef;
+      pageCount++;
     }
+    expect(historyCursor.historyComplete).toBe(true);
 
     // Should have fetched multiple pages (scenario has at least 1 tx)
     expect(allTransactions.length).toBeGreaterThan(0);
