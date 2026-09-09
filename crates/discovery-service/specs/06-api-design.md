@@ -297,7 +297,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
   - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
-  - `begin_block_number`: Inclusive upper bound for the next scan window. Omit it (or send `null`) on the first request so the server resolves it from the pinned snapshot block (`block_ref`, or the current head when `block_ref` is omitted) — a literal `0` bounds the scan at block 0, skips every note, and returns an empty page marked complete. On subsequent requests, use the value from the previous response cursor — note this may land partway through a long gap above a note, since the gap is scanned in budget-bounded windows (see Cursor lifecycle).
+  - `begin_block_number`: Inclusive upper bound for the next scan window. Omit it (or send `null`) on the first request so the server resolves it from the pinned snapshot block (`block_ref`, or the current head when `block_ref` is omitted) — a literal `0` bounds the scan at block 0, so every note is skipped and history is marked complete without any note transactions. On subsequent requests, use the value from the previous response cursor — note this may land partway through a long gap above a note, since the gap is scanned in budget-bounded windows (see Cursor lifecycle).
   - `history_complete`: `false` on initial request.
 
 **Response:**
