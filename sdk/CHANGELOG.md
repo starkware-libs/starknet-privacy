@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.14.3-RC.7
+
+### Changed
+
+- `delegateOpenNoteDepositor` documents the pool's revised `Delegated` rule: the pool screens the
+  addresses the depositor's invoke returns after its deposits, or the depositor itself when the
+  invoke returns none. A `Delegated` target driven through a plain invoke is therefore no longer
+  exempt from screening.
+- The proof interceptor can block with two more reasons, `unknown_delegated_depositor` and
+  `undeposited_open_notes`. Like `multiple_screening_subjects` and `shadow_account_undetermined`,
+  `screeningErrorFromProvingError` leaves them unmapped: they are terminal for the transaction as
+  built but say nothing about the address, so they reach the caller as the prover's own error.
+
 ## 0.14.3-RC.6
 
 ### Added
