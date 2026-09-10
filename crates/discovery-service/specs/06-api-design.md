@@ -284,7 +284,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
         "next_index": 5
       }
     ],
-    "begin_block_number": 0,
+    "begin_block_number": null,
     "history_complete": false
   }
 }
@@ -297,7 +297,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
   - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
-  - `begin_block_number`: Inclusive upper bound for event queries. Set to `0` on first request (server resolves from chain head). On subsequent requests, use the value from the previous response cursor.
+  - `begin_block_number`: Inclusive upper bound for event queries. Omit it (or send `null`) on the first request so the server resolves it from the pinned snapshot block (`block_ref`, or the current head when `block_ref` is omitted) — a literal `0` bounds the scan at block 0, so every note is skipped and history is marked complete without any note transactions. On subsequent requests, use the value from the previous response cursor.
   - `history_complete`: `false` on initial request.
 
 **Response:**
@@ -343,8 +343,8 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 **Cursor lifecycle:**
 
-1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Set `begin_block_number` to `0` and `history_complete` to `false`.
-2. **First request:** Server resolves `begin_block_number` from chain head. Scans notes backward, fetches block events, groups into transactions.
+1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Leave `begin_block_number` unset (`null`) and set `history_complete` to `false`.
+2. **First request:** Server resolves `begin_block_number` from the pinned snapshot block. Scans notes backward, fetches block events, groups into transactions.
 3. **Pagination:** Pass back cursor from response. Server continues scanning from where it left off.
 4. **Done:** When `history_complete` is `true`, all history has been retrieved.
 
@@ -352,10 +352,11 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `max_history_subchannels` (default: 256): Maximum number of subchannels in a history cursor.
 - `max_history_transactions` (default: 100): Maximum allowed `max_transactions` value.
+- `max_transactions` must be at least `1`. A zero-size page can neither advance the scan nor mark it complete.
 
 **Error responses:**
 
-- `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` exceeds server limit.
+- `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` is `0` or exceeds the server limit.
 - `409 BLOCK_REORGED` — `last_known_block` was reorged out.
 - `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
 - Standard `DiscoveryError` mapping for storage and event errors.

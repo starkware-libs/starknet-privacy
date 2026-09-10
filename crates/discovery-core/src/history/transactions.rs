@@ -470,6 +470,12 @@ mod tests {
     const NOTE_ID: Felt = Felt::from_hex_unchecked("0xAABB");
     const PACKED: Felt = Felt::from_hex_unchecked("0xDEAD");
 
+    /// Budget for one complete note-block iteration over a single-subchannel
+    /// fixture: the initial fill and the refill (one note read each, since
+    /// `fill_buffers` charges per active subchannel), the block-events query,
+    /// and the gap withdrawal query.
+    const ONE_BLOCK_BUDGET: usize = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
+
     fn channel_key() -> SecretFelt {
         SecretFelt::new(Felt::from_hex_unchecked("0xCAFE"))
     }
@@ -1096,15 +1102,12 @@ mod tests {
             .note(1, 20, TX_HASH_2)
             .build(Some(1));
 
-        // Budget for one complete block iteration:
-        // fill_buffers (2 reads: initial + refill) + block events + withdrawal range
-        let one_block_budget = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
         let result = fetch_transactions(
             &backend,
             ADDRESS,
             &mut cursor,
             10,
-            &IoBudget::new(one_block_budget),
+            &IoBudget::new(ONE_BLOCK_BUDGET),
         )
         .await
         .unwrap();
@@ -1130,15 +1133,12 @@ mod tests {
             .withdrawal(50, 50, TX_HASH_3)
             .build(Some(1));
 
-        // Budget for one complete block iteration:
-        // fill_buffers (2 reads: initial + refill) + block events + withdrawal range
-        let one_block_budget = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
         let result = fetch_transactions(
             &backend,
             ADDRESS,
             &mut cursor,
             10,
-            &IoBudget::new(one_block_budget),
+            &IoBudget::new(ONE_BLOCK_BUDGET),
         )
         .await
         .unwrap();
@@ -1225,13 +1225,12 @@ mod tests {
             .pubkey(ADDRESS, PUBKEY, 5, TX_HASH_REG)
             .build(Some(1));
 
-        let one_block_budget = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
         let result = fetch_transactions(
             &backend,
             ADDRESS,
             &mut cursor,
             10,
-            &IoBudget::new(one_block_budget),
+            &IoBudget::new(ONE_BLOCK_BUDGET),
         )
         .await
         .unwrap();
