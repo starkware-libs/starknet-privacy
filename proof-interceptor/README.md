@@ -56,6 +56,7 @@ Defaults are deployment-friendly, not security-strict. Apply these for productio
 - **`TLS_CERT_PATH`/`TLS_KEY_PATH` are server-side TLS only.** They encrypt the prover↔sidecar connection but do _not_ authenticate the client (no `requestCert`/`ca` is configured in `src/server.ts`). For real mTLS, put a service mesh or proxy in front of the sidecar.
 - **Verify `SCREENING_URL` is set.** Without it, the service runs as a no-op pass-through that always returns `allowed: true` — `/health` still reports OK. Confirm `proof_interceptor_screening_results_total` is non-zero on `/metrics`.
 - **Point `SCREENING_RPC_URL` at an endpoint serving JSON-RPC spec ≥ 0.9.** The pre-policy-pool fallback keys on the dedicated entrypoint-miss error (21); an older endpoint reports a generic contract error instead, so every policy read fails closed and open-note deposits block.
+- **Set `SCREENING_ANONYMIZER_ADDRESS` to the shadow account anonymizer the pool lists as `Delegated`.** Its compute-invokes are screened on the shadow account they run through; a compute-invoke to any other `Delegated` target is refused with `unknown_delegated_depositor`. The service exits at startup without it.
 - **Pin `@starkware-libs/starknet-privacy-sdk`** to a version whose `PrivacyPoolABI` matches the deployed pool contract. ABI drift causes silent fail-open on Deposit detection.
 
 ## Configuration
