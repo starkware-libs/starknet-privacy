@@ -12,22 +12,41 @@ use tracing::{debug, trace};
 use super::notes::BufferedNoteScanner;
 use super::types::{HistoryCursor, HistoryNote, HistoryTransaction};
 use crate::discovery::{
-    DiscoveryError, COST_BLOCK_EVENTS_QUERY, COST_EVENTS_CHUNK, COST_PUBLIC_KEY,
+    DiscoveryError, COST_BLOCK_EVENTS_QUERY, COST_EVENTS_CHUNK, COST_NOTE, COST_PUBLIC_KEY,
     EVENTS_COST_CHUNK_SIZE,
 };
 use crate::io_budget::IoBudget;
 use crate::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
 use crate::privacy_pool::views::IViews;
 
+/// Outcome of one [`process_next_block`] iteration.
+enum ScanStep {
+    /// Committed a gap window and its anchoring note block; keep scanning.
+    Advanced,
+    /// The page should end: a partial gap window was committed, or the page is
+    /// already full. The cursor reflects whatever was committed.
+    Halted,
+    /// No more notes to scan; the backward walk is complete.
+    Exhausted,
+}
+
 /// Fetches history transactions by coordinating note reads and event fetches.
 ///
-/// Each loop iteration:
-/// 1. Drain the next block of notes via [`BufferedNoteScanner::next_block`].
-/// 2. Fetch block events and group into transactions via [`fetch_aggregated_block_events`].
-/// 3. Fetch withdrawal events for the gap range via [`fetch_aggregated_withdrawal_events`].
+/// Walks note blocks newest-first. Each iteration ([`process_next_block`]):
+/// 1. Peek the next note block `K` without draining it.
+/// 2. Scan withdrawals in the gap `(K, upper]` **first**, in a budget-bounded
+///    top-down window via [`fetch_gap_withdrawals_chunked`], advancing the
+///    cursor per window so a far-behind account makes forward progress instead
+///    of charging an unbounded range at once.
+/// 3. Once the gap is fully covered, drain block `K` and fetch its block events
+///    via [`fetch_aggregated_block_events`].
 ///
-/// Budget is consumed incrementally; exits early if insufficient.
-/// Returns transactions sorted by `block_number` descending.
+/// Budget is consumed incrementally; the scan stops at the first iteration that
+/// cannot make further progress within budget, with the cursor left at the
+/// frontier so the next page continues. A page that makes no progress at all
+/// (no transaction and no cursor movement) returns `InsufficientBudget`
+/// instead, since a same-budget retry would repeat it. Returns transactions
+/// sorted by `block_number` descending.
 pub async fn fetch_transactions<B: IViews + IEvents>(
     backend: &B,
     user_address: Felt,
@@ -44,31 +63,13 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         "history: starting fetch_transactions"
     );
 
+    let page_start_bound = cursor.begin_block_number;
     let mut note_scanner = BufferedNoteScanner::new();
     let mut transactions: HashMap<Felt, HistoryTransaction> = HashMap::new();
     let mut budget_error: Option<DiscoveryError> = None;
     let mut scanner_complete = false;
 
     loop {
-        // TODO: current iteration order (note block -> block events -> gap
-        // withdrawals) has two failure modes:
-        //   1. Gap withdrawals are inserted after the `max_transactions` check
-        //      for the iteration, so a single iteration can push
-        //      `transactions.len()` past the caller's limit.
-        //   2. The gap range `[K_i + 1, previous_upper]` is fetched in one
-        //      shot; a long empty stretch with no prior notes forces the
-        //      entire gap into a single page's budget, and a failure there
-        //      makes no forward progress (next page re-queries the same
-        //      range).
-        // Proposed flow (per iteration):
-        //   a. Peek the next note block `K_i` from the scanner.
-        //   b. Scan withdrawals in the gap `(K_i, previous_upper]`, possibly
-        //      in sub-chunks; update cursor as each sub-chunk completes so a
-        //      budget failure mid-gap still advances forward.
-        //   c. Fetch block events at `K_i`, insert the note's tx; update
-        //      cursor past `K_i`.
-        // Evaluating `max_transactions` between (b) and (c) then honors the
-        // caller's limit exactly. Alternative: pre-index events off-path.
         if transactions.len() >= max_transactions {
             trace!("history: hit max_transactions limit");
             break;
@@ -79,15 +80,15 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
             user_address,
             &mut note_scanner,
             cursor,
+            max_transactions,
             budget,
             &mut transactions,
         )
         .await
         {
-            Ok(Some(block_number)) => {
-                cursor.begin_block_number = Some(block_number.saturating_sub(1));
-            }
-            Ok(None) => {
+            Ok(ScanStep::Advanced) => continue,
+            Ok(ScanStep::Halted) => break,
+            Ok(ScanStep::Exhausted) => {
                 scanner_complete = true;
                 break;
             }
@@ -99,25 +100,12 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         }
     }
 
-    // Drop orphaned transactions from an iteration that didn't complete.
-    // `process_next_block` is two sequential RPC fetches (block events, then
-    // gap withdrawals); if the second fails mid-iteration, the first may have
-    // already inserted the note's tx. `cursor.begin_block_number` only
-    // advances on a fully completed iteration, so `block_number >
-    // cursor.begin_block_number` is exactly the range of completed
-    // iterations — including every gap withdrawal they picked up, which sit
-    // above the note block but are still part of a completed iteration.
+    // The scan advances `cursor.begin_block_number` atomically with every
+    // committed transaction (gap windows set it to `window_bottom - 1`; note
+    // blocks to `K - 1`), so every collected transaction sits strictly above
+    // the final cursor bound and no page returns a transaction a later page
+    // would re-fetch.
     let mut result: Vec<HistoryTransaction> = transactions.into_values().collect();
-    if !scanner_complete {
-        match cursor.begin_block_number {
-            Some(bound) => result.retain(|tx| tx.block_number > bound),
-            // First-iteration partial failure: block-events fetch inserted a
-            // tx before the gap-withdrawal fetch failed with
-            // InsufficientBudget, so the cursor never advanced. Drop the
-            // orphan so the next page re-scans from the original upper bound.
-            None => result.clear(),
-        }
-    }
 
     // Append the synthetic registration transaction when the note scan is
     // complete and there is room on this page. When the page is already full,
@@ -147,7 +135,11 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         "history: fetch_transactions done"
     );
 
-    if result.is_empty() {
+    // A page with no transaction that also left the cursor where it started
+    // would be repeated identically by a same-budget retry, and the client keeps
+    // paginating until `history_complete`. Surface the shortfall instead of
+    // looping; a page that moved the cursor returns normally even when empty.
+    if result.is_empty() && cursor.begin_block_number == page_start_bound {
         if let Some(error) = budget_error {
             return Err(error);
         }
@@ -156,48 +148,127 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
     Ok(result)
 }
 
-/// Processes one block: drains notes, fetches block events, fetches gap withdrawals.
+/// Runs one iteration of the backward scan: scans the gap above the next note
+/// block first (chunked, budget-bounded), then drains and processes that note
+/// block once its gap is fully covered. Advances `cursor.begin_block_number`
+/// for every committed step.
 ///
-/// Returns `Ok(Some(block_number))` on success, `Ok(None)` when the scanner is exhausted.
-/// `InsufficientBudget` propagates via `?`.
+/// Returns:
+/// - [`ScanStep::Advanced`] — committed a note block (and its gap); keep going.
+/// - [`ScanStep::Halted`] — the page should end: the gap was only partially
+///   covered within budget, or the page is already full.
+/// - [`ScanStep::Exhausted`] — no more notes.
+///
+/// `InsufficientBudget` — from buffer fills, block-event fetches, or a note step
+/// the remaining budget can't fund — propagates via `?`; `fetch_transactions`
+/// swallows it when the page already made progress. A failed note step rolls
+/// `next_index` back so the notes it drained are read again on the next page.
 async fn process_next_block<B: IViews + IEvents>(
     backend: &B,
     user_address: Felt,
     note_scanner: &mut BufferedNoteScanner,
     cursor: &mut HistoryCursor,
+    max_transactions: usize,
     budget: &IoBudget,
     transactions: &mut HashMap<Felt, HistoryTransaction>,
-) -> Result<Option<u64>, DiscoveryError> {
-    let previous_block_number = cursor
-        .begin_block_number
-        .unwrap_or_else(|| backend.block_number());
+) -> Result<ScanStep, DiscoveryError> {
+    // Resolve the scan upper bound. On a fresh scan (`None`) use the snapshot's
+    // pinned `block_id` for the RPC window top so tag semantics (e.g.
+    // PreConfirmed) include head-of-chain withdrawals; `block_number()` gives
+    // the matching concrete number for window arithmetic.
+    let (upper_block_number, upper_block_id) = match cursor.begin_block_number {
+        Some(block_number) => (block_number, BlockId::Number(block_number)),
+        None => (backend.block_number(), backend.block_id()),
+    };
 
-    // Drop notes whose block sits *above* the cursor/snapshot upper bound.
-    // Both `cursor.begin_block_number` and the snapshot's `block_id` are
-    // user-controlled, so they may disagree with the actual on-chain block of a
-    // discovered note (stale cursor, malicious input, or chain drift). Skip
-    // silently and advance the scanner.
-    let (block_number, block_notes) = loop {
-        let Some((block_number, block_notes)) =
-            note_scanner.next_block(backend, cursor, budget).await?
-        else {
-            return Ok(None);
-        };
-        if block_number <= previous_block_number {
-            break (block_number, block_notes);
+    // Peek the next note block, draining and discarding any note whose block
+    // sits *above* the upper bound. Both `cursor.begin_block_number` and the
+    // snapshot are user-controlled, so a stale/adversarial cursor may surface
+    // notes above the bound; skip them without processing.
+    let note_block = loop {
+        match note_scanner
+            .peek_next_block(backend, cursor, budget)
+            .await?
+        {
+            None => return Ok(ScanStep::Exhausted),
+            Some(block_number) if block_number <= upper_block_number => break block_number,
+            Some(block_number) => {
+                trace!(
+                    block_number,
+                    upper_block_number,
+                    "history: skipping note above upper bound"
+                );
+                note_scanner.next_block(backend, cursor, budget).await?;
+            }
         }
-        trace!(
-            block_number,
-            previous_block_number,
-            "history: skipping note above upper bound"
-        );
+    };
+
+    // Scan the gap strictly above the note block first. Doing this before
+    // draining the note keeps block `K` out of the gap range, so a budget
+    // failure mid-gap cannot make a later page re-scan (and double-count) the
+    // note block's withdrawals. `saturating_add` guards the unreachable
+    // `note_block == u64::MAX` (block numbers come from chain storage).
+    let note_block_gap_floor = note_block.saturating_add(1);
+    if upper_block_number >= note_block_gap_floor {
+        let window_bottom = fetch_gap_withdrawals_chunked(
+            backend,
+            user_address,
+            note_block_gap_floor,
+            upper_block_number,
+            upper_block_id,
+            budget,
+            transactions,
+        )
+        .await?;
+        cursor.begin_block_number = Some(window_bottom.saturating_sub(1));
+        if window_bottom > note_block_gap_floor {
+            // Budget bounded the window above the note; resume next page.
+            return Ok(ScanStep::Halted);
+        }
+    }
+
+    // Gap fully covered down to the note block. Stop before the note when the
+    // page is already full; the page has content, so the next page resumes at
+    // the note block.
+    if transactions.len() >= max_transactions {
+        return Ok(ScanStep::Halted);
+    }
+
+    // Stop before a note step the remaining budget can't fund. The shortfall
+    // propagates like any other budget error.
+    let cost = note_step_cost(cursor);
+    if budget.remaining() < cost {
+        return Err(DiscoveryError::InsufficientBudget {
+            needed: cost,
+            available: budget.remaining(),
+        });
+    }
+
+    // Drain the note block and fetch its events. `next_block` advances
+    // `next_index` as it drains and both steps still consume budget, so
+    // snapshot the indices and roll them back if either step fails; the notes
+    // stay readable on the next page instead of being skipped for good.
+    let next_indices: Vec<Option<u64>> = cursor
+        .subchannels
+        .iter()
+        .map(|subchannel| subchannel.next_index)
+        .collect();
+    let Some((block_number, block_notes)) = note_scanner
+        .next_block(backend, cursor, budget)
+        .await
+        .inspect_err(|_| restore_next_indices(cursor, &next_indices))?
+    else {
+        // Unreachable for a single-threaded scan: the block peeked above is
+        // still buffered. Treat a vanished block as exhaustion rather than
+        // relying on scanner internals.
+        return Ok(ScanStep::Exhausted);
     };
 
     trace!(
         block_number,
         num_notes = block_notes.len(),
         budget_remaining = budget.remaining(),
-        "history: processing block"
+        "history: processing note block"
     );
 
     fetch_aggregated_block_events(
@@ -208,19 +279,34 @@ async fn process_next_block<B: IViews + IEvents>(
         budget,
         transactions,
     )
-    .await?;
+    .await
+    .inspect_err(|_| restore_next_indices(cursor, &next_indices))?;
+    cursor.begin_block_number = Some(block_number.saturating_sub(1));
 
-    fetch_aggregated_withdrawal_events(
-        backend,
-        user_address,
-        block_number + 1,
-        cursor.begin_block_number,
-        budget,
-        transactions,
-    )
-    .await?;
+    Ok(ScanStep::Advanced)
+}
 
-    Ok(Some(block_number))
+/// I/O cost of processing the next note block in the common case: its
+/// block-events query plus one scanner refill across the subchannels that still
+/// have notes to read (exhausted ones are skipped by `fill_buffers` and cost
+/// nothing). A block holding several notes of one subchannel refills once per
+/// note and can cost more; `process_next_block` rolls the drain back if that
+/// happens, so the shortfall is a clean retry rather than a loss.
+fn note_step_cost(cursor: &HistoryCursor) -> usize {
+    let num_active_subchannels = cursor
+        .subchannels
+        .iter()
+        .filter(|subchannel| subchannel.next_index.is_some())
+        .count();
+    COST_BLOCK_EVENTS_QUERY + num_active_subchannels * COST_NOTE
+}
+
+/// Rolls every subchannel's `next_index` back to `next_indices`, undoing a
+/// drain whose note step could not be completed.
+fn restore_next_indices(cursor: &mut HistoryCursor, next_indices: &[Option<u64>]) {
+    for (subchannel, &next_index) in cursor.subchannels.iter_mut().zip(next_indices) {
+        subchannel.next_index = next_index;
+    }
 }
 
 /// Fetches all events for a block and groups them into `transactions`.
@@ -329,68 +415,74 @@ async fn fetch_aggregated_block_events<E: IEvents>(
     Ok(())
 }
 
-/// Fetches withdrawal events for a block range and groups them into `transactions`.
+/// Scans withdrawals in the gap `[from_block, to_block]` for `user_address`,
+/// top-down, consuming **at most** the budget available rather than charging the
+/// whole range at once.
 ///
-/// These are standalone withdrawals (in the gap between note blocks) filtered
-/// by `user_address` at the RPC level (`get_withdrawal_events`). Note that the same
-/// withdrawal-attribution caveats from [`fetch_aggregated_block_events`] apply
-/// to in-block withdrawals but **not** here, since gap-range withdrawals are
-/// already keyed on the querying account's address.
+/// These are standalone withdrawals (in the gap above a note block) filtered by
+/// `user_address` at the RPC level (`get_withdrawal_events`). The
+/// withdrawal-attribution caveats from [`fetch_aggregated_block_events`] don't
+/// apply here, since gap-range withdrawals are already keyed on the querying
+/// account's address.
 ///
-/// Budget cost scales with the range size:
-/// `ceil((to_block_number + 1 - from_block_number) / EVENTS_COST_CHUNK_SIZE) * COST_EVENTS_CHUNK`,
-/// where `to_block_number` defaults to the snapshot's resolved `block_number`
-/// when the caller passes `None`. An empty range
-/// (`to_block_number < from_block_number`) is skipped without an RPC.
+/// Charges `COST_EVENTS_CHUNK` per `EVENTS_COST_CHUNK_SIZE`-block chunk, granting
+/// as many whole chunks as the budget allows ([`IoBudget::consume_up_to`]), then
+/// issues one `get_withdrawal_events` over the affordable top window
+/// `[window_bottom, to_block]` and groups matched withdrawals into `transactions`.
 ///
-/// When `to_block_number` is `None` (first page of a fresh scan), the upper
-/// bound passed to the RPC is the snapshot's pinned `block_id` so any tag/hash
-/// semantics (e.g. `PreConfirmed`) are preserved.
+/// Returns the lowest block scanned (`window_bottom`); the caller advances the
+/// cursor to `window_bottom - 1`. When the full gap was covered in this call,
+/// `window_bottom == from_block`; otherwise it is above `from_block` and the
+/// caller resumes the remainder on the next page.
 ///
-/// Returns `Err(InsufficientBudget)` if budget is insufficient (no work done).
-async fn fetch_aggregated_withdrawal_events<E: IEvents>(
+/// `to_block_id` is the `BlockId` used for the window top, so a fresh scan can
+/// pass the snapshot's pinned tag (e.g. `PreConfirmed`) to include
+/// head-of-chain withdrawals, while window arithmetic uses the resolved
+/// `to_block` number.
+///
+/// Caller guarantees `from_block <= to_block`. Returns `Err(InsufficientBudget)`
+/// only when not even one chunk is affordable (no forward progress possible).
+async fn fetch_gap_withdrawals_chunked<E: IEvents>(
     backend: &E,
     user_address: Felt,
-    from_block_number: u64,
-    to_block_number: Option<u64>,
+    from_block: u64,
+    to_block: u64,
+    to_block_id: BlockId,
     budget: &IoBudget,
     transactions: &mut HashMap<Felt, HistoryTransaction>,
-) -> Result<(), DiscoveryError> {
-    let (to_block_number, to_block) = match to_block_number {
-        Some(n) => (n, BlockId::Number(n)),
-        None => (backend.block_number(), backend.block_id()),
-    };
+) -> Result<u64, DiscoveryError> {
+    // Callers pass `from_block >= 1` (one above a note block), so `+ 1` cannot
+    // overflow even when `to_block == u64::MAX`.
+    let num_blocks = to_block - from_block + 1;
+    let chunks_needed = num_blocks.div_ceil(EVENTS_COST_CHUNK_SIZE as u64);
+    // Cap to usize for `consume_up_to`; the grant is bounded by the budget
+    // regardless, so a huge `chunks_needed` just means "scan as much as we can".
+    let chunks_needed = usize::try_from(chunks_needed).unwrap_or(usize::MAX);
 
-    // Empty / inverted range — `from_block_number` is `block_number + 1` of the
-    // last processed note, so the gap can be empty for adjacent note blocks
-    // (normal) or for a stale/inconsistent cursor (`to_block_number` below the
-    // scanner's actual blocks). Either way, skip the RPC.
-    if to_block_number < from_block_number {
-        trace!(
-            from_block_number,
-            to_block_number,
-            "withdrawal_events: empty range, skipping RPC"
-        );
-        return Ok(());
+    let (chunks_granted, _) = budget.consume_up_to(chunks_needed, COST_EVENTS_CHUNK);
+    if chunks_granted == 0 {
+        return Err(DiscoveryError::InsufficientBudget {
+            needed: COST_EVENTS_CHUNK,
+            available: budget.remaining(),
+        });
     }
 
-    let num_blocks = to_block_number - from_block_number + 1;
-    let cost_u64 = num_blocks.div_ceil(EVENTS_COST_CHUNK_SIZE as u64) * COST_EVENTS_CHUNK as u64;
-    let cost: usize = cost_u64
-        .try_into()
-        .map_err(|_| DiscoveryError::CostOverflow(cost_u64))?;
-
-    budget.try_consume(cost)?;
+    // Top-down window: scan the highest `chunks_granted` chunks of the gap,
+    // clamped to the gap floor.
+    let granted_span = (chunks_granted as u64).saturating_mul(EVENTS_COST_CHUNK_SIZE as u64);
+    let window_bottom = to_block.saturating_sub(granted_span - 1).max(from_block);
 
     let events = backend
-        .get_withdrawal_events(user_address, BlockId::Number(from_block_number), to_block)
+        .get_withdrawal_events(user_address, BlockId::Number(window_bottom), to_block_id)
         .await?;
 
     trace!(
-        from_block_number,
-        to_block = ?to_block,
+        from_block,
+        to_block,
+        window_bottom,
+        chunks_granted,
         num_withdrawal_events = events.len(),
-        "withdrawal_events: fetched"
+        "withdrawal_events: chunked window fetched"
     );
 
     for event in events {
@@ -402,7 +494,7 @@ async fn fetch_aggregated_withdrawal_events<E: IEvents>(
         }
     }
 
-    Ok(())
+    Ok(window_bottom)
 }
 
 /// Fetches the synthetic registration transaction for the user.
@@ -471,10 +563,21 @@ mod tests {
     const PACKED: Felt = Felt::from_hex_unchecked("0xDEAD");
 
     /// Budget for one complete note-block iteration over a single-subchannel
-    /// fixture: the initial fill and the refill (one note read each, since
+    /// fixture: the peek and the post-drain refill (one note read each, since
     /// `fill_buffers` charges per active subchannel), the block-events query,
-    /// and the gap withdrawal query.
+    /// and one gap chunk.
     const ONE_BLOCK_BUDGET: usize = 2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_EVENTS_CHUNK;
+
+    /// A subchannel with no notes left to read; `fill_buffers` skips it.
+    fn exhausted_subchannel() -> HistorySubchannel {
+        HistorySubchannel {
+            channel_key: SecretFelt::new(Felt::from_hex_unchecked("0xE0")),
+            token: TOKEN,
+            channel_kind: ChannelKind::Incoming,
+            counterparty: Felt::from_hex_unchecked("0xBEEF"),
+            next_index: None,
+        }
+    }
 
     fn channel_key() -> SecretFelt {
         SecretFelt::new(Felt::from_hex_unchecked("0xCAFE"))
@@ -611,12 +714,21 @@ mod tests {
             }
         }
 
-        fn note(mut self, index: u64, block: u64, tx_hash: Felt) -> Self {
+        fn note(self, index: u64, block: u64, tx_hash: Felt) -> Self {
+            let note_id = compute_note_id(&self.key, TOKEN, index);
+            let mut builder = self.note_without_event(index, block);
+            builder
+                .events
+                .push(enc_note_created_event(note_id, block, tx_hash));
+            builder
+        }
+
+        /// A note present in storage with no `EncNoteCreated` event: its block is
+        /// processed (the cursor advances past it) without yielding a transaction.
+        fn note_without_event(mut self, index: u64, block: u64) -> Self {
             let note_id = compute_note_id(&self.key, TOKEN, index);
             self.storage
                 .insert_with_block(storage_slots::notes(note_id), PACKED, block);
-            self.events
-                .push(enc_note_created_event(note_id, block, tx_hash));
             self
         }
 
@@ -885,10 +997,10 @@ mod tests {
         assert_eq!(tx.notes.len(), 1);
     }
 
-    // -- fetch_aggregated_withdrawal_events tests --
+    // -- fetch_gap_withdrawals_chunked tests --
 
     #[tokio::test]
-    async fn withdrawal_events_groups_by_tx_hash() {
+    async fn gap_withdrawals_group_by_tx_hash() {
         let events = vec![
             withdrawal_event(50, 15, TX_HASH_1),
             withdrawal_event(50, 20, TX_HASH_2),
@@ -897,51 +1009,57 @@ mod tests {
         let budget = IoBudget::new(100);
         let mut transactions = HashMap::new();
 
-        fetch_aggregated_withdrawal_events(
+        let window_bottom = fetch_gap_withdrawals_chunked(
             &backend,
             ADDRESS,
             10,
-            Some(25),
+            25,
+            BlockId::Number(25),
             &budget,
             &mut transactions,
         )
         .await
         .unwrap();
 
+        // The whole 16-block gap fits in one chunk → fully scanned to the floor.
+        assert_eq!(window_bottom, 10);
         assert_eq!(transactions.len(), 2);
     }
 
     #[tokio::test]
-    async fn withdrawal_events_empty_range() {
+    async fn gap_withdrawals_no_matches() {
         let backend = MockEventBackend::empty();
         let budget = IoBudget::new(100);
         let mut transactions = HashMap::new();
 
-        fetch_aggregated_withdrawal_events(
+        let window_bottom = fetch_gap_withdrawals_chunked(
             &backend,
             ADDRESS,
             10,
-            Some(25),
+            25,
+            BlockId::Number(25),
             &budget,
             &mut transactions,
         )
         .await
         .unwrap();
 
+        assert_eq!(window_bottom, 10);
         assert!(transactions.is_empty());
     }
 
     #[tokio::test]
-    async fn withdrawal_events_zero_budget() {
+    async fn gap_withdrawals_zero_budget() {
         let backend = MockEventBackend::empty();
         let budget = IoBudget::new(0);
         let mut transactions = HashMap::new();
 
-        let error = fetch_aggregated_withdrawal_events(
+        let error = fetch_gap_withdrawals_chunked(
             &backend,
             ADDRESS,
             10,
-            Some(25),
+            25,
+            BlockId::Number(25),
             &budget,
             &mut transactions,
         )
@@ -956,43 +1074,61 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn withdrawal_events_first_page_cost_uses_to_block_number() {
-        // Range is [0, 1024] → 1025 blocks → 2 chunks of 1024 → cost = 20.
-        // The first-page flag is independent: it controls only the BlockId
-        // passed to the RPC (snapshot's pinned block_id vs. concrete number).
+    async fn gap_withdrawals_chunks_within_budget() {
+        // Gap [0, 1024] = 1025 blocks → 2 chunks needed (cost 20).
         let backend = MockEventBackend::empty();
-        let budget = IoBudget::new(COST_EVENTS_CHUNK * 2);
-        let mut transactions = HashMap::new();
 
-        fetch_aggregated_withdrawal_events(
+        // Full budget for both chunks → whole gap covered in one call.
+        let budget = IoBudget::new(COST_EVENTS_CHUNK * 2);
+        let window_bottom = fetch_gap_withdrawals_chunked(
             &backend,
             ADDRESS,
             0,
-            Some(1024),
+            1024,
+            BlockId::Number(1024),
             &budget,
-            &mut transactions,
+            &mut HashMap::new(),
         )
         .await
         .unwrap();
-
+        assert_eq!(window_bottom, 0, "full gap covered down to the floor");
         assert_eq!(budget.remaining(), 0);
 
-        // One less and the call must fail with a legitimate (small) `needed`.
-        let tight_budget = IoBudget::new(COST_EVENTS_CHUNK * 2 - 1);
-        let error = fetch_aggregated_withdrawal_events(
+        // Budget for only one chunk → the top [1, 1024] window is scanned and
+        // the floor (block 0) is left for the next page: a tight budget makes
+        // partial progress rather than covering nothing.
+        let budget = IoBudget::new(COST_EVENTS_CHUNK);
+        let window_bottom = fetch_gap_withdrawals_chunked(
             &backend,
             ADDRESS,
             0,
-            Some(1024),
-            &tight_budget,
+            1024,
+            BlockId::Number(1024),
+            &budget,
+            &mut HashMap::new(),
+        )
+        .await
+        .unwrap();
+        assert_eq!(window_bottom, 1, "only the top 1024-block chunk scanned");
+        assert_eq!(budget.remaining(), 0);
+
+        // Not even one chunk affordable → error (no forward progress possible).
+        let budget = IoBudget::new(COST_EVENTS_CHUNK - 1);
+        let error = fetch_gap_withdrawals_chunked(
+            &backend,
+            ADDRESS,
+            0,
+            1024,
+            BlockId::Number(1024),
+            &budget,
             &mut HashMap::new(),
         )
         .await
         .unwrap_err();
         match error {
             DiscoveryError::InsufficientBudget { needed, available } => {
-                assert_eq!(needed, COST_EVENTS_CHUNK * 2);
-                assert_eq!(available, COST_EVENTS_CHUNK * 2 - 1);
+                assert_eq!(needed, COST_EVENTS_CHUNK);
+                assert_eq!(available, COST_EVENTS_CHUNK - 1);
             }
             other => panic!("expected InsufficientBudget, got: {other:?}"),
         }
@@ -1118,12 +1254,10 @@ mod tests {
 
     #[tokio::test]
     async fn gap_withdrawal_kept_on_early_break() {
-        // Regression: the iteration-1 gap fetch covers `[K_max + 1, tip]` and
-        // successfully picks up withdrawals above the highest note block. When
-        // budget runs out mid-iteration-2, those gap-range transactions must
-        // still be returned — dropping them leaves subsequent pages with no
-        // way to re-fetch that range (later gaps cover `[K_i+1, K_{i-1}]`,
-        // strictly below `K_max`).
+        // The first iteration's gap covers `[K_max + 1, tip]` and picks up
+        // withdrawals above the highest note block; this page must return them.
+        // Later gaps cover `[K_i + 1, K_{i-1}]`, strictly below `K_max`, so a
+        // gap withdrawal not returned now could never be re-fetched.
         const TX_HASH_3: Felt = Felt::from_hex_unchecked("0x1003");
 
         let (backend, mut cursor) = FixtureBuilder::new()
@@ -1143,9 +1277,9 @@ mod tests {
         .await
         .unwrap();
 
-        // Block 20 tx AND the gap-range withdrawal at block 50 are both
-        // kept; block-10 iteration didn't complete so any orphan from it is
-        // dropped.
+        // Block 20's tx and the block-50 gap withdrawal are both returned.
+        // Block 10 is never drained — iteration 2's gap fetch exhausts the
+        // budget first — so it contributes nothing to this page.
         assert_eq!(result.len(), 2);
         assert_eq!(result[0].block_number, 50);
         assert_eq!(result[0].transaction_hash, TX_HASH_3);
@@ -1156,6 +1290,283 @@ mod tests {
         assert_eq!(result[1].notes.len(), 1);
         assert_eq!(result[1].deposits.len(), 1);
         assert!(!cursor.history_complete);
+    }
+
+    #[tokio::test]
+    async fn far_behind_account_paginates_instead_of_500() {
+        // An account whose most-recent note sits ~1M blocks below the upper
+        // bound has a gap wider than one page's budget can scan at once. The
+        // scan covers it across budget-bounded windows — each page returns Ok
+        // and advances the cursor — rather than charging the whole range in one
+        // shot and failing.
+        const TX_HASH_FAR_WITHDRAWAL: Felt = Felt::from_hex_unchecked("0x1009");
+
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 100, TX_HASH_1)
+            .withdrawal(50, 150, TX_HASH_FAR_WITHDRAWAL)
+            .build(Some(0));
+        cursor.begin_block_number = Some(1_100_000); // ~1.1M-block gap above the note
+
+        // Page 1: only the most-recent window is scanned, which holds no
+        // withdrawals, so the page is empty and the cursor advances downward.
+        let page1 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(10_000))
+            .await
+            .expect("wide gap must paginate, not return InsufficientBudget");
+        assert!(page1.is_empty(), "no withdrawals in the most-recent window");
+        assert!(!cursor.history_complete);
+        assert!(
+            cursor.begin_block_number.unwrap() < 1_100_000,
+            "cursor must advance downward"
+        );
+
+        // Page 2: the remainder of the gap is covered, surfacing the withdrawal
+        // and the note, and the scan completes.
+        let page2 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(10_000))
+            .await
+            .unwrap();
+        let blocks: Vec<u64> = page2.iter().map(|tx| tx.block_number).collect();
+        assert!(
+            blocks.contains(&150),
+            "withdrawal block surfaced: {blocks:?}"
+        );
+        assert!(blocks.contains(&100), "note block surfaced: {blocks:?}");
+        let withdrawal_tx = page2.iter().find(|tx| tx.block_number == 150).unwrap();
+        assert_eq!(withdrawal_tx.withdrawals.len(), 1);
+        assert_eq!(withdrawal_tx.withdrawals[0].amount, 50);
+        assert!(cursor.history_complete);
+    }
+
+    #[tokio::test]
+    async fn note_block_withdrawal_not_double_counted_across_pages() {
+        // A partial withdrawal emits a note and a Withdrawal in the same block.
+        // Gap windows are strictly *above* each note block, so block 20's
+        // withdrawal is attached once (via block events) and is never re-scanned
+        // by a later page's gap. Drive two pages and assert it appears once.
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 10, TX_HASH_1)
+            .note(1, 20, TX_HASH_2)
+            .withdrawal(50, 20, TX_HASH_2) // same block & tx as note 1
+            .build(Some(1));
+
+        // Page 1: budget for the block-20 iteration only.
+        let page1 = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            1,
+            &IoBudget::new(ONE_BLOCK_BUDGET),
+        )
+        .await
+        .unwrap();
+        // Page 2: the remainder.
+        let page2 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        let total_withdrawals = page1
+            .iter()
+            .chain(page2.iter())
+            .flat_map(|tx| tx.withdrawals.iter())
+            .filter(|withdrawal| withdrawal.amount == 50)
+            .count();
+        assert_eq!(
+            total_withdrawals, 1,
+            "block-20 withdrawal counted exactly once"
+        );
+    }
+
+    #[tokio::test]
+    async fn note_step_shortfall_errors_rather_than_looping() {
+        // The cursor sits exactly at a note block (empty gap above), and the
+        // budget covers the peek but not the note step. Deferring the note
+        // would leave the cursor unmoved, so a same-budget retry would repeat
+        // forever on an empty 200. The scan surfaces InsufficientBudget instead
+        // of making zero progress.
+        let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
+        cursor.begin_block_number = Some(10); // at the note block → gap (10, 10] is empty
+
+        // peek costs COST_NOTE (2); note step needs COST_BLOCK_EVENTS_QUERY +
+        // COST_NOTE (12). A budget of 5 affords the peek but not the note step.
+        let error = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(5))
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(error, DiscoveryError::InsufficientBudget { .. }),
+            "expected InsufficientBudget, got: {error:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn gap_window_boundary_scanned_exactly_once_across_pages() {
+        // Page 1's budget covers one 1024-block chunk of the 2900-block gap
+        // above the note, so its window is `[1977, 3000]` and the cursor lands
+        // on 1976. The withdrawal at the window's bottom edge (1977) belongs to
+        // page 1; the one just below it (1976) belongs to page 2. Each must
+        // appear exactly once across the two pages.
+        const TX_HASH_EDGE: Felt = Felt::from_hex_unchecked("0x1977");
+        const TX_HASH_BELOW: Felt = Felt::from_hex_unchecked("0x1976");
+
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 100, TX_HASH_1)
+            .withdrawal(50, 1977, TX_HASH_EDGE)
+            .withdrawal(60, 1976, TX_HASH_BELOW)
+            .build(Some(0));
+        cursor.begin_block_number = Some(3000);
+
+        let page1 = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            &IoBudget::new(COST_NOTE + COST_EVENTS_CHUNK),
+        )
+        .await
+        .unwrap();
+        assert_eq!(cursor.begin_block_number, Some(1976));
+        let page2 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+            .await
+            .unwrap();
+
+        let occurrences = |tx_hash: Felt| {
+            page1
+                .iter()
+                .chain(page2.iter())
+                .filter(|tx| tx.transaction_hash == tx_hash)
+                .count()
+        };
+        assert_eq!(occurrences(TX_HASH_EDGE), 1, "edge withdrawal (1977) once");
+        assert_eq!(
+            occurrences(TX_HASH_BELOW),
+            1,
+            "withdrawal below the edge (1976) once"
+        );
+    }
+
+    #[tokio::test]
+    async fn note_step_shortfall_after_gap_progress_returns_page() {
+        // The gap above the note is fully covered (the cursor moves from 50 to
+        // the note block) but nothing is left to fund the note step. The page
+        // returns Ok with the moved cursor; the next page, with a fresh budget,
+        // drains the note. Only a page that moves nothing is an error.
+        let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
+        cursor.begin_block_number = Some(50); // gap [11, 50] above the note
+
+        // peek (COST_NOTE) + one gap chunk (COST_EVENTS_CHUNK) consumes everything.
+        let page = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            &IoBudget::new(COST_NOTE + COST_EVENTS_CHUNK),
+        )
+        .await
+        .unwrap();
+        assert!(page.is_empty());
+        assert!(!cursor.history_complete);
+        assert_eq!(
+            cursor.begin_block_number,
+            Some(10),
+            "cursor moved down to the note block"
+        );
+    }
+
+    #[tokio::test]
+    async fn later_iteration_shortfall_after_progress_is_not_an_error() {
+        // Iteration 1 processes the note at block 20 (no matching event, so no
+        // transaction results) and moves the cursor to 19. Iteration 2 finds an
+        // empty gap and can't fund the note at 19. The page made progress, so it
+        // returns Ok with the moved cursor rather than InsufficientBudget; a
+        // fresh page drains the note at 19.
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note_without_event(1, 20)
+            .note(0, 19, TX_HASH_1)
+            .build(Some(1));
+        cursor.begin_block_number = Some(20); // no gap above the first note
+
+        // Iteration 1 spends exactly peek + refill + block events (its gap is
+        // empty, so no chunk); nothing is left for the second note step.
+        let page = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            &IoBudget::new(2 * COST_NOTE + COST_BLOCK_EVENTS_QUERY),
+        )
+        .await
+        .unwrap();
+        assert!(page.is_empty());
+        assert!(!cursor.history_complete);
+        assert_eq!(cursor.begin_block_number, Some(19));
+    }
+
+    #[tokio::test]
+    async fn exhausted_subchannels_do_not_inflate_note_step_cost() {
+        // An exhausted subchannel sits beside the live one. `fill_buffers`
+        // skips it, so the note step costs the block-events query plus a single
+        // refill; a budget sized for exactly that succeeds.
+        let (backend, mut cursor) = FixtureBuilder::new().note(0, 10, TX_HASH_1).build(Some(0));
+        cursor.begin_block_number = Some(10); // empty gap above the note
+        cursor.subchannels.push(exhausted_subchannel());
+
+        // peek (COST_NOTE) + note step (COST_BLOCK_EVENTS_QUERY + one refill).
+        let budget = IoBudget::new(COST_NOTE + COST_BLOCK_EVENTS_QUERY + COST_NOTE);
+        let page = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &budget)
+            .await
+            .unwrap();
+        assert_eq!(page.len(), 1);
+        assert_eq!(page[0].block_number, 10);
+        assert!(cursor.history_complete);
+    }
+
+    #[tokio::test]
+    async fn drained_notes_survive_block_events_budget_failure() {
+        // Three notes of one subchannel share block 100 and a withdrawal sits in
+        // the gap above. Draining all three needs a refill per extra note and
+        // leaves too little for the block-events query. The drain's
+        // `next_index` advance is rolled back, so the page returns the gap
+        // withdrawal with a cursor still pointing at the notes, and the next
+        // page drains them.
+        const TX_HASH_GAP_WITHDRAWAL: Felt = Felt::from_hex_unchecked("0x1150");
+
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 100, TX_HASH_1)
+            .note(1, 100, TX_HASH_1)
+            .note(2, 100, TX_HASH_1)
+            .withdrawal(50, 150, TX_HASH_GAP_WITHDRAWAL)
+            .build(Some(2));
+        cursor.begin_block_number = Some(200);
+
+        // Everything up to the block-events query — the peek, one gap chunk,
+        // and the two refills that surface the second and third notes — minus
+        // one, so the query itself is the step that fails.
+        let page1 = fetch_transactions(
+            &backend,
+            ADDRESS,
+            &mut cursor,
+            10,
+            &IoBudget::new(3 * COST_NOTE + COST_EVENTS_CHUNK + COST_BLOCK_EVENTS_QUERY - 1),
+        )
+        .await
+        .unwrap();
+        assert_eq!(page1.len(), 1);
+        assert_eq!(page1[0].block_number, 150);
+        assert_eq!(
+            cursor.subchannels[0].next_index,
+            Some(2),
+            "drain rolled back"
+        );
+        assert!(!cursor.history_complete);
+
+        let page2 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+            .await
+            .unwrap();
+        let block_100 = page2
+            .iter()
+            .find(|tx| tx.block_number == 100)
+            .expect("block 100 surfaces on the next page");
+        assert_eq!(block_100.notes.len(), 3);
+        assert!(cursor.history_complete);
     }
 
     #[tokio::test]

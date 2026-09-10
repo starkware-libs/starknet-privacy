@@ -292,12 +292,12 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `contract_address`: The privacy pool contract address.
 - `user_address`: The user's on-chain address (used for withdrawal event filtering).
-- `max_transactions`: Maximum number of transactions to return per page. Capped by server `max_history_transactions` limit.
+- `max_transactions`: Target number of transactions per page; a single gap window may overshoot it (see Chunked gap scan). Capped by server `max_history_transactions` limit.
 - `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request.
 - `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
   - `subchannels`: List of subchannels to scan. Each contains the `channel_key`, `token`, `channel_kind` (`incoming`, `outgoing`, `self_channel`), `counterparty` address, and `next_index` (next note index to read descending, `null` if exhausted).
-  - `begin_block_number`: Inclusive upper bound for event queries. Omit it (or send `null`) on the first request so the server resolves it from the pinned snapshot block (`block_ref`, or the current head when `block_ref` is omitted) — a literal `0` bounds the scan at block 0, so every note is skipped and history is marked complete without any note transactions. On subsequent requests, use the value from the previous response cursor.
+  - `begin_block_number`: Inclusive upper bound for the next scan window. Omit it (or send `null`) on the first request so the server resolves it from the pinned snapshot block (`block_ref`, or the current head when `block_ref` is omitted) — a literal `0` bounds the scan at block 0, so every note is skipped and history is marked complete without any note transactions. On subsequent requests, use the value from the previous response cursor — note this may land partway through a long gap above a note, since the gap is scanned in budget-bounded windows (see Cursor lifecycle).
   - `history_complete`: `false` on initial request.
 
 **Response:**
@@ -344,9 +344,17 @@ Retrieves paginated transaction history by scanning backward through note subcha
 **Cursor lifecycle:**
 
 1. **Build initial cursor:** After completing incoming/outgoing sync, build `HistorySubchannel` entries from discovered channels and subchannels. Leave `begin_block_number` unset (`null`) and set `history_complete` to `false`.
-2. **First request:** Server resolves `begin_block_number` from the pinned snapshot block. Scans notes backward, fetches block events, groups into transactions.
+2. **First request:** Server resolves `begin_block_number` from the pinned snapshot block. For each note block (newest first) it scans the gap **above** it for standalone withdrawals first, then the note block's own events, advancing `begin_block_number` as each step commits.
 3. **Pagination:** Pass back cursor from response. Server continues scanning from where it left off.
 4. **Done:** When `history_complete` is `true`, all history has been retrieved.
+
+**Chunked gap scan.** Standalone withdrawals (full withdrawals that create no note) live in the gap between note blocks and are found via a block-range `get_withdrawal_events` query. To keep per-request work bounded, the gap above each note is scanned **top-down in budget-bounded windows** (`COST_EVENTS_CHUNK` per `EVENTS_COST_CHUNK_SIZE`-block chunk, granting as many whole chunks as the remaining budget allows) rather than as one indivisible charge. Consequences:
+
+- An account whose most-recent note is far behind chain head no longer fails with an oversized single charge; the wide gap is traversed across pages with forward progress, so the request returns `200` and the cursor advances.
+- A page may therefore return **few or zero transactions** while still advancing `begin_block_number` through a long stretch with no activity. Clients must keep paginating until `history_complete` is `true` rather than treating an empty page as the end.
+- The gap window is always strictly **above** the note block it anchors, so a withdrawal in a note's own block is attributed once (via that block's events) and never re-scanned by a later page's gap.
+- One gap window can attach every withdrawal it contains at once, so a page covering a withdrawal-dense range may return **more than `max_transactions`** transactions. `max_transactions` is a per-page target, not a hard cap on a single page's size.
+- A page that can make **no** forward progress (the budget covers neither a gap chunk nor the next note step) returns `500 INTERNAL_ERROR` rather than an endless stream of empty `200`s. This only occurs when `server_budget` is set too low for the account's per-request cost — many subchannels, or many notes sharing one block, since draining a block refills once per note — and repeats until `server_budget` is raised.
 
 **Validation limits:**
 
@@ -358,5 +366,6 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` is `0` or exceeds the server limit.
 - `409 BLOCK_REORGED` — `last_known_block` was reorged out.
+- `500 INTERNAL_ERROR` — The page could make no forward progress within `server_budget` (see Chunked gap scan).
 - `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
 - Standard `DiscoveryError` mapping for storage and event errors.
