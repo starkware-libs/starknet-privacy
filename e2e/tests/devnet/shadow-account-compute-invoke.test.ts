@@ -23,6 +23,7 @@ import {
   type BlockIdentifier,
 } from "starknet";
 import { createE2eTestEnv, type E2eTestEnv } from "../../src/harness.js";
+import { InterceptorSubjectProofProvider } from "../../src/interceptor-subject-proof-provider.js";
 import { deployTestTokens, type TokenAddresses } from "../../src/vesu-setup.js";
 import {
   deployShadowAccountAnonymizer,
@@ -35,15 +36,15 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
   let env: E2eTestEnv;
   let tokens: TokenAddresses;
   let shadowAccount: ShadowAccountAddresses;
+  let alicePrivateTransfers: PrivateTransfersInterface;
 
   beforeAll(async () => {
     devnet = new Devnet();
     env = await createE2eTestEnv(devnet, {
       indexer: { logFile: "shadow-account-compute-invoke-indexer.log" },
-      interceptorBackedScreening: true,
     });
 
-    const { admin, node, privacy } = env.env;
+    const { admin, alice, node, privacy, chainId } = env.env;
     tokens = await deployTestTokens(admin, node);
     shadowAccount = await deployShadowAccountAnonymizer(
       admin,
@@ -66,6 +67,22 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
         shadowAccount.anonymizer,
       ),
     ).toBe("Delegated");
+
+    // Built only now: the interceptor's rule needs the anonymizer's address, which does not exist
+    // until it is deployed above.
+    alicePrivateTransfers = createPrivateTransfers({
+      account: alice,
+      viewingKeyProvider: { getViewingKey: async () => BigInt("0xA11CE") },
+      provingProvider: new InterceptorSubjectProofProvider(node, chainId, {
+        poolAddress: privacy.address,
+        anonymizerAddress: shadowAccount.anonymizer,
+      }),
+      discoveryProvider: new IndexerDiscoveryProvider(
+        env.indexer.apiUrl,
+        privacy.address,
+      ),
+      poolContractAddress: privacy.address,
+    });
   });
 
   afterAll(async () => {
@@ -164,13 +181,13 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
   }
 
   it("dapp payout collected via the shadow account settles into an open note", async () => {
-    const { env: de, transfers } = env;
+    const { env: de } = env;
     const usdToken = BigInt(tokens.usdToken);
 
     const poolBalanceBefore = await balanceOf(de.privacy.address);
 
     const { callAndProof } = await provePayoutCollection(
-      transfers.alice,
+      alicePrivateTransfers,
       0n,
       shadowAccount,
     );
@@ -178,7 +195,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     await env.indexer.waitForBlock(devnet.url);
 
     // The open note was filled with the dapp payout the shadow account collected.
-    const { notes } = await transfers.alice.discoverNotes();
+    const { notes } = await alicePrivateTransfers.discoverNotes();
     const usdNotes = notes.get(usdToken) ?? [];
     expect(usdNotes).toHaveLength(1);
     expect(usdNotes[0].amount).toBe(payoutAmount);
@@ -252,7 +269,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
   });
 
   it("collects through an unlisted anonymizer by attesting the anonymizer itself", async () => {
-    const { env: de, transfers } = env;
+    const { env: de } = env;
     const { admin, node, privacy } = de;
     const usdToken = BigInt(tokens.usdToken);
 
@@ -273,12 +290,12 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
       ),
     ).toBe("Required");
 
-    const usdNotesBefore = (await transfers.alice.discoverNotes()).notes.get(
-      usdToken,
-    );
+    const usdNotesBefore = (
+      await alicePrivateTransfers.discoverNotes()
+    ).notes.get(usdToken);
 
     const { callAndProof } = await provePayoutCollection(
-      transfers.alice,
+      alicePrivateTransfers,
       0n,
       unlistedAnonymizer,
     );
@@ -286,7 +303,7 @@ describe("shadow account anonymizer compute-and-invoke on devnet", () => {
     await env.indexer.waitForBlock(devnet.url);
 
     // The payout landed in a new open note, and nothing stayed behind.
-    const { notes } = await transfers.alice.discoverNotes();
+    const { notes } = await alicePrivateTransfers.discoverNotes();
     const usdNotes = notes.get(usdToken) ?? [];
     expect(usdNotes).toHaveLength((usdNotesBefore?.length ?? 0) + 1);
     expect(await balanceOf(unlistedAnonymizer.mockDapp)).toBe(0n);

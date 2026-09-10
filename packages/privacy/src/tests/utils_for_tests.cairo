@@ -1365,8 +1365,8 @@ pub(crate) impl TestImpl of TestTrait {
         (user, note_id, actions)
     }
 
-    /// Like `funded_open_note_from`, but funding through the compute-invoke path — the one the
-    /// delegated policy acts on, so every delegated fixture funds this way.
+    /// Like `funded_open_note_from`, but funding through the compute-invoke path — one of the two
+    /// invoke kinds a `Delegated` depositor can fund through.
     fn compute_funded_open_note_from(
         ref self: Test, depositor: ContractAddress, token: Token, amount: u128,
     ) -> (User, felt252, Span<ServerAction>) {
@@ -1404,8 +1404,8 @@ pub(crate) impl TestImpl of TestTrait {
         delegated_target
     }
 
-    /// Lists `depositor` as `Delegated`, so the pool reads the addresses to screen from the return
-    /// data of the compute-invoke that funds its open notes.
+    /// Lists `depositor` as `Delegated`, so the pool reads the addresses to screen from whatever
+    /// return data follows the deposits `depositor`'s invoke returns.
     fn delegate_screening_to(self: @Test, depositor: ContractAddress) {
         self
             .privacy
@@ -2528,8 +2528,8 @@ pub(crate) fn deploy_mock_custom_account(
 }
 
 /// Deploy a standard-style STARK account mock that verifies a real signature against `public_key`.
-/// `returns_legacy_bool` selects whether it accepts with a pre-SNIP-6 boolean or with `VALIDATED`;
-/// `panics_on_reject` selects whether it rejects by panicking instead of returning 0.
+/// `returns_legacy_bool` selects whether it reports acceptance as the boolean `1` instead of
+/// `VALIDATED`; `panics_on_reject` selects whether it rejects by panicking instead of returning 0.
 pub(crate) fn deploy_mock_stark_account(
     salt: felt252, public_key: felt252, returns_legacy_bool: bool, panics_on_reject: bool,
 ) -> ContractAddress {

@@ -21,8 +21,8 @@ use privacy::objects::{
 };
 use privacy::snip12::compute_call_set_hash;
 use privacy::utils::constants::{
-    ENTRYPOINT_FAILED, ERR_WRAPPER, HALF_ORDER, LEGACY_VALIDATED, OK_WRAPPER,
-    OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT, TWO_POW_120,
+    ENTRYPOINT_FAILED, ERR_WRAPPER, HALF_ORDER, OK_WRAPPER, OPEN_NOTE_PACKED_VALUE, OPEN_NOTE_SALT,
+    TWO_POW_120,
 };
 use starknet::account::Call;
 use starknet::storage::{StorageAsPointer, StoragePath};
@@ -60,10 +60,6 @@ pub mod constants {
     pub const OPEN_NOTE_SALT: u128 = 1;
     pub const TWO_POW_120: u128 = 2_u128.pow(120);
     pub const ENTRYPOINT_FAILED: felt252 = 'ENTRYPOINT_FAILED';
-    /// Acceptance felt of a pre-SNIP-6 wallet, which answers `is_valid_signature` with a boolean
-    /// rather than the [`VALIDATED`](starknet::VALIDATED) short string. SNIP-6 tells consumers to
-    /// honor both while such wallets remain in circulation.
-    pub const LEGACY_VALIDATED: felt252 = 1;
     pub const OK_WRAPPER: felt252 = 'PRIVACY_OK_WRAPPER';
     /// Brackets panic data propagated from an external contract call made during client
     /// compilation. Distinct from `OK_WRAPPER` so that a panicking external contract cannot forge
@@ -435,7 +431,7 @@ fn supports_custom_validation(user_addr: ContractAddress) -> bool {
 
 
 fn signature_accepted(validation_result: Result<felt252, Array<felt252>>) -> bool {
-    validation_result == Result::Ok(VALIDATED) || validation_result == Result::Ok(LEGACY_VALIDATED)
+    validation_result == Result::Ok(VALIDATED)
 }
 
 /// Sends server actions to L1.
@@ -604,7 +600,6 @@ pub(crate) fn deserialize_invoke_return_data(
 /// Unifies `subject` with `reference`: binds it on the first application, and requires equality on
 /// every later one.
 pub(crate) fn unify_address(ref subject: Option<ContractAddress>, reference: ContractAddress) {
-    assert(reference.is_non_zero(), errors::ZERO_CONTRACT_ADDRESS);
     if let Some(already_set) = subject {
         assert(already_set == reference, errors::MULTIPLE_SCREENING_SUBJECTS);
     } else {
