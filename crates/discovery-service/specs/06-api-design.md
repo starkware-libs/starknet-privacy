@@ -292,7 +292,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `contract_address`: The privacy pool contract address.
 - `user_address`: The user's on-chain address (used for withdrawal event filtering).
-- `max_transactions`: Maximum number of transactions to return per page. Capped by server `max_history_transactions` limit.
+- `max_transactions`: Target number of transactions per page; a single gap window may overshoot it (see Chunked gap scan). Capped by server `max_history_transactions` limit.
 - `last_known_block`: Optional. Block hash from last completed sync session. Used for reorg detection on first request.
 - `block_ref`: Optional. Block identifier for consistent storage reads across requests. Can be specified on any request, including the first.
 - `cursor`: History cursor for pagination.
@@ -354,7 +354,7 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - A page may therefore return **few or zero transactions** while still advancing `begin_block_number` through a long stretch with no activity. Clients must keep paginating until `history_complete` is `true` rather than treating an empty page as the end.
 - The gap window is always strictly **above** the note block it anchors, so a withdrawal in a note's own block is attributed once (via that block's events) and never re-scanned by a later page's gap.
 - One gap window can attach every withdrawal it contains at once, so a page covering a withdrawal-dense range may return **more than `max_transactions`** transactions. `max_transactions` is a per-page target, not a hard cap on a single page's size.
-- A page that can make **no** forward progress (the budget covers neither a gap chunk nor the next note step) returns `500 INTERNAL_ERROR` rather than an endless stream of empty `200`s. This only occurs when `server_budget` is set too low for the account's per-request cost (e.g. many subchannels); raise `server_budget`.
+- A page that can make **no** forward progress (the budget covers neither a gap chunk nor the next note step) returns `500 INTERNAL_ERROR` rather than an endless stream of empty `200`s. This only occurs when `server_budget` is set too low for the account's per-request cost — many subchannels, or many notes sharing one block, since draining a block refills once per note — and repeats until `server_budget` is raised.
 
 **Validation limits:**
 
@@ -366,5 +366,6 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` is `0` or exceeds the server limit.
 - `409 BLOCK_REORGED` — `last_known_block` was reorged out.
+- `500 INTERNAL_ERROR` — The page could make no forward progress within `server_budget` (see Chunked gap scan).
 - `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
 - Standard `DiscoveryError` mapping for storage and event errors.
