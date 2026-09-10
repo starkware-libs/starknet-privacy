@@ -169,7 +169,10 @@ pub fn validate_recipients(
     )
 }
 
-/// Rejects history cursors that exceed size limits.
+/// Rejects history cursors that exceed size limits, and page sizes of zero.
+///
+/// A zero-transaction page can never advance the scan or mark it complete, so a
+/// client paginating until `history_complete` would loop forever.
 pub fn validate_history_cursor(
     cursor: &HistoryCursor,
     max_transactions: u32,
@@ -180,6 +183,15 @@ pub fn validate_history_cursor(
         limits.max_history_subchannels,
         "history subchannels",
     )?;
+    if max_transactions == 0 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            ApiErrorResponse::new(
+                error_codes::INVALID_REQUEST,
+                "max_transactions must be at least 1",
+            ),
+        ));
+    }
     validate_bound(
         max_transactions as usize,
         limits.max_history_transactions,
@@ -514,6 +526,23 @@ mod tests {
         let (status, error) = result.unwrap_err();
         assert_eq!(status, StatusCode::BAD_REQUEST);
         assert!(error.error.message.contains("max_transactions"));
+    }
+
+    #[test]
+    fn test_history_cursor_zero_max_transactions_rejected() {
+        let limits = ValidationLimits::default();
+        let cursor = HistoryCursor::default();
+
+        let (status, error) = validate_history_cursor(&cursor, 0, &limits).unwrap_err();
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(error.error.code, error_codes::INVALID_REQUEST);
+        assert!(error.error.message.contains("max_transactions"));
+    }
+
+    #[test]
+    fn test_history_cursor_min_max_transactions_accepted() {
+        let limits = ValidationLimits::default();
+        validate_history_cursor(&HistoryCursor::default(), 1, &limits).unwrap();
     }
 
     #[test]
