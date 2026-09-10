@@ -7,7 +7,7 @@ import {
   type HistoryAction,
   type HistoryTransaction,
 } from "starknet-sdk";
-import type { RpcProvider } from "starknet";
+import type { BlockIdentifier, RpcProvider } from "starknet";
 import type { AppConfig, AccountConfig } from "../config.ts";
 import { createDiscoveryProvider } from "../starknet.ts";
 import { formatTokenAmount, truncateAddress } from "../format.ts";
@@ -162,16 +162,18 @@ function computeBalanceUpdates(
   }));
 }
 
-function buildDisplayMaps(
-  account: AccountConfig,
-  allAccounts: AccountConfig[],
-  config: AppConfig
-): {
+type DisplayMaps = {
   nameByAddress: Map<bigint, string>;
   tokenNameByAddress: Map<bigint, string>;
   tokenDecimalsByAddress: Map<bigint, number>;
   executorNames: Map<bigint, string>;
-} {
+};
+
+function buildDisplayMaps(
+  account: AccountConfig,
+  allAccounts: AccountConfig[],
+  config: AppConfig
+): DisplayMaps {
   const nameByAddress = new Map<bigint, string>();
   for (const acc of allAccounts) {
     const accAddress = BigInt(acc.address);
@@ -210,15 +212,14 @@ const ACTION_ORDER: Record<string, number> = {
 
 function toDisplayTransactions(
   rawTransactions: HistoryTransaction[],
-  viewerAddress: bigint,
-  nameByAddress: Map<bigint, string>,
-  tokenNameByAddress: Map<bigint, string>,
-  tokenDecimalsByAddress: Map<bigint, number>,
-  executorNames: Map<bigint, string>,
-  paymasterForwarderAddress: bigint | undefined
+  account: AccountConfig,
+  config: AppConfig,
+  displayMaps: DisplayMaps
 ): TransactionDisplay[] {
-  const classifyOptions: ClassifyOptions | undefined = paymasterForwarderAddress
-    ? { feeRecipients: [paymasterForwarderAddress] }
+  const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } = displayMaps;
+  const viewerAddress = BigInt(account.address);
+  const classifyOptions: ClassifyOptions | undefined = config.paymasterForwarderAddress
+    ? { feeRecipients: [BigInt(config.paymasterForwarderAddress)] }
     : undefined;
   return rawTransactions.map((transaction) => {
     const classified = classifyTransaction(transaction, classifyOptions);
@@ -270,6 +271,19 @@ async function resolveTimestamps(
   }));
 }
 
+/** Transactions requested per page. */
+const TRANSACTIONS_PER_PAGE = 5;
+
+/**
+ * Pages to walk per fetch; the walk stops at the first page that carries any
+ * transaction. A page legitimately comes back with zero transactions: the
+ * withdrawal scan over the gap between note blocks is budget-bounded, so an
+ * account idle for a long stretch spends an entire page covering empty range
+ * and reports `historyComplete: false` with an advanced cursor. Stopping after
+ * one page strands such an account on an empty list.
+ */
+const MAX_PAGES_PER_FETCH = 5;
+
 export function useHistory(
   provider: RpcProvider | undefined,
   poolAddress: string,
@@ -284,7 +298,7 @@ export function useHistory(
   const [historyComplete, setHistoryComplete] = useState(false);
 
   const historyCursorRef = useRef<HistoryCursor | undefined>(undefined);
-  const blockRefValue = useRef<string | undefined>(undefined);
+  const blockRefValue = useRef<BlockIdentifier | undefined>(undefined);
   const loadingRef = useRef(false);
 
   const autoFetchedRef = useRef(false);
@@ -313,44 +327,60 @@ export function useHistory(
 
     try {
       const indexer = createDiscoveryProvider(config, poolAddress);
-      const page = await indexer.fetchHistory(
-        BigInt(account.address),
-        registry.cursor,
-        { channels: registry.channels },
-        {
-          maxTransactions: 5,
-          historyCursor: historyCursorRef.current,
-          blockRef: blockRefValue.current,
+      const displayMaps = buildDisplayMaps(account, allAccounts, config);
+
+      for (let pageNumber = 0; pageNumber < MAX_PAGES_PER_FETCH; pageNumber += 1) {
+        const sentCursor = historyCursorRef.current;
+        const page = await indexer.fetchHistory(
+          BigInt(account.address),
+          registry.cursor,
+          { channels: registry.channels },
+          {
+            maxTransactions: TRANSACTIONS_PER_PAGE,
+            historyCursor: sentCursor,
+            blockIdentifier: blockRefValue.current,
+          }
+        );
+
+        // An empty page must at least move the gap scan down, else every
+        // remaining iteration would replay the same request.
+        if (
+          sentCursor !== undefined &&
+          page.transactions.length === 0 &&
+          !page.cursor.historyComplete &&
+          page.cursor.beginBlockNumber === sentCursor.beginBlockNumber
+        ) {
+          throw new Error("History cursor did not advance; try again later");
         }
-      );
 
-      historyCursorRef.current = page.cursor;
-      blockRefValue.current = page.blockRef;
-      setHistoryComplete(page.cursor.historyComplete);
+        historyCursorRef.current = page.cursor;
+        blockRefValue.current = page.blockRef;
+        setHistoryComplete(page.cursor.historyComplete);
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } =
-        buildDisplayMaps(account, allAccounts, config);
-      let newTransactions = toDisplayTransactions(
-        page.transactions,
-        BigInt(account.address),
-        nameByAddress,
-        tokenNameByAddress,
-        tokenDecimalsByAddress,
-        executorNames,
-        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
-      );
-      if (provider) {
-        newTransactions = await resolveTimestamps(provider, newTransactions);
+        if (page.transactions.length === 0) {
+          if (page.cursor.historyComplete) break;
+          continue;
+        }
+
+        const newTransactions = provider
+          ? await resolveTimestamps(
+              provider,
+              toDisplayTransactions(page.transactions, account, config, displayMaps)
+            )
+          : toDisplayTransactions(page.transactions, account, config, displayMaps);
+        setTransactions((previous) => [...previous, ...newTransactions]);
+        break;
       }
-
-      setTransactions((previous) => [...previous, ...newTransactions]);
     } catch (err) {
+      // The pinned snapshot may be gone (indexer or devnet restart); drop it so
+      // the next attempt re-snapshots at head instead of failing identically.
+      blockRefValue.current = undefined;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       loadingRef.current = false;
       setLoading(false);
     }
-  }, [account, registry, config, poolAddress, allAccounts]);
+  }, [account, registry, config, poolAddress, allAccounts, provider]);
 
   // Fetch the latest transaction (no pagination cursor) and prepend if new.
   // Intended to be called after state refresh so cursors are up to date.
@@ -374,16 +404,11 @@ export function useHistory(
 
       if (page.transactions.length === 0) return;
 
-      const { nameByAddress, tokenNameByAddress, tokenDecimalsByAddress, executorNames } =
-        buildDisplayMaps(account, allAccounts, config);
       const freshTransactions = toDisplayTransactions(
         page.transactions,
-        BigInt(account.address),
-        nameByAddress,
-        tokenNameByAddress,
-        tokenDecimalsByAddress,
-        executorNames,
-        config.paymasterForwarderAddress ? BigInt(config.paymasterForwarderAddress) : undefined
+        account,
+        config,
+        buildDisplayMaps(account, allAccounts, config)
       ).map((tx) => ({ ...tx, timestamp: Math.floor(Date.now() / 1000) }));
 
       setTransactions((previous) => {
