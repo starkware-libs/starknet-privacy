@@ -352,10 +352,11 @@ Retrieves paginated transaction history by scanning backward through note subcha
 
 - `max_history_subchannels` (default: 256): Maximum number of subchannels in a history cursor.
 - `max_history_transactions` (default: 100): Maximum allowed `max_transactions` value.
+- `max_transactions` must be at least `1`. A zero-size page can neither advance the scan nor mark it complete.
 
 **Error responses:**
 
-- `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` exceeds server limit.
+- `400 INVALID_REQUEST` — Cursor exceeds size limits, or `max_transactions` is `0` or exceeds the server limit.
 - `409 BLOCK_REORGED` — `last_known_block` was reorged out.
 - `503 SERVICE_UNAVAILABLE` — No indexed head available yet.
 - Standard `DiscoveryError` mapping for storage and event errors.
