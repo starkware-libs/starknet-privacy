@@ -983,9 +983,10 @@ pub mod Privacy {
         /// Executes the external invoke on `contract_address` with `selector`, emits an
         /// [`ExternalContractInvoked`](events::ExternalContractInvoked) event, and deposits the
         /// returned open notes. The return data is the deposits, optionally followed by the
-        /// addresses they are associated with; only a `Delegated` compute-invoke's addresses are
-        /// screened, but whatever follows the deposits must be a well-formed address span.
-        /// `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
+        /// addresses they are associated with; under a `Delegated` policy those addresses are
+        /// screened regardless of invoke kind, falling back to `contract_address` itself when
+        /// none follow the deposits. Whatever follows the deposits must be a well-formed address
+        /// span. `selector` distinguishes a plain invoke from a compute-and-invoke; calldata is
         /// intentionally not emitted, as it is already visible in the public call trace.
         fn _apply_invoke_and_deposits(
             ref self: ContractState,
@@ -1012,16 +1013,15 @@ pub mod Privacy {
                     ),
                     OpenNoteScreeningPolicy::Exempt => {},
                     OpenNoteScreeningPolicy::Delegated => {
-                        // Only a compute-invoke is delegated; a plain invoke is exempt.
-                        if selector == INVOKE_WITH_COMPUTATION_SELECTOR {
-                            let associated_addresses = associated_addresses
-                                .expect(errors::INVALID_ASSOCIATED_ADDRESSES);
+                        if let Some(associated_addresses) = associated_addresses {
                             assert(!associated_addresses.is_empty(), errors::NO_ASSOCIATED_ADDRESS);
                             for associated_address in associated_addresses {
                                 unify_address(
                                     ref screening_subject, reference: *associated_address,
                                 );
                             }
+                        } else {
+                            unify_address(ref screening_subject, reference: contract_address);
                         }
                     },
                 }
