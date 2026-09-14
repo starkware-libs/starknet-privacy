@@ -469,7 +469,7 @@ async fn fetch_gap_withdrawals_chunked<E: IEvents>(
 
     // Top-down window: scan the highest `chunks_granted` chunks of the gap,
     // clamped to the gap floor.
-    let granted_span = (chunks_granted as u64) * (EVENTS_COST_CHUNK_SIZE as u64);
+    let granted_span = (chunks_granted as u64).saturating_mul(EVENTS_COST_CHUNK_SIZE as u64);
     let window_bottom = to_block.saturating_sub(granted_span - 1).max(from_block);
 
     let events = backend
@@ -1307,8 +1307,8 @@ mod tests {
             .build(Some(0));
         cursor.begin_block_number = Some(1_100_000); // ~1.1M-block gap above the note
 
-        // Page 1: only the most-recent window is scanned (empty here); the call
-        // succeeds where it previously 500'd, and the cursor advances downward.
+        // Page 1: only the most-recent window is scanned, which holds no
+        // withdrawals, so the page is empty and the cursor advances downward.
         let page1 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(10_000))
             .await
             .expect("wide gap must paginate, not return InsufficientBudget");
