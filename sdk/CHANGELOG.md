@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.14.3-RC.8
+
+No SDK change. The version tracks the release. The discovery service it talks to now scans the
+withdrawal gap between note blocks in budget-bounded windows, so a `fetchHistory` page may return
+zero transactions with `historyComplete: false`, or more than `maxTransactions`. Both were always
+possible on the wire and `fetchHistory` passes them through unchanged. Keep paginating until
+`historyComplete` is `true`. The service rejects `maxTransactions: 0` with `400 INVALID_REQUEST`.
+
 ## 0.14.3-RC.7
 
 ### Changed
