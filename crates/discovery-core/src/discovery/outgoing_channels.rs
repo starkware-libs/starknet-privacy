@@ -240,6 +240,11 @@ pub async fn discover_outgoing_channels<PrivacyPool: IViews>(
 /// Fetches public keys in batch for the given `recipient_addrs`, skips
 /// unregistered recipients (pk == 0), and returns `OutgoingChannel` entries
 /// with `precomputed: true`.
+///
+/// Budget is consumed per recipient actually read from storage (via
+/// `consume_up_to`), not for every input address. If the budget is exhausted
+/// before all recipients are processed, the function returns what was fetched
+/// so far with no error.
 pub async fn precompute_channels<S: IViews>(
     pool: &S,
     sender_addr: Felt,
@@ -250,11 +255,21 @@ pub async fn precompute_channels<S: IViews>(
     if recipient_addrs.is_empty() {
         return Ok(Vec::new());
     }
-    // TODO: budget.consume proceeds even when over budget (capped by max
-    // recipients validation). Consider paginating if the recipient list grows.
-    budget.consume(recipient_addrs.len() * COST_PUBLIC_KEY);
-    let pks = pool.get_public_keys_batch(recipient_addrs).await?;
-    Ok(recipient_addrs
+
+    // Consume budget only for as many recipients as the budget allows.
+    // Unlike the previous unconditional consume(), this avoids over-spending
+    // when most input addresses are unregistered.
+    let (num_to_fetch, _budget_exhausted) =
+        budget.consume_up_to(recipient_addrs.len(), COST_PUBLIC_KEY);
+
+    if num_to_fetch == 0 {
+        return Ok(Vec::new());
+    }
+
+    let pks = pool
+        .get_public_keys_batch(&recipient_addrs[..num_to_fetch])
+        .await?;
+    Ok(recipient_addrs[..num_to_fetch]
         .iter()
         .copied()
         .zip(pks)
@@ -544,5 +559,110 @@ mod tests {
         assert!(cursor.channel_discovery_complete);
         assert_eq!(cursor.total_n_channels, Some(0));
         assert_eq!(cursor.last_channel_index, None);
+    }
+
+    /// Regression test: budget must be consumed only for addresses that fit
+    /// within the budget, not for all input addresses unconditionally.
+    ///
+    /// Before the fix, `precompute_channels` called
+    /// `budget.consume(recipient_addrs.len() * COST_PUBLIC_KEY)` for all
+    /// addresses before checking which were registered. This test verifies
+    /// that budget is consumed only for the number of addresses actually
+    /// fetched (via `consume_up_to`).
+    #[tokio::test]
+    async fn test_precompute_budget_consumed_only_for_fetchable() {
+        // 5 addresses, budget for 2 (COST_PUBLIC_KEY=1 each)
+        let budget = IoBudget::new(2);
+
+        // Verify budget before call
+        assert_eq!(budget.remaining(), 2, "precondition: budget = 2");
+
+        // All 5 addresses are unregistered → only 2 should be consumed
+        let backend = MockBackend::empty();
+        let sender_addr = Felt::from_hex_unchecked("0x111");
+        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0x222"));
+        let recipient_addrs: Vec<_> = (0..5u8).map(|i| Felt::from_hex_unchecked(&format!("0x{:x}00{}", i, i))).collect();
+
+        let result = precompute_channels(
+            &backend,
+            sender_addr,
+            &viewing_key,
+            &recipient_addrs,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        // No registered addresses → empty result
+        assert!(result.is_empty());
+        // Budget exhausted: 2 consumed, 0 remaining
+        assert_eq!(budget.remaining(), 0, "budget exhausted after fetching 2 of 5");
+    }
+
+    /// Budget exhaustion returns empty gracefully (no error) when all
+    /// addresses in the budget window are unregistered.
+    #[tokio::test]
+    async fn test_precompute_budget_exhausted_all_unregistered() {
+        let budget = IoBudget::new(1); // budget for exactly 1
+
+        let backend = MockBackend::empty();
+        let sender_addr = Felt::from_hex_unchecked("0x111");
+        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0x222"));
+        let recipient_addrs = vec![
+            Felt::from_hex_unchecked("0xaaa"),
+            Felt::from_hex_unchecked("0xbbb"),
+        ];
+
+        let result = precompute_channels(
+            &backend,
+            sender_addr,
+            &viewing_key,
+            &recipient_addrs,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        // No registered addresses, budget exhausted → empty
+        assert!(result.is_empty());
+        assert_eq!(budget.remaining(), 0);
+    }
+
+    /// Only addresses within the budget window are fetched; addresses
+    /// beyond the budget are silently ignored (not an error).
+    #[tokio::test]
+    async fn test_precompute_skips_beyond_budget_window() {
+        // Budget for 1 address
+        let budget = IoBudget::new(1);
+
+        let mut backend = MockBackend::empty();
+        let sender_addr = Felt::from_hex_unchecked("0x111");
+        let viewing_key = SecretFelt::new(Felt::from_hex_unchecked("0x222"));
+
+        let registered_addr = Felt::from_hex_unchecked("0xaaa");
+        let unregistered_addr = Felt::from_hex_unchecked("0xbbb");
+
+        // Insert a public key for 0xaaa (registered)
+        let pk_slot = crate::privacy_pool::storage_slots::public_key(registered_addr);
+        let pk_value = Felt::from_hex_unchecked("0x123");
+        backend.insert(pk_slot, pk_value);
+
+        let recipient_addrs = vec![registered_addr, unregistered_addr];
+
+        let result = precompute_channels(
+            &backend,
+            sender_addr,
+            &viewing_key,
+            &recipient_addrs,
+            &budget,
+        )
+        .await
+        .unwrap();
+
+        // Only the registered address within the budget window is returned
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].recipient_addr, registered_addr);
+        // Budget exhausted after fetching 1
+        assert_eq!(budget.remaining(), 0);
     }
 }
