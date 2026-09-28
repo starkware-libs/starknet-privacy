@@ -1,0 +1,22 @@
+{{- if .Values.discoveryService.service }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: discovery-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: discovery-service
+  {{- with .Values.discoveryService.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.discoveryService.service.type | default "ClusterIP" }}
+  ports:
+    - port: {{ .Values.discoveryService.containerPort }}
+      protocol: TCP
+      targetPort: {{ .Values.discoveryService.containerPort }}
+  selector:
+    app: discovery-service
+{{- end }}

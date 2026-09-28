@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: discovery-service-config
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: discovery-service
+data:
+  config.toml: |
+    [api]
+    health_max_lag_secs = {{ .Values.discoveryService.config.api.health_max_lag_secs }}
+    {{- if .Values.discoveryService.ohttp.enabled }}
+    [ohttp]
+    enabled = true
+    {{- end }}

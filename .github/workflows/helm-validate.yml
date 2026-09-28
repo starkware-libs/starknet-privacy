@@ -1,0 +1,85 @@
+name: Helm chart validation
+
+on:
+  pull_request:
+    types:
+      - opened
+      - reopened
+      - edited
+      - synchronize
+    branches:
+      - main
+    paths:
+      - ".github/workflows/helm-validate.yml"
+      - "deploy/helm/privacy-starknet/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: >
+    ${{ github.workflow }}-
+    ${{ github.ref }}-
+    ${{ github.event_name == 'pull_request' && 'PR' || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CHART_DIR: deploy/helm/privacy-starknet
+  RENDER_DIR: rendered-manifests
+
+jobs:
+  helm-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Helm dependency build
+        run: helm dependency build "./${CHART_DIR}"
+
+      - name: Helm lint
+        run: helm lint "./${CHART_DIR}" -f "./${CHART_DIR}/ci/default-values.yaml"
+
+  kubeconform:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        kubernetes_version:
+          - "1.33.0"
+          - "1.34.0"
+          - "1.35.0"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4 # v4.3.1
+
+      - name: Set up Go
+        uses: actions/setup-go@4b73464bb391d4059bd26b0524d20df3927bd417 # v6.3.0
+        with:
+          go-version: stable
+
+      - name: Install kubeconform
+        run: |
+          go install github.com/yannh/kubeconform/cmd/kubeconform@latest
+          kubeconform -v
+
+      - name: Helm dependency build
+        run: helm dependency build "./${CHART_DIR}"
+
+      - name: Helm template
+        run: helm template ci "./${CHART_DIR}" -f "./${CHART_DIR}/ci/default-values.yaml" --output-dir "${RENDER_DIR}"
+
+      - name: Kubeconform (Kubernetes ${{ matrix.kubernetes_version }})
+        run: |
+          kubeconform \
+            -strict -summary \
+            -kubernetes-version "${{ matrix.kubernetes_version }}" \
+            -schema-location default \
+            -schema-location 'https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json' \
+            "${RENDER_DIR}/"

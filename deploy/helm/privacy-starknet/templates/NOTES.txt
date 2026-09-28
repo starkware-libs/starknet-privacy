@@ -1,0 +1,16 @@
+{{- $proverType := dig "type" "disabled" (default (dict) .Values.transactionProver.service) }}
+{{- $discoveryType := dig "type" "disabled" (default (dict) .Values.discoveryService.service) }}
+Privacy Starknet has been installed.
+
+Namespace: {{ .Release.Namespace }}
+
+Services:
+  - transaction-prover: {{ $proverType }} on port {{ .Values.transactionProver.config.port }}
+  - discovery-service: {{ $discoveryType }} on port {{ .Values.discoveryService.containerPort }}
+
+Inspect the Services and Ingresses with:
+
+  kubectl get svc,ingress -n {{ .Release.Namespace }}
+
+ClusterIP Services have no public endpoint. Enable and configure the Ingresses, or
+explicitly choose another Service type, when public access is required.

@@ -1,0 +1,16 @@
+# Placeholder values for CI rendering only. Satisfies the chart's
+# required-when-enabled guards so `helm lint` / `helm template` /
+# kubeconform can validate the full enabled render path without real
+# credentials. Not suitable for any deployment.
+transactionProver:
+  ohttp:
+    key: "0000000000000000000000000000000000000000000000000000000000000000"
+  proofInterceptor:
+    screening:
+      url: "https://placeholder.invalid"
+      poolAddress: "0x0"
+      anonymizerAddress: "0x0"
+
+discoveryService:
+  ohttp:
+    key: "0000000000000000000000000000000000000000000000000000000000000000"

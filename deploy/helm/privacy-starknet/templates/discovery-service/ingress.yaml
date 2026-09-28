@@ -1,0 +1,44 @@
+{{- if and .Values.discoveryService.ingress .Values.discoveryService.ingress.enabled }}
+{{- $svcPort := .Values.discoveryService.containerPort -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: discovery-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: discovery-service
+  {{- with .Values.discoveryService.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.discoveryService.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.discoveryService.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.discoveryService.ingress.defaultBackend }}
+  defaultBackend:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.discoveryService.ingress.hosts }}
+    - {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: discovery-service
+                port:
+                  number: {{ .servicePort | default $svcPort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

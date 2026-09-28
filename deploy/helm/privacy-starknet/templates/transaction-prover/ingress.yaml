@@ -1,0 +1,44 @@
+{{- if and .Values.transactionProver.ingress .Values.transactionProver.ingress.enabled }}
+{{- $svcPort := .Values.transactionProver.config.port -}}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: transaction-prover
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: transaction-prover
+  {{- with .Values.transactionProver.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.transactionProver.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  {{- with .Values.transactionProver.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  {{- with .Values.transactionProver.ingress.defaultBackend }}
+  defaultBackend:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.transactionProver.ingress.hosts }}
+    - {{- if .host }}
+      host: {{ .host | quote }}
+      {{- end }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType | default "Prefix" }}
+            backend:
+              service:
+                name: transaction-prover
+                port:
+                  number: {{ .servicePort | default $svcPort }}
+          {{- end }}
+    {{- end }}
+{{- end }}

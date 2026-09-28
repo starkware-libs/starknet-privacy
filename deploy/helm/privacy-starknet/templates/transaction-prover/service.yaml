@@ -1,0 +1,23 @@
+{{- if .Values.transactionProver.service }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: transaction-prover
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: transaction-prover
+  {{- with .Values.transactionProver.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.transactionProver.service.type | default "ClusterIP" }}
+  ports:
+    - name: http
+      port: {{ .Values.transactionProver.config.port }}
+      protocol: TCP
+      targetPort: {{ .Values.transactionProver.config.port }}
+  selector:
+    app: transaction-prover
+{{- end }}

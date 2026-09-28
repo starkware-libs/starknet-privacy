@@ -1,0 +1,98 @@
+{{- $_ := required "discoveryService.config.rpcUrl is required" .Values.discoveryService.config.rpcUrl -}}
+{{- $_ := required "discoveryService.config.wsUrl is required" .Values.discoveryService.config.wsUrl -}}
+{{- if .Values.discoveryService.ohttp.enabled -}}
+{{- $_ := required "discoveryService.ohttp.key is required when discoveryService.ohttp.enabled is true" .Values.discoveryService.ohttp.key -}}
+{{- end -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: discovery-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: discovery-service
+spec:
+  progressDeadlineSeconds: {{ .Values.discoveryService.progressDeadlineSeconds }}
+  replicas: {{ .Values.discoveryService.replicas }}
+  revisionHistoryLimit: {{ .Values.discoveryService.revisionHistoryLimit }}
+  selector:
+    matchLabels:
+      app: discovery-service
+  strategy:
+    type: {{ .Values.discoveryService.strategy.type }}
+    {{- if eq .Values.discoveryService.strategy.type "RollingUpdate" }}
+    rollingUpdate:
+      maxSurge: {{ .Values.discoveryService.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ .Values.discoveryService.strategy.rollingUpdate.maxUnavailable }}
+    {{- end }}
+  template:
+    metadata:
+      labels:
+        app: discovery-service
+    spec:
+      containers:
+        - name: discovery-service
+          image: "{{ .Values.discoveryService.image.repository }}:{{ .Values.discoveryService.image.tag }}"
+          imagePullPolicy: {{ .Values.discoveryService.image.pullPolicy }}
+          args:
+            - --config
+            - /etc/discovery-service/config.toml
+          env:
+            - name: RPC_URL
+              value: {{ .Values.discoveryService.config.rpcUrl | quote }}
+            - name: WS_URL
+              value: {{ .Values.discoveryService.config.wsUrl | quote }}
+            - name: API_HOST
+              value: {{ .Values.discoveryService.config.apiHost | quote }}
+            - name: RUST_LOG
+              value: {{ .Values.discoveryService.config.rustLog | quote }}
+            {{- if .Values.discoveryService.ohttp.enabled }}
+            - name: OHTTP_KEY
+              value: {{ .Values.discoveryService.ohttp.key | quote }}
+            {{- end }}
+          ports:
+            - containerPort: {{ .Values.discoveryService.containerPort }}
+              protocol: TCP
+          {{- with .Values.discoveryService.readinessProbe }}
+          readinessProbe:
+            httpGet:
+              path: {{ .path | default "/health" }}
+              port: {{ $.Values.discoveryService.containerPort }}
+            initialDelaySeconds: {{ .initialDelaySeconds | default 5 }}
+            periodSeconds: {{ .periodSeconds | default 10 }}
+            timeoutSeconds: {{ .timeoutSeconds | default 2 }}
+            failureThreshold: {{ .failureThreshold | default 3 }}
+            successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+          {{- with .Values.discoveryService.livenessProbe }}
+          livenessProbe:
+            httpGet:
+              path: {{ .path | default "/health" }}
+              port: {{ $.Values.discoveryService.containerPort }}
+            initialDelaySeconds: {{ .initialDelaySeconds | default 15 }}
+            periodSeconds: {{ .periodSeconds | default 30 }}
+            timeoutSeconds: {{ .timeoutSeconds | default 2 }}
+            failureThreshold: {{ .failureThreshold | default 3 }}
+            successThreshold: {{ .successThreshold | default 1 }}
+          {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/discovery-service/config.toml
+              readOnly: true
+              subPath: config.toml
+          {{- with .Values.discoveryService.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      dnsPolicy: {{ .Values.discoveryService.dnsPolicy }}
+      {{- with .Values.discoveryService.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: {{ .Values.discoveryService.restartPolicy }}
+      terminationGracePeriodSeconds: {{ .Values.discoveryService.terminationGracePeriodSeconds }}
+      volumes:
+        - name: config
+          configMap:
+            name: discovery-service-config
+            defaultMode: 420

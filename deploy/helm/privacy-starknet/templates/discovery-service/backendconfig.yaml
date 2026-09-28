@@ -1,0 +1,19 @@
+{{- if and .Values.discoveryService.backendConfig .Values.discoveryService.backendConfig.enabled }}
+apiVersion: cloud.google.com/v1
+kind: BackendConfig
+metadata:
+  name: discovery-service
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: discovery-service
+spec:
+  healthCheck:
+    type: {{ .Values.discoveryService.backendConfig.healthCheck.type | default "HTTP" }}
+    {{- with .Values.discoveryService.backendConfig.healthCheck.requestPath }}
+    requestPath: {{ . }}
+    {{- end }}
+    {{- with .Values.discoveryService.backendConfig.healthCheck.port }}
+    port: {{ . }}
+    {{- end }}
+{{- end }}
