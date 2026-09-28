@@ -7,7 +7,6 @@ permissions:
 on:
   push:
     branches: [main]
-    tags: ['*']
     paths:
       - 'proof-interceptor/**'
       - 'sdk/**'
@@ -46,7 +45,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=ref,event=tag
       - uses: docker/build-push-action@ca052bb54ab0790a636c9b5f226502c73d547a25 # v5
         id: build
         with:
@@ -87,7 +85,6 @@ jobs:
           tags: |
             type=ref,event=branch
             type=ref,event=pr
-            type=ref,event=tag
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           path: /tmp/digests

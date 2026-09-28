@@ -1,0 +1,175 @@
+name: Helm-Publish
+
+# Publishes the privacy-starknet Helm chart to ghcr.io as a public OCI artifact, on
+# the SAME trigger as docker-publish.yml — a `PRIVACY-*` tag, plus manual dispatch.
+#
+# VERSIONING — Chart.yaml is the source of truth. Release tags (PRIVACY-0.14.3-RC.8)
+# are not semver and `helm package` rejects a non-semver chart version, so the tag is
+# carried in appVersion instead. BUMPING Chart.yaml IS MANUAL: forget, and this
+# workflow finds the version already published and skips, loudly, in the summary.
+#
+# ghcr.io has NO immutable tags — a re-push would silently replace a published
+# version under every consumer pinned to it. The already-published check below is
+# the only thing preventing that.
+#
+# Consumed by starkware-envs-production via apps.yaml `helm.oci_registry`.
+# infra-tools only logs in to *-docker.pkg.dev hosts, so it pulls this chart
+# ANONYMOUSLY: the ghcr package must be Public.
+
+on:
+  workflow_dispatch: {}
+  push:
+    tags:
+      - "PRIVACY-*"
+
+# A tag is an immutable release — never cancel a run that may already have pushed.
+concurrency:
+  group: helm-publish-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  OCI_REPO: oci://ghcr.io/${{ github.repository }}/charts
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    env:
+      CHART_DIR: deploy/helm/privacy-starknet
+      EXPECTED_CHART_NAME: privacy-starknet
+      HELM_VERSION: v3.16.4
+      BIN_DIR: ${{ github.workspace }}/.chart-release-bin
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      # Pinned rather than the runner's preinstalled helm, so the tool producing a
+      # released artifact doesn't drift when GitHub rolls the runner image.
+      - name: Install helm
+        run: |
+          set -euo pipefail
+          mkdir -p "$BIN_DIR"
+          curl -fsSL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" \
+            | tar -xz --strip-components=1 -C "$BIN_DIR" linux-amd64/helm
+          chmod +x "$BIN_DIR/helm"
+          echo "$BIN_DIR" >> "$GITHUB_PATH"
+
+      - name: Resolve chart name and version
+        id: chart
+        run: |
+          set -euo pipefail
+          # Parse the YAML rather than grepping it: `helm show chart` alphabetizes
+          # keys, so a future `dependencies:` block would put a subchart's `name:`
+          # first. python3 with PyYAML is on the runner; yq is not guaranteed.
+          meta_name='import sys,yaml; print((yaml.safe_load(sys.stdin) or {}).get("name",""))'
+          meta_vers='import sys,yaml; print((yaml.safe_load(sys.stdin) or {}).get("version",""))'
+          name=$(helm show chart "$CHART_DIR" | python3 -c "$meta_name" | tr -d '[:space:]')
+          version=$(helm show chart "$CHART_DIR" | python3 -c "$meta_vers" | tr -d '[:space:]')
+
+          if [ "$name" != "$EXPECTED_CHART_NAME" ]; then
+            echo "::error::resolved chart name '$name', expected '$EXPECTED_CHART_NAME' from $CHART_DIR/Chart.yaml"
+            exit 1
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$'; then
+            echo "::error::'$version' is not valid semver — $CHART_DIR/Chart.yaml version must be X.Y.Z"
+            exit 1
+          fi
+
+          # appVersion: the release tag on a tag push (the same tag docker-publish.yml
+          # gives the images), the short SHA on a manual dispatch.
+          if [ "${{ github.event_name }}" = "push" ]; then
+            app_version="${GITHUB_REF_NAME}"
+          else
+            app_version=$(git rev-parse --short HEAD)
+          fi
+
+          {
+            echo "name=$name"
+            echo "version=$version"
+            echo "app_version=$app_version"
+            echo "ref=${OCI_REPO#oci://}/${name}:${version}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to ghcr.io
+        run: |
+          set -euo pipefail
+          printf '%s' "${{ secrets.GITHUB_TOKEN }}" \
+            | helm registry login "$REGISTRY" -u "${{ github.actor }}" --password-stdin
+
+      # ghcr has no immutable tags, so re-pushing an existing version would REPLACE
+      # it. Checking first turns a re-run into a green skip instead.
+      - name: Check whether this version is already published
+        id: exists
+        run: |
+          set -uo pipefail
+          if helm show chart "${{ env.OCI_REPO }}/${{ steps.chart.outputs.name }}" \
+               --version "${{ steps.chart.outputs.version }}" >/dev/null 2>&1; then
+            echo "published=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "published=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: helm lint
+        if: steps.exists.outputs.published == 'false'
+        run: helm lint "$CHART_DIR" -f "$CHART_DIR/ci/default-values.yaml"
+
+      - name: Package and push
+        if: steps.exists.outputs.published == 'false'
+        run: |
+          set -euo pipefail
+          # --app-version overrides Chart.yaml without editing it.
+          rm -rf dist && mkdir -p dist
+          helm package "$CHART_DIR" \
+            --destination dist \
+            --version "${{ steps.chart.outputs.version }}" \
+            --app-version "${{ steps.chart.outputs.app_version }}"
+
+          # Push the artifact helm actually wrote rather than re-deriving its filename.
+          shopt -s nullglob
+          pkgs=(dist/*.tgz)
+          if [ "${#pkgs[@]}" -ne 1 ]; then
+            echo "::error::expected exactly one packaged chart in dist/, found ${#pkgs[@]}: ${pkgs[*]:-none}"
+            exit 1
+          fi
+          echo "pushing ${pkgs[0]}"
+          helm push "${pkgs[0]}" "${{ env.OCI_REPO }}"
+
+      - name: Summary
+        run: |
+          set -euo pipefail
+          if [ "${{ steps.exists.outputs.published }}" = "true" ]; then
+            {
+              echo "### ⏭️ Nothing published"
+              echo ""
+              echo "Chart version \`${{ steps.chart.outputs.version }}\` is ALREADY published at"
+              echo "\`${{ steps.chart.outputs.ref }}\` and was left untouched."
+              echo ""
+              echo "If this run was meant to publish chart changes, **bump \`version\` in"
+              echo "\`$CHART_DIR/Chart.yaml\`** and re-run — otherwise this release ships"
+              echo "images with no matching chart."
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            {
+              echo "### ✅ Published \`${{ steps.chart.outputs.ref }}\`"
+              echo ""
+              echo "appVersion \`${{ steps.chart.outputs.app_version }}\`."
+              echo ""
+              echo "Consume it from a gitops env (\`starknet-privacy/<env>/apps.yaml\`) with:"
+              echo ""
+              echo '```yaml'
+              echo "  helm:"
+              echo "    oci_registry: ${{ env.OCI_REPO }}/${{ steps.chart.outputs.name }}"
+              echo "    oci_version: ${{ steps.chart.outputs.version }}"
+              echo '```'
+              echo ""
+              echo "The package must be Public for anonymous pulls:"
+              echo ""
+              echo '```bash'
+              echo "helm pull ${{ env.OCI_REPO }}/${{ steps.chart.outputs.name }} --version ${{ steps.chart.outputs.version }}"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
