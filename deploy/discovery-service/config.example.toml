@@ -1,7 +1,7 @@
 # Discovery Service configuration
 # All sections and fields are optional — sensible defaults are used when omitted.
 # Env vars override matching fields: RPC_URL, WS_URL, API_HOST, RUST_LOG, SERVER_BUDGET,
-# TLS_CERT_PATH, TLS_KEY_PATH.
+# HISTORY_TIME_LIMIT_SECS, TLS_CERT_PATH, TLS_KEY_PATH.
 # Supports env var expansion: ${VAR} (required) or ${VAR:-default} (with fallback).
 #
 # Full spec: crates/discovery-service/specs/18-configuration.md
@@ -44,5 +44,7 @@ max_channels = 256
 max_subchannels_per_channel = 64
 max_outgoing_recipients = 64
 server_budget = 10000
+# Seconds after which a history page stops and returns its cursor.
+history_time_limit = 10
 max_request_body_bytes = 102400
 public_key_cache_capacity = 10000
