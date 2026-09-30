@@ -1,7 +1,7 @@
 //! API route handlers.
 
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use axum::extract::State;
 use axum::http::StatusCode;
@@ -354,7 +354,8 @@ where
         "history request"
     );
 
-    let budget = IoBudget::new(state.validation_limits.server_budget);
+    let budget = IoBudget::new(state.validation_limits.server_budget)
+        .with_deadline(Instant::now() + state.validation_limits.history_time_limit);
     let transactions = discovery_core::history::transactions::fetch_transactions(
         &snapshot,
         request.user_address,

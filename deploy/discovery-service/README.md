@@ -57,6 +57,7 @@ Precedence: env var > config file > code default.
 | `API_HOST` | `api.host` | `0.0.0.0:8080` (Docker) / `127.0.0.1:8080` (native) |
 | `RUST_LOG` | `logging.level` | `info` |
 | `SERVER_BUDGET` | `limits.server_budget` | `10000` |
+| `HISTORY_TIME_LIMIT_SECS` | `limits.history_time_limit` | `10` |
 | `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
 | `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |
 | `OHTTP_ENABLED` | `ohttp.enabled` | `false` |
