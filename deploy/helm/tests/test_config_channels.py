@@ -158,5 +158,106 @@ class ChecksumTest(unittest.TestCase):
         self.assertEqual(pod_annotations(render(changed), "transaction-prover"), pod_annotations(render(disabled), "transaction-prover"))
 
 
+class ProofInterceptorEnvTest(unittest.TestCase):
+    def test_configmap_holds_every_setting_as_a_string(self):
+        resources = render({"transactionProver": {
+            "config": {"rpc_node_url": 'http://node.synthetic.invalid/"q"\\path'},
+            "proofInterceptor": {"port": 9091, "screening": {
+                "url": "https://screening.synthetic.invalid",
+                "poolAddress": "0x123",
+                "anonymizerAddress": "0x456",
+                "failOpen": True,
+                "timeoutMs": 1234,
+                "maxRetries": 0,
+            }},
+        }})
+        self.assertEqual(resources[("ConfigMap", "proof-interceptor-env")]["data"], {
+            "PORT": "9091",
+            "SCREENING_URL": "https://screening.synthetic.invalid",
+            "SCREENING_POOL_ADDRESS": "0x123",
+            "SCREENING_ANONYMIZER_ADDRESS": "0x456",
+            "SCREENING_FAIL_OPEN": "true",
+            "SCREENING_TIMEOUT_MS": "1234",
+            "SCREENING_MAX_RETRIES": "0",
+            "SCREENING_RPC_URL": 'http://node.synthetic.invalid/"q"\\path',
+        })
+
+    def test_sidecar_reads_configmap_and_maps_credential_keys(self):
+        sidecar = container(
+            render({"transactionProver": {"proofInterceptor": {"screeningSecretName": "synthetic-screening"}}}),
+            "transaction-prover",
+            "proof-interceptor",
+        )
+        self.assertEqual(sidecar["envFrom"], [{"configMapRef": {"name": "proof-interceptor-env"}}])
+        self.assertEqual(sidecar["env"], [
+            {"name": "SCREENING_PARTNER_NAME",
+             "valueFrom": {"secretKeyRef": {"name": "synthetic-screening", "key": "partner-name"}}},
+            {"name": "SCREENING_PARTNER_SECRET",
+             "valueFrom": {"secretKeyRef": {"name": "synthetic-screening", "key": "partner-secret"}}},
+        ])
+
+    def test_disabled_sidecar_renders_and_references_no_env_configmap(self):
+        returncode, stdout, stderr = helm_template({"transactionProver": {"proofInterceptor": {"enabled": False}}})
+        self.assertEqual(returncode, 0, stderr)
+        self.assertNotIn("proof-interceptor-env", stdout)
+
+    def test_env_change_rolls_only_the_prover_through_the_env_checksum(self):
+        baseline = render()
+        changed = render({"transactionProver": {"proofInterceptor": {"screening": {"timeoutMs": 1}}}})
+        self.assertNotEqual(
+            pod_annotations(changed, "transaction-prover")["checksum/proof-interceptor-env"],
+            pod_annotations(baseline, "transaction-prover")["checksum/proof-interceptor-env"],
+        )
+        self.assertEqual(
+            pod_annotations(changed, "transaction-prover")["checksum/config"],
+            pod_annotations(baseline, "transaction-prover")["checksum/config"],
+        )
+        self.assertEqual(pod_annotations(changed, "discovery-service"), pod_annotations(baseline, "discovery-service"))
+
+    def test_shared_rpc_url_change_updates_both_prover_payloads(self):
+        baseline = pod_annotations(render(), "transaction-prover")
+        changed = pod_annotations(render({"transactionProver": {"config": {"rpc_node_url": "http://other.synthetic.invalid"}}}), "transaction-prover")
+        self.assertNotEqual(changed["checksum/config"], baseline["checksum/config"])
+        self.assertNotEqual(changed["checksum/proof-interceptor-env"], baseline["checksum/proof-interceptor-env"])
+
+
+class CredentialAndGuardTest(unittest.TestCase):
+    def test_configmaps_exclude_ohttp_keys(self):
+        prover_key, discovery_key = "SYNTHETIC-PROVER-OHTTP-KEY", "SYNTHETIC-DISCOVERY-OHTTP-KEY"
+        resources = render({
+            "transactionProver": {"ohttp": {"key": prover_key}},
+            "discoveryService": {"ohttp": {"key": discovery_key}},
+        })
+        configmaps = [resource for (kind, _), resource in resources.items() if kind == "ConfigMap"]
+        self.assertEqual(len(configmaps), 3)
+        for configmap in configmaps:
+            self.assertNotIn(prover_key, yaml.safe_dump(configmap))
+            self.assertNotIn(discovery_key, yaml.safe_dump(configmap))
+        self.assertIn({"name": "OHTTP_KEY", "value": prover_key}, container(resources, "transaction-prover", "transaction-prover")["env"])
+        self.assertIn({"name": "OHTTP_KEY", "value": discovery_key}, container(resources, "discovery-service", "discovery-service")["env"])
+
+    def test_required_guards_fail_with_their_messages(self):
+        cases = {
+            "transactionProver.proofInterceptor.screening.anonymizerAddress is required when proofInterceptor is enabled":
+                {"transactionProver": {"proofInterceptor": {"screening": {"anonymizerAddress": ""}}}},
+            "transactionProver.proofInterceptor.screening.rpcUrl is chart-owned":
+                {"transactionProver": {"proofInterceptor": {"screening": {"rpcUrl": "http://other.synthetic.invalid"}}}},
+            "discoveryService.config.rpcUrl is required":
+                {"discoveryService": {"config": {"rpcUrl": ""}}},
+            "discoveryService.config.wsUrl is required":
+                {"discoveryService": {"config": {"wsUrl": ""}}},
+        }
+        for message, values in cases.items():
+            with self.subTest(message=message):
+                returncode, _, stderr = helm_template(values)
+                self.assertNotEqual(returncode, 0)
+                self.assertIn(message, stderr)
+
+    def test_disabled_sidecar_does_not_require_its_settings(self):
+        returncode, _, stderr = helm_template({"transactionProver": {"proofInterceptor": {
+            "enabled": False, "screening": {"anonymizerAddress": "", "rpcUrl": "http://other.synthetic.invalid"}}}})
+        self.assertEqual(returncode, 0, stderr)
+
+
 if __name__ == "__main__":
     unittest.main()

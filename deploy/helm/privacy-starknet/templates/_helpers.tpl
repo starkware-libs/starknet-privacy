@@ -60,3 +60,21 @@ template. The blocking_check_* fields point the prover at the enabled sidecar.
 {{- end -}}
 {{- $cfg | toPrettyJson -}}
 {{- end }}
+
+{{/*
+Proof-interceptor non-secret env: rendered into its ConfigMap and hashed for the Pod
+template. SCREENING_RPC_URL follows the prover's node so both containers read the same
+state. Partner credentials stay explicit Secret references in the Deployment.
+*/}}
+{{- define "privacy-starknet.proofInterceptor.env" -}}
+{{- with .Values.transactionProver.proofInterceptor -}}
+PORT: {{ .port | quote }}
+SCREENING_URL: {{ .screening.url | quote }}
+SCREENING_POOL_ADDRESS: {{ .screening.poolAddress | quote }}
+SCREENING_ANONYMIZER_ADDRESS: {{ .screening.anonymizerAddress | quote }}
+SCREENING_FAIL_OPEN: {{ .screening.failOpen | quote }}
+SCREENING_TIMEOUT_MS: {{ .screening.timeoutMs | quote }}
+SCREENING_MAX_RETRIES: {{ .screening.maxRetries | quote }}
+SCREENING_RPC_URL: {{ $.Values.transactionProver.config.rpc_node_url | quote }}
+{{- end }}
+{{- end }}

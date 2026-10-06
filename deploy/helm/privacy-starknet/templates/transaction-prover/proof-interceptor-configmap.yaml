@@ -1,0 +1,12 @@
+{{- if .Values.transactionProver.proofInterceptor.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: proof-interceptor-env
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" . | nindent 4 }}
+    app: transaction-prover
+data:
+  {{- include "privacy-starknet.proofInterceptor.env" . | nindent 2 }}
+{{- end }}

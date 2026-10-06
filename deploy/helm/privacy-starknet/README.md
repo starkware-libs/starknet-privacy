@@ -82,12 +82,17 @@ Protect values files and release-state Secrets, and avoid passing sensitive valu
 | discovery-service | `ohttp.key` | `OHTTP_KEY` env var |
 | transaction-prover | `config.*`, plus `blocking_check_*` when the sidecar is enabled | `config.json` in ConfigMap `transaction-prover-config` |
 | transaction-prover | `ohttp.enabled`, `ohttp.key` | `OHTTP_ENABLED` and `OHTTP_KEY` env vars |
+| proof-interceptor | `proofInterceptor.port`, `proofInterceptor.screening.*`, and `config.rpc_node_url` as `SCREENING_RPC_URL` | env vars from ConfigMap `proof-interceptor-env`, rendered only when the sidecar is enabled |
+| proof-interceptor | Partner credentials | `SCREENING_PARTNER_NAME` and `SCREENING_PARTNER_SECRET` from the `partner-name` and `partner-secret` keys of Secret `proofInterceptor.screeningSecretName` |
 
 Each Deployment's Pod template carries a `checksum/config` annotation: the SHA-256 of
-the configuration file its containers read. Changing a rendered file therefore rolls only
-the Deployment that consumes it, while chart-version or label changes do not. OHTTP keys
-are never written to a ConfigMap. Changes to the content of externally managed Secrets
-are not covered by these checksums; restart the Deployment after rotating them.
+the configuration file its containers read. With the sidecar enabled, the prover Pod also
+carries `checksum/proof-interceptor-env` for the sidecar's environment. Changing a
+rendered payload therefore rolls only the Deployment that consumes it, while
+chart-version or label changes do not, and neither do sidecar settings while the sidecar
+is disabled. OHTTP keys and partner credentials are never written to a ConfigMap. Changes
+to the content of externally managed Secrets are not covered by these checksums; restart
+the Deployment after rotating them.
 
 ## Optional components
 
@@ -164,8 +169,9 @@ create that Service.
 ## Upgrade notes
 
 Chart `0.4.0` moves the discovery service's RPC, WebSocket, and log-level settings from
-env vars into its `config.toml`, and adds configuration checksum annotations to both Pod
-templates. Values keys and effective settings are unchanged, but adopting the annotations
+env vars into its `config.toml`, moves the proof-interceptor's non-secret settings into
+ConfigMap `proof-interceptor-env`, and adds configuration checksum annotations to both
+Pod templates. Values keys and effective settings are unchanged, but adopting the annotations
 changes both Pod templates, so the first upgrade to `0.4.0` rolls both Deployments.
 
 Chart `0.3.0` changes both default Service types from `LoadBalancer` to `ClusterIP`.
