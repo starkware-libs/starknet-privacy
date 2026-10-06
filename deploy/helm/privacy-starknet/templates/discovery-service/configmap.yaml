@@ -1,4 +1,3 @@
-{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -9,9 +8,4 @@ metadata:
     app: discovery-service
 data:
   config.toml: |
-    [api]
-    health_max_lag_secs = {{ $discovery.config.api.health_max_lag_secs }}
-    {{- if $discovery.ohttp.enabled }}
-    [ohttp]
-    enabled = true
-    {{- end }}
+    {{- include "privacy-starknet.discoveryService.configToml" . | nindent 4 }}

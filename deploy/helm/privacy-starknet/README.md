@@ -94,6 +94,27 @@ discoveryService:
     cloud.google.com/gke-nodepool: services-extended   # this component only
 ```
 
+## Configuration delivery
+
+| Component | Settings | Channel |
+| --- | --- | --- |
+| discovery-service | `config.rpcUrl`, `config.wsUrl`, `config.rustLog`, `config.api.health_max_lag_secs`, `ohttp.enabled` | `config.toml` in ConfigMap `discovery-service-config` |
+| discovery-service | `config.apiHost` | `API_HOST` env var; the image bakes a default that overrides the file |
+| discovery-service | `ohttp.key` | `OHTTP_KEY` env var |
+| transaction-prover | `config.*`, plus `blocking_check_*` when the sidecar is enabled | `config.json` in ConfigMap `transaction-prover-config` |
+| transaction-prover | `ohttp.enabled`, `ohttp.key` | `OHTTP_ENABLED` and `OHTTP_KEY` env vars |
+| proof-interceptor | `proofInterceptor.port`, `proofInterceptor.screening.*`, and `config.rpc_node_url` as `SCREENING_RPC_URL` | env vars from ConfigMap `proof-interceptor-env`, rendered only when the sidecar is enabled |
+| proof-interceptor | Partner credentials | `SCREENING_PARTNER_NAME` and `SCREENING_PARTNER_SECRET` from the `partner-name` and `partner-secret` keys of Secret `proofInterceptor.screeningSecretName` |
+
+Each Deployment's Pod template carries a `checksum/config` annotation: the SHA-256 of
+the configuration file its containers read. With the sidecar enabled, the prover Pod also
+carries `checksum/proof-interceptor-env` for the sidecar's environment. Changing a
+rendered payload therefore rolls only the Deployment that consumes it, while
+chart-version or label changes do not, and neither do sidecar settings while the sidecar
+is disabled. OHTTP keys and partner credentials are never written to a ConfigMap. Changes
+to the content of externally managed Secrets are not covered by these checksums; restart
+the Deployment after rotating them.
+
 ## Optional components
 
 OHTTP and proof interception are enabled by default. Disable a feature explicitly when
@@ -165,6 +186,20 @@ Direct Service exposure can bypass Ingress TLS and policy. Set a component's com
 create that Service.
 
 ## Upgrade notes
+
+Chart `0.5.0` moves the discovery service's RPC, WebSocket, and log-level settings from
+env vars into its `config.toml`, moves the proof-interceptor's non-secret settings into
+ConfigMap `proof-interceptor-env`, and adds configuration checksum annotations to both
+Pod templates. Values keys are unchanged. Adopting the annotations changes both Pod
+templates, so the first upgrade to `0.5.0` rolls both Deployments.
+
+The moved settings now reach the applications exactly as typed. Previously Kubernetes
+rewrote them as container `env` entries: `$$` became `$`, and `$(NAME)` was replaced by
+an env var defined earlier in the container. Config files and `envFrom` do neither.
+Before upgrading, check `discoveryService.config.rpcUrl`, `wsUrl`, `rustLog`,
+`transactionProver.config.rpc_node_url`, and `transactionProver.proofInterceptor.port`
+and `screening.*` for `$$` or `$(`, and replace any such sequence with its intended
+literal value.
 
 Chart `0.3.0` changes both default Service types from `LoadBalancer` to `ClusterIP`.
 Deployments that require direct load balancers must set both Service types explicitly
