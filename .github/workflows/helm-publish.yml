@@ -1,7 +1,7 @@
 name: Helm-Publish
 
 # Publishes the privacy-starknet Helm chart to ghcr.io as a public OCI artifact, on
-# the SAME trigger as docker-publish.yml — a `PRIVACY-*` tag, plus manual dispatch.
+# the SAME trigger as docker-publish.yaml — a `PRIVACY-*` tag, plus manual dispatch.
 #
 # VERSIONING — Chart.yaml is the source of truth. Release tags (PRIVACY-0.14.3-RC.8)
 # are not semver and `helm package` rejects a non-semver chart version, so the tag is
@@ -79,7 +79,7 @@ jobs:
             exit 1
           fi
 
-          # appVersion: the release tag on a tag push (the same tag docker-publish.yml
+          # appVersion: the release tag on a tag push (the same tag docker-publish.yaml
           # gives the images), the short SHA on a manual dispatch.
           if [ "${{ github.event_name }}" = "push" ]; then
             app_version="${GITHUB_REF_NAME}"
