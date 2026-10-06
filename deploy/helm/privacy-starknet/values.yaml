@@ -27,13 +27,8 @@ transactionProver:
   dnsPolicy: ClusterFirst
   restartPolicy: Always
   terminationGracePeriodSeconds: 30
-  nodeSelector:
-    cloud.google.com/gke-nodepool: os-runner-c4d-highcpu-48-spot
-  tolerations:
-    - key: workflow
-      operator: Equal
-      value: os-runner-c4d-highcpu-48
-      effect: NoSchedule
+  nodeSelector: {}
+  tolerations: []
   resources:
     requests:
       cpu: "32"
