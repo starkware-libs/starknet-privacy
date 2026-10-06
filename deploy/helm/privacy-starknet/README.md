@@ -11,8 +11,8 @@ default.
   state tries for the blocks you intend to prove; configure
   `PATHFINDER_STORAGE_STATE_TRIES` when you operate the node.
 - HTTP RPC and WebSocket endpoints for the discovery service.
-- Nodes that satisfy the configured selectors, tolerations, and resource requests. The
-  defaults select GKE node pools, and the prover requests 32 CPUs and 48 GiB of memory.
+- Nodes that satisfy the selectors, tolerations, and resource requests you configure.
+  The prover typically needs around 32 CPUs and 48 GiB of memory.
 - Screening partner credentials when the proof interceptor is enabled.
 
 Resource names and workload selectors are fixed, so install at most one release of this
@@ -31,8 +31,6 @@ transactionProver:
   ohttp:
     key: "<32-byte-hex-key>"
   proofInterceptor:
-    image:
-      tag: "<proof-interceptor-image-tag>"
     screening:
       url: "<screening-proxy-url>"
       poolAddress: "<pool-contract-address>"
@@ -73,6 +71,29 @@ OHTTP keys are stored in the Helm release state as well as the rendered workload
 Protect values files and release-state Secrets, and avoid passing sensitive values with
 `--set`, which also records them in shell history.
 
+## Global settings
+
+`global` sets a value for every component at once: `transactionProver`,
+`discoveryService` and the `transactionProver.proofInterceptor` sidecar. It is empty by
+default. Precedence is: component value > `global` > the chart's built-in defaults in
+[`templates/_defaults.tpl`](templates/_defaults.tpl). The keys that can be set globally
+are listed at the top of [`values.yaml`](values.yaml); Ingress and app config stay per
+component, and `global.resources` is not applied to the sidecar.
+
+Maps merge key by key; lists, scalars and `null` replace the value below them, so
+`false` overrides `true`. To drop a single inherited map key, set it to `null`.
+
+```yaml
+global:
+  image:
+    tag: PRIVACY-0.14.3   # all three images
+  nodeSelector:
+    cloud.google.com/gke-nodepool: services
+discoveryService:
+  nodeSelector:
+    cloud.google.com/gke-nodepool: services-extended   # this component only
+```
+
 ## Optional components
 
 OHTTP and proof interception are enabled by default. Disable a feature explicitly when
@@ -97,28 +118,26 @@ unreachable sidecar therefore blocks the transaction. Review
 The sidecar is reachable only inside its Pod at `localhost:8080`; the chart does not
 create a Service for it.
 
-## Cluster-specific defaults
+## Cluster-specific settings
 
-The defaults include GKE node selectors, a prover toleration, NEG Service annotations,
-and `cloud.google.com/v1` BackendConfig resources. Override scheduling and resources for
-your cluster. On a non-GKE cluster, also remove the annotations and disable the
-BackendConfig resources:
+Both components get a `cloud.google.com/v1` BackendConfig by default. On a non-GKE
+cluster, disable them:
+
+```yaml
+global:
+  backendConfig:
+    enabled: false
+```
+
+On GKE, container-native load balancing needs NEG and BackendConfig Service annotations,
+which name each component's own BackendConfig, so set them per component:
 
 ```yaml
 transactionProver:
-  nodeSelector: null
-  tolerations: []
   service:
-    annotations: null
-  backendConfig:
-    enabled: false
-
-discoveryService:
-  nodeSelector: null
-  service:
-    annotations: null
-  backendConfig:
-    enabled: false
+    annotations:
+      cloud.google.com/neg: '{"ingress":true}'
+      cloud.google.com/backend-config: '{"default":"transaction-prover"}'
 ```
 
 See [`values.yaml`](values.yaml) for every setting and its default.

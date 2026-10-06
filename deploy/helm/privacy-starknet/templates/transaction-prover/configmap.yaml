@@ -1,9 +1,10 @@
-{{- $cfg := deepCopy .Values.transactionProver.config -}}
-{{- if .Values.transactionProver.proofInterceptor.enabled -}}
-{{- $pi := .Values.transactionProver.proofInterceptor -}}
-{{- $_ := set $cfg "blocking_check_url" (printf "http://localhost:%v" $pi.port) -}}
-{{- $_ := set $cfg "blocking_check_timeout_millis" (int $pi.blockingCheck.timeoutMillis) -}}
-{{- $_ := set $cfg "blocking_check_fail_open" $pi.blockingCheck.failOpen -}}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
+{{- $sidecar := include "privacy-starknet.componentValues" (list . "transactionProver" "proofInterceptor") | fromYaml -}}
+{{- $cfg := deepCopy $prover.config -}}
+{{- if $sidecar.enabled -}}
+{{- $_ := set $cfg "blocking_check_url" (printf "http://localhost:%v" $sidecar.port) -}}
+{{- $_ := set $cfg "blocking_check_timeout_millis" (int $sidecar.blockingCheck.timeoutMillis) -}}
+{{- $_ := set $cfg "blocking_check_fail_open" $sidecar.blockingCheck.failOpen -}}
 {{- end -}}
 apiVersion: v1
 kind: ConfigMap

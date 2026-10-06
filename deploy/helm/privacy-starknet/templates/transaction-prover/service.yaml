@@ -1,4 +1,5 @@
-{{- if .Values.transactionProver.service }}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
+{{- if $prover.service }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,17 +8,17 @@ metadata:
   labels:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: transaction-prover
-  {{- with .Values.transactionProver.service.annotations }}
+  {{- with $prover.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.transactionProver.service.type | default "ClusterIP" }}
+  type: {{ $prover.service.type | default "ClusterIP" }}
   ports:
     - name: http
-      port: {{ .Values.transactionProver.config.port }}
+      port: {{ $prover.config.port }}
       protocol: TCP
-      targetPort: {{ .Values.transactionProver.config.port }}
+      targetPort: {{ $prover.config.port }}
   selector:
     app: transaction-prover
 {{- end }}

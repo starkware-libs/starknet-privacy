@@ -1,4 +1,5 @@
-{{- if and .Values.discoveryService.backendConfig .Values.discoveryService.backendConfig.enabled }}
+{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- if and $discovery.backendConfig $discovery.backendConfig.enabled }}
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
@@ -9,11 +10,11 @@ metadata:
     app: discovery-service
 spec:
   healthCheck:
-    type: {{ .Values.discoveryService.backendConfig.healthCheck.type | default "HTTP" }}
-    {{- with .Values.discoveryService.backendConfig.healthCheck.requestPath }}
+    type: {{ $discovery.backendConfig.healthCheck.type | default "HTTP" }}
+    {{- with $discovery.backendConfig.healthCheck.requestPath }}
     requestPath: {{ . }}
     {{- end }}
-    {{- with .Values.discoveryService.backendConfig.healthCheck.port }}
+    {{- with $discovery.backendConfig.healthCheck.port }}
     port: {{ . }}
     {{- end }}
 {{- end }}

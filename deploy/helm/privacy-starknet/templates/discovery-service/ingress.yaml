@@ -1,5 +1,6 @@
-{{- if and .Values.discoveryService.ingress .Values.discoveryService.ingress.enabled }}
-{{- $svcPort := .Values.discoveryService.containerPort -}}
+{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- if and $discovery.ingress $discovery.ingress.enabled }}
+{{- $svcPort := $discovery.containerPort -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,24 +9,24 @@ metadata:
   labels:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: discovery-service
-  {{- with .Values.discoveryService.ingress.annotations }}
+  {{- with $discovery.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.discoveryService.ingress.className }}
+  {{- with $discovery.ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- with .Values.discoveryService.ingress.tls }}
+  {{- with $discovery.ingress.tls }}
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.discoveryService.ingress.defaultBackend }}
+  {{- with $discovery.ingress.defaultBackend }}
   defaultBackend:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
-    {{- range .Values.discoveryService.ingress.hosts }}
+    {{- range $discovery.ingress.hosts }}
     - {{- if .host }}
       host: {{ .host | quote }}
       {{- end }}

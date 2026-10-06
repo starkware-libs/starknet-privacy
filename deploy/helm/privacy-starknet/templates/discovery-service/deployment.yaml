@@ -1,7 +1,8 @@
-{{- $_ := required "discoveryService.config.rpcUrl is required" .Values.discoveryService.config.rpcUrl -}}
-{{- $_ := required "discoveryService.config.wsUrl is required" .Values.discoveryService.config.wsUrl -}}
-{{- if .Values.discoveryService.ohttp.enabled -}}
-{{- $_ := required "discoveryService.ohttp.key is required when discoveryService.ohttp.enabled is true" .Values.discoveryService.ohttp.key -}}
+{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- $_ := required "discoveryService.config.rpcUrl is required" $discovery.config.rpcUrl -}}
+{{- $_ := required "discoveryService.config.wsUrl is required" $discovery.config.wsUrl -}}
+{{- if $discovery.ohttp.enabled -}}
+{{- $_ := required "discoveryService.ohttp.key (or global.ohttp.key) is required when OHTTP is enabled" $discovery.ohttp.key -}}
 {{- end -}}
 apiVersion: apps/v1
 kind: Deployment
@@ -12,18 +13,18 @@ metadata:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: discovery-service
 spec:
-  progressDeadlineSeconds: {{ .Values.discoveryService.progressDeadlineSeconds }}
-  replicas: {{ .Values.discoveryService.replicas }}
-  revisionHistoryLimit: {{ .Values.discoveryService.revisionHistoryLimit }}
+  progressDeadlineSeconds: {{ $discovery.progressDeadlineSeconds }}
+  replicas: {{ $discovery.replicas }}
+  revisionHistoryLimit: {{ $discovery.revisionHistoryLimit }}
   selector:
     matchLabels:
       app: discovery-service
   strategy:
-    type: {{ .Values.discoveryService.strategy.type }}
-    {{- if eq .Values.discoveryService.strategy.type "RollingUpdate" }}
+    type: {{ $discovery.strategy.type }}
+    {{- if eq $discovery.strategy.type "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: {{ .Values.discoveryService.strategy.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ .Values.discoveryService.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ $discovery.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ $discovery.strategy.rollingUpdate.maxUnavailable }}
     {{- end }}
   template:
     metadata:
@@ -32,43 +33,43 @@ spec:
     spec:
       containers:
         - name: discovery-service
-          image: "{{ .Values.discoveryService.image.repository }}:{{ .Values.discoveryService.image.tag }}"
-          imagePullPolicy: {{ .Values.discoveryService.image.pullPolicy }}
+          image: "{{ $discovery.image.repository }}:{{ $discovery.image.tag }}"
+          imagePullPolicy: {{ $discovery.image.pullPolicy }}
           args:
             - --config
             - /etc/discovery-service/config.toml
           env:
             - name: RPC_URL
-              value: {{ .Values.discoveryService.config.rpcUrl | quote }}
+              value: {{ $discovery.config.rpcUrl | quote }}
             - name: WS_URL
-              value: {{ .Values.discoveryService.config.wsUrl | quote }}
+              value: {{ $discovery.config.wsUrl | quote }}
             - name: API_HOST
-              value: {{ .Values.discoveryService.config.apiHost | quote }}
+              value: {{ $discovery.config.apiHost | quote }}
             - name: RUST_LOG
-              value: {{ .Values.discoveryService.config.rustLog | quote }}
-            {{- if .Values.discoveryService.ohttp.enabled }}
+              value: {{ $discovery.config.rustLog | quote }}
+            {{- if $discovery.ohttp.enabled }}
             - name: OHTTP_KEY
-              value: {{ .Values.discoveryService.ohttp.key | quote }}
+              value: {{ $discovery.ohttp.key | quote }}
             {{- end }}
           ports:
-            - containerPort: {{ .Values.discoveryService.containerPort }}
+            - containerPort: {{ $discovery.containerPort }}
               protocol: TCP
-          {{- with .Values.discoveryService.readinessProbe }}
+          {{- with $discovery.readinessProbe }}
           readinessProbe:
             httpGet:
               path: {{ .path | default "/health" }}
-              port: {{ $.Values.discoveryService.containerPort }}
+              port: {{ $discovery.containerPort }}
             initialDelaySeconds: {{ .initialDelaySeconds | default 5 }}
             periodSeconds: {{ .periodSeconds | default 10 }}
             timeoutSeconds: {{ .timeoutSeconds | default 2 }}
             failureThreshold: {{ .failureThreshold | default 3 }}
             successThreshold: {{ .successThreshold | default 1 }}
           {{- end }}
-          {{- with .Values.discoveryService.livenessProbe }}
+          {{- with $discovery.livenessProbe }}
           livenessProbe:
             httpGet:
               path: {{ .path | default "/health" }}
-              port: {{ $.Values.discoveryService.containerPort }}
+              port: {{ $discovery.containerPort }}
             initialDelaySeconds: {{ .initialDelaySeconds | default 15 }}
             periodSeconds: {{ .periodSeconds | default 30 }}
             timeoutSeconds: {{ .timeoutSeconds | default 2 }}
@@ -80,17 +81,21 @@ spec:
               mountPath: /etc/discovery-service/config.toml
               readOnly: true
               subPath: config.toml
-          {{- with .Values.discoveryService.resources }}
+          {{- with $discovery.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      dnsPolicy: {{ .Values.discoveryService.dnsPolicy }}
-      {{- with .Values.discoveryService.nodeSelector }}
+      dnsPolicy: {{ $discovery.dnsPolicy }}
+      {{- with $discovery.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      restartPolicy: {{ .Values.discoveryService.restartPolicy }}
-      terminationGracePeriodSeconds: {{ .Values.discoveryService.terminationGracePeriodSeconds }}
+      {{- with $discovery.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      restartPolicy: {{ $discovery.restartPolicy }}
+      terminationGracePeriodSeconds: {{ $discovery.terminationGracePeriodSeconds }}
       volumes:
         - name: config
           configMap:
