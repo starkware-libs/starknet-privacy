@@ -8,9 +8,4 @@ metadata:
     app: discovery-service
 data:
   config.toml: |
-    [api]
-    health_max_lag_secs = {{ .Values.discoveryService.config.api.health_max_lag_secs }}
-    {{- if .Values.discoveryService.ohttp.enabled }}
-    [ohttp]
-    enabled = true
-    {{- end }}
+    {{- include "privacy-starknet.discoveryService.configToml" . | nindent 4 }}

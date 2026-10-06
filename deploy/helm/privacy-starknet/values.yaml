@@ -166,6 +166,7 @@ discoveryService:
   restartPolicy: Always
   terminationGracePeriodSeconds: 30
   # HTTP RPC for queries and WebSocket for block and event subscriptions.
+  # Rendered into config.toml, except apiHost, which is passed as API_HOST.
   config:
     rpcUrl: "<rpc-url>"
     wsUrl: "<ws-url>"

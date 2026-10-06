@@ -73,6 +73,22 @@ OHTTP keys are stored in the Helm release state as well as the rendered workload
 Protect values files and release-state Secrets, and avoid passing sensitive values with
 `--set`, which also records them in shell history.
 
+## Configuration delivery
+
+| Component | Settings | Channel |
+| --- | --- | --- |
+| discovery-service | `config.rpcUrl`, `config.wsUrl`, `config.rustLog`, `config.api.health_max_lag_secs`, `ohttp.enabled` | `config.toml` in ConfigMap `discovery-service-config` |
+| discovery-service | `config.apiHost` | `API_HOST` env var; the image bakes a default that overrides the file |
+| discovery-service | `ohttp.key` | `OHTTP_KEY` env var |
+| transaction-prover | `config.*`, plus `blocking_check_*` when the sidecar is enabled | `config.json` in ConfigMap `transaction-prover-config` |
+| transaction-prover | `ohttp.enabled`, `ohttp.key` | `OHTTP_ENABLED` and `OHTTP_KEY` env vars |
+
+Each Deployment's Pod template carries a `checksum/config` annotation: the SHA-256 of
+the configuration file its containers read. Changing a rendered file therefore rolls only
+the Deployment that consumes it, while chart-version or label changes do not. OHTTP keys
+are never written to a ConfigMap. Changes to the content of externally managed Secrets
+are not covered by these checksums; restart the Deployment after rotating them.
+
 ## Optional components
 
 OHTTP and proof interception are enabled by default. Disable a feature explicitly when
@@ -146,6 +162,11 @@ Direct Service exposure can bypass Ingress TLS and policy. Set a component's com
 create that Service.
 
 ## Upgrade notes
+
+Chart `0.4.0` moves the discovery service's RPC, WebSocket, and log-level settings from
+env vars into its `config.toml`, and adds configuration checksum annotations to both Pod
+templates. Values keys and effective settings are unchanged, but adopting the annotations
+changes both Pod templates, so the first upgrade to `0.4.0` rolls both Deployments.
 
 Chart `0.3.0` changes both default Service types from `LoadBalancer` to `ClusterIP`.
 Deployments that require direct load balancers must set both Service types explicitly

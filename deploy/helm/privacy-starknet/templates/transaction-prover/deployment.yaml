@@ -38,6 +38,8 @@ spec:
     metadata:
       labels:
         app: transaction-prover
+      annotations:
+        checksum/config: {{ include "privacy-starknet.transactionProver.configJson" . | sha256sum | quote }}
     spec:
       containers:
         - name: transaction-prover

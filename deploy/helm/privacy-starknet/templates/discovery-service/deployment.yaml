@@ -29,6 +29,8 @@ spec:
     metadata:
       labels:
         app: discovery-service
+      annotations:
+        checksum/config: {{ include "privacy-starknet.discoveryService.configToml" . | sha256sum | quote }}
     spec:
       containers:
         - name: discovery-service
@@ -38,14 +40,8 @@ spec:
             - --config
             - /etc/discovery-service/config.toml
           env:
-            - name: RPC_URL
-              value: {{ .Values.discoveryService.config.rpcUrl | quote }}
-            - name: WS_URL
-              value: {{ .Values.discoveryService.config.wsUrl | quote }}
             - name: API_HOST
               value: {{ .Values.discoveryService.config.apiHost | quote }}
-            - name: RUST_LOG
-              value: {{ .Values.discoveryService.config.rustLog | quote }}
             {{- if .Values.discoveryService.ohttp.enabled }}
             - name: OHTTP_KEY
               value: {{ .Values.discoveryService.ohttp.key | quote }}
