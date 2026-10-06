@@ -1,14 +1,16 @@
-{{- $_ := required "transactionProver.config.rpc_node_url is required" .Values.transactionProver.config.rpc_node_url -}}
-{{- $_ := required "transactionProver.config.chain_id is required" .Values.transactionProver.config.chain_id -}}
-{{- if .Values.transactionProver.ohttp.enabled -}}
-{{- $_ := required "transactionProver.ohttp.key is required when transactionProver.ohttp.enabled is true" .Values.transactionProver.ohttp.key -}}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
+{{- $sidecar := include "privacy-starknet.componentValues" (list . "transactionProver" "proofInterceptor") | fromYaml -}}
+{{- $_ := required "transactionProver.config.rpc_node_url is required" $prover.config.rpc_node_url -}}
+{{- $_ := required "transactionProver.config.chain_id is required" $prover.config.chain_id -}}
+{{- if $prover.ohttp.enabled -}}
+{{- $_ := required "transactionProver.ohttp.key (or global.ohttp.key) is required when OHTTP is enabled" $prover.ohttp.key -}}
 {{- end -}}
-{{- if .Values.transactionProver.proofInterceptor.enabled -}}
-{{- $_ := required "transactionProver.proofInterceptor.image.tag is required when proofInterceptor is enabled" .Values.transactionProver.proofInterceptor.image.tag -}}
-{{- $_ := required "transactionProver.proofInterceptor.screening.url is required when proofInterceptor is enabled" .Values.transactionProver.proofInterceptor.screening.url -}}
-{{- $_ := required "transactionProver.proofInterceptor.screening.poolAddress is required when proofInterceptor is enabled" .Values.transactionProver.proofInterceptor.screening.poolAddress -}}
-{{- $_ := required "transactionProver.proofInterceptor.screening.anonymizerAddress is required when proofInterceptor is enabled" .Values.transactionProver.proofInterceptor.screening.anonymizerAddress -}}
-{{- if hasKey .Values.transactionProver.proofInterceptor.screening "rpcUrl" -}}
+{{- if $sidecar.enabled -}}
+{{- $_ := required "transactionProver.proofInterceptor.image.tag (or global.image.tag) is required when proofInterceptor is enabled" $sidecar.image.tag -}}
+{{- $_ := required "transactionProver.proofInterceptor.screening.url is required when proofInterceptor is enabled" $sidecar.screening.url -}}
+{{- $_ := required "transactionProver.proofInterceptor.screening.poolAddress is required when proofInterceptor is enabled" $sidecar.screening.poolAddress -}}
+{{- $_ := required "transactionProver.proofInterceptor.screening.anonymizerAddress is required when proofInterceptor is enabled" $sidecar.screening.anonymizerAddress -}}
+{{- if hasKey $sidecar.screening "rpcUrl" -}}
 {{- fail "transactionProver.proofInterceptor.screening.rpcUrl is chart-owned: the sidecar's SCREENING_RPC_URL is wired from transactionProver.config.rpc_node_url so both containers read the same node" -}}
 {{- end -}}
 {{- end -}}
@@ -21,18 +23,18 @@ metadata:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: transaction-prover
 spec:
-  progressDeadlineSeconds: {{ .Values.transactionProver.progressDeadlineSeconds }}
-  replicas: {{ .Values.transactionProver.replicas }}
-  revisionHistoryLimit: {{ .Values.transactionProver.revisionHistoryLimit }}
+  progressDeadlineSeconds: {{ $prover.progressDeadlineSeconds }}
+  replicas: {{ $prover.replicas }}
+  revisionHistoryLimit: {{ $prover.revisionHistoryLimit }}
   selector:
     matchLabels:
       app: transaction-prover
   strategy:
-    type: {{ .Values.transactionProver.strategy.type }}
-    {{- if eq .Values.transactionProver.strategy.type "RollingUpdate" }}
+    type: {{ $prover.strategy.type }}
+    {{- if eq $prover.strategy.type "RollingUpdate" }}
     rollingUpdate:
-      maxSurge: {{ .Values.transactionProver.strategy.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ .Values.transactionProver.strategy.rollingUpdate.maxUnavailable }}
+      maxSurge: {{ $prover.strategy.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ $prover.strategy.rollingUpdate.maxUnavailable }}
     {{- end }}
   template:
     metadata:
@@ -41,45 +43,45 @@ spec:
     spec:
       containers:
         - name: transaction-prover
-          image: "{{ .Values.transactionProver.image.repository }}:{{ .Values.transactionProver.image.tag }}"
-          imagePullPolicy: {{ .Values.transactionProver.image.pullPolicy }}
+          image: "{{ $prover.image.repository }}:{{ $prover.image.tag }}"
+          imagePullPolicy: {{ $prover.image.pullPolicy }}
           args:
             - --config-file=/etc/config/config.json
-          {{- if .Values.transactionProver.ohttp.enabled }}
+          {{- if $prover.ohttp.enabled }}
           env:
             - name: OHTTP_ENABLED
               value: "true"
             - name: OHTTP_KEY
-              value: {{ .Values.transactionProver.ohttp.key | quote }}
+              value: {{ $prover.ohttp.key | quote }}
           {{- end }}
           ports:
-            - containerPort: {{ .Values.transactionProver.config.port }}
+            - containerPort: {{ $prover.config.port }}
               protocol: TCP
           livenessProbe:
             tcpSocket:
-              port: {{ .Values.transactionProver.config.port }}
-            initialDelaySeconds: {{ .Values.transactionProver.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.transactionProver.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.transactionProver.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.transactionProver.livenessProbe.failureThreshold }}
-            successThreshold: {{ .Values.transactionProver.livenessProbe.successThreshold }}
+              port: {{ $prover.config.port }}
+            initialDelaySeconds: {{ $prover.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $prover.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ $prover.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ $prover.livenessProbe.failureThreshold }}
+            successThreshold: {{ $prover.livenessProbe.successThreshold }}
           readinessProbe:
             tcpSocket:
-              port: {{ .Values.transactionProver.config.port }}
-            initialDelaySeconds: {{ .Values.transactionProver.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.transactionProver.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.transactionProver.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.transactionProver.readinessProbe.failureThreshold }}
-            successThreshold: {{ .Values.transactionProver.readinessProbe.successThreshold }}
+              port: {{ $prover.config.port }}
+            initialDelaySeconds: {{ $prover.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ $prover.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ $prover.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ $prover.readinessProbe.failureThreshold }}
+            successThreshold: {{ $prover.readinessProbe.successThreshold }}
           volumeMounts:
             - name: transaction-prover-config
               mountPath: /etc/config
-          {{- with .Values.transactionProver.resources }}
+          {{- with $prover.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-        {{- if .Values.transactionProver.proofInterceptor.enabled }}
-        {{- with .Values.transactionProver.proofInterceptor }}
+        {{- if $sidecar.enabled }}
+        {{- with $sidecar }}
         - name: proof-interceptor
           image: "{{ .image.repository }}:{{ .image.tag }}"
           imagePullPolicy: {{ .image.pullPolicy }}
@@ -102,7 +104,7 @@ spec:
             - name: SCREENING_MAX_RETRIES
               value: {{ .screening.maxRetries | quote }}
             - name: SCREENING_RPC_URL
-              value: {{ $.Values.transactionProver.config.rpc_node_url | quote }}
+              value: {{ $prover.config.rpc_node_url | quote }}
             - name: SCREENING_PARTNER_NAME
               valueFrom:
                 secretKeyRef:
@@ -137,17 +139,17 @@ spec:
           {{- end }}
         {{- end }}
         {{- end }}
-      dnsPolicy: {{ .Values.transactionProver.dnsPolicy }}
-      {{- with .Values.transactionProver.nodeSelector }}
+      dnsPolicy: {{ $prover.dnsPolicy }}
+      {{- with $prover.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.transactionProver.tolerations }}
+      {{- with $prover.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      restartPolicy: {{ .Values.transactionProver.restartPolicy }}
-      terminationGracePeriodSeconds: {{ .Values.transactionProver.terminationGracePeriodSeconds }}
+      restartPolicy: {{ $prover.restartPolicy }}
+      terminationGracePeriodSeconds: {{ $prover.terminationGracePeriodSeconds }}
       volumes:
         - name: transaction-prover-config
           configMap:

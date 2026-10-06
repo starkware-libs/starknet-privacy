@@ -1,5 +1,6 @@
-{{- if and .Values.transactionProver.ingress .Values.transactionProver.ingress.enabled }}
-{{- $svcPort := .Values.transactionProver.config.port -}}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
+{{- if and $prover.ingress $prover.ingress.enabled }}
+{{- $svcPort := $prover.config.port -}}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -8,24 +9,24 @@ metadata:
   labels:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: transaction-prover
-  {{- with .Values.transactionProver.ingress.annotations }}
+  {{- with $prover.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.transactionProver.ingress.className }}
+  {{- with $prover.ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- with .Values.transactionProver.ingress.tls }}
+  {{- with $prover.ingress.tls }}
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.transactionProver.ingress.defaultBackend }}
+  {{- with $prover.ingress.defaultBackend }}
   defaultBackend:
     {{- toYaml . | nindent 4 }}
   {{- end }}
   rules:
-    {{- range .Values.transactionProver.ingress.hosts }}
+    {{- range $prover.ingress.hosts }}
     - {{- if .host }}
       host: {{ .host | quote }}
       {{- end }}

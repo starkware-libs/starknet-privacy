@@ -1,4 +1,5 @@
-{{- if and .Values.transactionProver.backendConfig .Values.transactionProver.backendConfig.enabled }}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
+{{- if and $prover.backendConfig $prover.backendConfig.enabled }}
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
@@ -11,11 +12,11 @@ spec:
   # The prover has no GET health route, so GCE checks the sidecar instead.
   # Allow GCE health-check traffic to reach the configured sidecar port.
   healthCheck:
-    type: {{ .Values.transactionProver.backendConfig.healthCheck.type | default "HTTP" }}
-    {{- with .Values.transactionProver.backendConfig.healthCheck.requestPath }}
+    type: {{ $prover.backendConfig.healthCheck.type | default "HTTP" }}
+    {{- with $prover.backendConfig.healthCheck.requestPath }}
     requestPath: {{ . }}
     {{- end }}
-    {{- with .Values.transactionProver.backendConfig.healthCheck.port }}
+    {{- with $prover.backendConfig.healthCheck.port }}
     port: {{ . }}
     {{- end }}
 {{- end }}

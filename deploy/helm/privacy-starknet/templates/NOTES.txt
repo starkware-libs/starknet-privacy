@@ -1,12 +1,14 @@
-{{- $proverType := dig "type" "disabled" (default (dict) .Values.transactionProver.service) }}
-{{- $discoveryType := dig "type" "disabled" (default (dict) .Values.discoveryService.service) }}
+{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml }}
+{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml }}
+{{- $proverType := dig "type" "disabled" (default (dict) $prover.service) }}
+{{- $discoveryType := dig "type" "disabled" (default (dict) $discovery.service) }}
 Privacy Starknet has been installed.
 
 Namespace: {{ .Release.Namespace }}
 
 Services:
-  - transaction-prover: {{ $proverType }} on port {{ .Values.transactionProver.config.port }}
-  - discovery-service: {{ $discoveryType }} on port {{ .Values.discoveryService.containerPort }}
+  - transaction-prover: {{ $proverType }} on port {{ $prover.config.port }}
+  - discovery-service: {{ $discoveryType }} on port {{ $discovery.containerPort }}
 
 Inspect the Services and Ingresses with:
 

@@ -1,4 +1,5 @@
-{{- if .Values.discoveryService.service }}
+{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- if $discovery.service }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -7,16 +8,16 @@ metadata:
   labels:
     {{- include "privacy-starknet.labels" . | nindent 4 }}
     app: discovery-service
-  {{- with .Values.discoveryService.service.annotations }}
+  {{- with $discovery.service.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.discoveryService.service.type | default "ClusterIP" }}
+  type: {{ $discovery.service.type | default "ClusterIP" }}
   ports:
-    - port: {{ .Values.discoveryService.containerPort }}
+    - port: {{ $discovery.containerPort }}
       protocol: TCP
-      targetPort: {{ .Values.discoveryService.containerPort }}
+      targetPort: {{ $discovery.containerPort }}
   selector:
     app: discovery-service
 {{- end }}

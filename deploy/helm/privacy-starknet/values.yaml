@@ -1,59 +1,26 @@
+# Settings for every component at once: transactionProver, discoveryService and the
+# transactionProver.proofInterceptor sidecar. A value set under a component wins over
+# global, and global wins over the chart's built-in defaults (templates/_defaults.tpl).
+# Maps merge key by key; lists, scalars and null replace the value below them.
+#
+# Keys that can be set here or under a component:
+#   image.tag, image.pullPolicy, replicas, progressDeadlineSeconds,
+#   revisionHistoryLimit, strategy, dnsPolicy, restartPolicy,
+#   terminationGracePeriodSeconds, nodeSelector, tolerations, resources (not applied
+#   to the sidecar), livenessProbe, readinessProbe, ohttp.enabled, service,
+#   backendConfig.
+global: {}
+  # image:
+  #   tag: PRIVACY-x.y.z
+  # nodeSelector:
+  #   cloud.google.com/gke-nodepool: services
+  # livenessProbe:
+  #   failureThreshold: 5
+
 # Transaction prover
 transactionProver:
-  replicas: 1
   image:
     repository: ghcr.io/starkware-libs/starknet-privacy/transaction-prover
-    tag: PRIVACY-0.14.2-RC.6
-    pullPolicy: Always
-  progressDeadlineSeconds: 600
-  revisionHistoryLimit: 10
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-  livenessProbe:
-    initialDelaySeconds: 10
-    periodSeconds: 30
-    timeoutSeconds: 1
-    failureThreshold: 3
-    successThreshold: 1
-  readinessProbe:
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 1
-    failureThreshold: 3
-    successThreshold: 1
-  dnsPolicy: ClusterFirst
-  restartPolicy: Always
-  terminationGracePeriodSeconds: 30
-  nodeSelector:
-    cloud.google.com/gke-nodepool: os-runner-c4d-highcpu-48-spot
-  tolerations:
-    - key: workflow
-      operator: Equal
-      value: os-runner-c4d-highcpu-48
-      effect: NoSchedule
-  resources:
-    requests:
-      cpu: "32"
-      memory: 48Gi
-  # Direct exposure can bypass the Ingress and its TLS policy.
-  service:
-    type: ClusterIP
-    annotations:
-      cloud.google.com/neg: '{"ingress":true}'
-      # Keep this annotation in sync with backendConfig.enabled.
-      cloud.google.com/backend-config: '{"default":"transaction-prover"}'
-
-  # GCE health check for the prover's POST-only JSON-RPC backend. It uses the
-  # proof-interceptor /health endpoint, so keep its port and enabled state aligned.
-  backendConfig:
-    enabled: true
-    healthCheck:
-      type: HTTP
-      requestPath: /health
-      port: 8080
 
   # Enable and configure Ingress to expose the transaction prover.
   ingress:
@@ -99,17 +66,16 @@ transactionProver:
     use_latest_versioned_constants: true
     cors_allow_origin:
       - "*"
-  # Supply OHTTP keys from a private values source.
-  ohttp:
-    enabled: true
-    key: "<ohttp-key>"
+  # Required while ohttp is enabled. Supply it from a private values source, here or as
+  # global.ohttp.key.
+  # ohttp:
+  #   key: "<32-byte-hex-key>"
+
   # Proof-interceptor screening sidecar.
   proofInterceptor:
     enabled: true
     image:
       repository: ghcr.io/starkware-libs/starknet-privacy/proof-interceptor
-      tag: PRIVACY-0.14.2-RC.6
-      pullPolicy: Always
     port: 8080
     # K8s Secret with `partner-name` and `partner-secret` keys (created out-of-band).
     screeningSecretName: proof-interceptor-screening
@@ -127,91 +93,12 @@ transactionProver:
     blockingCheck:
       timeoutMillis: 2000
       failOpen: false
-    livenessProbe:
-      initialDelaySeconds: 5
-      periodSeconds: 10
-      timeoutSeconds: 2
-      failureThreshold: 3
-      successThreshold: 1
-    readinessProbe:
-      initialDelaySeconds: 3
-      periodSeconds: 5
-      timeoutSeconds: 2
-      failureThreshold: 3
-      successThreshold: 1
-    resources:
-      requests:
-        cpu: "0.5"
-        memory: 256Mi
-      limits:
-        cpu: "1"
-        memory: 512Mi
 
 # Discovery service
 discoveryService:
-  replicas: 1
   image:
     repository: ghcr.io/starkware-libs/starknet-privacy/discovery-service
-    tag: PRIVACY-0.14.2-RC.6
-    pullPolicy: Always
   containerPort: 8080
-  progressDeadlineSeconds: 600
-  revisionHistoryLimit: 10
-  strategy:
-    type: RollingUpdate
-    rollingUpdate:
-      maxSurge: 25%
-      maxUnavailable: 25%
-  dnsPolicy: ClusterFirst
-  restartPolicy: Always
-  terminationGracePeriodSeconds: 30
-  # HTTP RPC for queries and WebSocket for block and event subscriptions.
-  config:
-    rpcUrl: "<rpc-url>"
-    wsUrl: "<ws-url>"
-    apiHost: "0.0.0.0:8080"
-    rustLog: "info"
-    api:
-      health_max_lag_secs: 10
-  # Supply OHTTP keys from a private values source.
-  ohttp:
-    enabled: true
-    key: "<ohttp-key>"
-  nodeSelector:
-    cloud.google.com/gke-nodepool: services-extended
-  resources: {}
-  # Direct exposure can bypass the Ingress and its TLS policy.
-  service:
-    type: ClusterIP
-    annotations:
-      cloud.google.com/neg: '{"ingress":true}'
-      # Keep this annotation in sync with backendConfig.enabled.
-      cloud.google.com/backend-config: '{"default":"discovery-service"}'
-
-  # GCE health check for the discovery service.
-  backendConfig:
-    enabled: true
-    healthCheck:
-      type: HTTP
-      requestPath: /health
-      # Defaults to the serving port (containerPort) when null.
-      port: null
-
-  # The readiness probe also gives GKE a health-check path to infer.
-  readinessProbe:
-    path: /health
-    initialDelaySeconds: 5
-    periodSeconds: 10
-    timeoutSeconds: 2
-    failureThreshold: 3
-    successThreshold: 1
-  livenessProbe:
-    path: /health
-    initialDelaySeconds: 15
-    periodSeconds: 30
-    timeoutSeconds: 2
-    failureThreshold: 3
-    successThreshold: 1
 
   # Enable and configure Ingress to expose the discovery service.
   ingress:
@@ -242,3 +129,16 @@ discoveryService:
       #   name: discovery-service
       #   port:
       #     number: 8080
+
+  # HTTP RPC for queries and WebSocket for block and event subscriptions.
+  config:
+    rpcUrl: "<rpc-url>"
+    wsUrl: "<ws-url>"
+    apiHost: "0.0.0.0:8080"
+    rustLog: "info"
+    api:
+      health_max_lag_secs: 10
+  # Required while ohttp is enabled. Supply it from a private values source, here or as
+  # global.ohttp.key.
+  # ohttp:
+  #   key: "<32-byte-hex-key>"
