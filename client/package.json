@@ -34,6 +34,7 @@
     "test": "vitest run",
     "check": "npm run build && npm run lint && npm run test",
     "clean": "rm -rf dist",
+    "prepublishOnly": "node scripts/publish-sdk-dep.mjs refuse-directory-publish",
     "prepack": "node scripts/publish-sdk-dep.mjs pin",
     "postpack": "node scripts/publish-sdk-dep.mjs restore"
   },

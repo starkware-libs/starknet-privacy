@@ -9,20 +9,26 @@ npm org with two-factor authentication enabled. Publish from a clean checkout of
 
 1. Bump `version` in `package.json` to the release version.
 2. Log in: `npm login`
-3. Build and publish the SDK, then the client. The client's `prepack` pins its SDK dependency to the
-   SDK's exact version, so that version must already be on npm:
+3. Build, pack and publish the SDK, then the client. Always publish the packed tarball: the client's
+   `prepack` pins its SDK dependency to the SDK's exact version (which must already be on npm), but a
+   publish from the client directory would record `file:../sdk` in the registry metadata, so the
+   client refuses it. Every publish, dry runs included, needs a dist-tag: `next` for release candidates
+   (`-rc.N`), `latest` for stable versions. The SDK and client are versioned separately, so pick each
+   one's tag from its own version:
    ```sh
    cd sdk
    npm ci
    npm run generate
    npm run build
-   npm publish --dry-run   # check the file list and target registry
-   npm publish --tag next  # release candidates (-rc.N); use --tag latest for stable versions
+   TARBALL=$(npm pack --silent | tail -n 1)
+   npm publish "$TARBALL" --tag next --dry-run  # check the file list and target registry
+   npm publish "$TARBALL" --tag next
    cd ../client
    npm ci
    npm run build
-   npm publish --dry-run
-   npm publish --tag latest  # the client versions separately; use --tag next if its version is -rc.N
+   TARBALL=$(npm pack --silent | tail -n 1)    # the pack hooks print before the file name
+   npm publish "$TARBALL" --tag latest --dry-run
+   npm publish "$TARBALL" --tag latest
    ```
 
 npm versions are immutable: a published version can never be republished, even after an unpublish.

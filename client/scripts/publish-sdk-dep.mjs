@@ -9,6 +9,12 @@
  * changes, not behavior. Release order: publish the SDK first, then the client (whose `prepack` reads
  * the SDK version the release just set).
  *
+ * Only the packed tarball may be published. Publishing the directory runs the same pack hooks, but
+ * npm builds the registry metadata from the manifest after `postpack` has restored the link, so the
+ * registry would record `file:../sdk` as the dependency, which is what consumers' installs resolve.
+ * `prepublishOnly` (`refuse-directory-publish`) aborts a directory publish before anything is packed;
+ * `npm publish <tarball>` runs no lifecycle scripts, so it is unaffected.
+ *
  * String-replaces the single dependency line (rather than re-serializing the JSON) so the manifest's
  * formatting is untouched and `restore` leaves no spurious diff.
  */
@@ -45,6 +51,12 @@ if (mode === "pin") {
     manifest.replace(new RegExp(`"${escapedName}": "[^"]*"`), depLine(LOCAL_LINK))
   );
   console.log(`postpack: restored ${SDK_NAME} -> ${LOCAL_LINK}`);
+} else if (mode === "refuse-directory-publish") {
+  console.error(
+    `Refusing to publish the client directory: the registry would record ${SDK_NAME} as ` +
+      `"${LOCAL_LINK}". Run \`npm pack\`, then \`npm publish <tarball>\` (see sdk/README.md).`
+  );
+  process.exit(1);
 } else {
-  throw new Error("usage: publish-sdk-dep.mjs <pin|restore>");
+  throw new Error("usage: publish-sdk-dep.mjs <pin|restore|refuse-directory-publish>");
 }
