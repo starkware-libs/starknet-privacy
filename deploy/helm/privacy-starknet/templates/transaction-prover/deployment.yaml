@@ -40,6 +40,11 @@ spec:
     metadata:
       labels:
         app: transaction-prover
+      annotations:
+        checksum/config: {{ include "privacy-starknet.transactionProver.configJson" . | sha256sum | quote }}
+        {{- if $sidecar.enabled }}
+        checksum/proof-interceptor-env: {{ include "privacy-starknet.proofInterceptor.env" . | sha256sum | quote }}
+        {{- end }}
     spec:
       containers:
         - name: transaction-prover
@@ -88,23 +93,10 @@ spec:
           ports:
             - containerPort: {{ .port }}
               protocol: TCP
+          envFrom:
+            - configMapRef:
+                name: proof-interceptor-env
           env:
-            - name: PORT
-              value: {{ .port | quote }}
-            - name: SCREENING_URL
-              value: {{ .screening.url | quote }}
-            - name: SCREENING_POOL_ADDRESS
-              value: {{ .screening.poolAddress | quote }}
-            - name: SCREENING_ANONYMIZER_ADDRESS
-              value: {{ .screening.anonymizerAddress | quote }}
-            - name: SCREENING_FAIL_OPEN
-              value: {{ .screening.failOpen | quote }}
-            - name: SCREENING_TIMEOUT_MS
-              value: {{ .screening.timeoutMs | quote }}
-            - name: SCREENING_MAX_RETRIES
-              value: {{ .screening.maxRetries | quote }}
-            - name: SCREENING_RPC_URL
-              value: {{ $prover.config.rpc_node_url | quote }}
             - name: SCREENING_PARTNER_NAME
               valueFrom:
                 secretKeyRef:
