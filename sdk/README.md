@@ -4,21 +4,31 @@ TypeScript SDK for private transfers on Starknet.
 
 ## Publishing
 
-To publish a release:
+The SDK and [client](../client) are published to npm by hand, by a member of the `starkware-libs`
+npm org with two-factor authentication enabled. Publish from a clean checkout of the release commit:
 
-1. Bump `version` in `package.json` to the desired release version
-2. Authenticate with GitHub Packages:
-   ```sh
-   echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
-   ```
-3. Build and publish:
+1. Bump `version` in `package.json` to the release version.
+2. Log in: `npm login`
+3. Build and publish the SDK, then the client. The client's `prepack` pins its SDK dependency to the
+   SDK's exact version, so that version must already be on npm:
    ```sh
    cd sdk
    npm ci
    npm run generate
    npm run build
-   npm publish
+   npm publish --dry-run   # check the file list and target registry
+   npm publish --tag next  # release candidates (-rc.N); use --tag latest for stable versions
+   cd ../client
+   npm ci
+   npm run build
+   npm publish --dry-run
+   npm publish --tag latest  # the client versions separately; use --tag next if its version is -rc.N
    ```
+
+npm versions are immutable: a published version can never be republished, even after an unpublish.
+
+For a branch build to test without publishing, run the `SDK Prerelease Tarball` workflow on the
+branch and install the `.tgz` attached to the run.
 
 ## Prerequisites
 
@@ -35,10 +45,11 @@ npm run test:fast # run tests excluding devnet
 
 ## Installation
 
-From a tagged release (GitHub npm registry):
+From npm:
 
 ```bash
-npm install @starkware-libs/starknet-privacy-sdk
+npm install @starkware-libs/starknet-privacy-sdk        # latest stable release
+npm install @starkware-libs/starknet-privacy-sdk@next   # latest release candidate
 ```
 
 From a specific commit (git):
@@ -51,7 +62,10 @@ npm install "starkware-libs/starknet-privacy#<commit-sha>"
 
 ```typescript
 import { Account, RpcProvider } from "starknet";
-import { createPrivateTransfers, IndexerDiscoveryProvider } from "starknet-sdk";
+import {
+  createPrivateTransfers,
+  IndexerDiscoveryProvider,
+} from "@starkware-libs/starknet-privacy-sdk";
 
 const provider = new RpcProvider({ nodeUrl: "http://localhost:5050" });
 const account = new Account(provider, accountAddress, privateKey);
@@ -659,7 +673,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 ## Testing
 
-The SDK exports testing utilities from `starknet-sdk/testing`:
+The SDK exports testing utilities from `@starkware-libs/starknet-privacy-sdk/testing`:
 
 ```typescript
 import {
@@ -667,7 +681,7 @@ import {
   createDevnetTestEnv,
   MockPoolContract,
   MockProofProvider,
-} from "starknet-sdk/testing";
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 ```
 
 Key exports:

@@ -21,7 +21,8 @@
     }
   },
   "publishConfig": {
-    "registry": "https://npm.pkg.github.com"
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
   },
   "files": [
     "dist"
@@ -43,7 +44,7 @@
     "typescript"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "Apache-2.0",
   "dependencies": {
     "@noble/curves": "^1.7.0",
     "@noble/hashes": "^1.6.0",

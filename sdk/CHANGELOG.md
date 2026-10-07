@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Changed
+
+- Published to npmjs.com (public) instead of GitHub Packages, under the same name. Remove any
+  `@starkware-libs:registry=https://npm.pkg.github.com` line from your `.npmrc` and reinstall so
+  your lockfile resolves from npmjs.com. Release candidates are on the `next` dist-tag.
+- The package license is now declared as `Apache-2.0`, matching the repository's `LICENSE`.
+- Branch prereleases are no longer published to any registry. Install the `.tgz` attached to an
+  `SDK Prerelease Tarball` workflow run instead of a `branch-*` dist-tag.
+
 ## 0.14.3-RC.8
 
 No SDK change. The version tracks the release. The discovery service it talks to now scans the
