@@ -95,6 +95,15 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - When an earlier guard establishes an invariant, a branch that contradicts it is reachable only by input the downstream system rejects. Answering the benign outcome there ("nothing to screen") hides the invariant and reads as a legitimate case; refuse with a reason naming what was violated, so the branch says what it guards
 - *Example:* the resolver's delegated path runs only for a transaction carrying a `CreateOpenNote`, which the pool reverts with `UNDEPOSITED_OPEN_NOTES` unless the funding invoke deposits into it. An anonymizer invoke naming no open note answered "nobody to screen" as if the transaction were valid, instead of refusing it
 
+### An irreversible step that only works one way must refuse the other ways
+- When a step cannot be undone (publishing a version, a deploy, a migration) and only one invocation produces a correct result, make the wrong invocations fail loudly in code instead of relying on documentation. A reader who skips or misreads the docs then gets a refusal, not a permanent broken artifact
+- *Example:* the client's pack hooks pin its SDK dependency only inside the tarball, so publishing the client directory would have recorded `file:../sdk` in npm's registry metadata, and npm versions can never be replaced. A `prepublishOnly` guard now refuses directory publishes; `npm publish <tarball>` runs no lifecycle scripts and passes
+- A guard that lives in a hook is only as strong as the config that runs hooks. Check the artifact itself where you can (`verify <tarball>`), so a user setting like `ignore-scripts=true` cannot skip it
+
+### Name the target of an irreversible command at the setting's highest precedence
+- User-level config can silently override an explicit-looking flag. Before documenting a command that publishes, deploys or deletes, find out which setting actually decides the target and pass that one on the command line
+- *Example:* a publisher's `~/.npmrc` scope line `@starkware-libs:registry=https://npm.pkg.github.com` beats both `--registry` and the package's `publishConfig`, so "publish to npmjs" went to GitHub Packages. Passing `--@starkware-libs:registry=<url>` on each publish names the target unambiguously
+
 ---
 
 ## Brevity
@@ -199,6 +208,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 ### A test suite's CI path filter must cover every layer the suite exercises
 - Filtering a CI job to the test directory alone lets changes to the code under test land without ever running the suite; include every layer it builds or links against (contracts, SDK, service crates)
 - *Example:* an e2e job filtered to `e2e/**` never ran when a Cairo struct gained a required field, so the test's hand-built calldata broke silently and only failed weeks later on a workflow-only PR
+
+### Verify the exact documented command and what the external system receives
+- When verifying documented steps, run them verbatim. A variant with an extra flag can pass while the documented command fails
+- Inspect what the downstream system actually records, not an intermediate artifact you assume it reads from. Tools can derive what they send from different inputs than the file you checked
+- *Example:* the README's publish steps were "verified" by a dry run that added `--tag` (the documented one fails for a prerelease) and by inspecting the packed tarball's `package.json`, while `npm publish` built the registry metadata from the restored manifest and uploaded `file:../sdk`. A fake registry that captured the actual upload exposed it
 
 ---
 
