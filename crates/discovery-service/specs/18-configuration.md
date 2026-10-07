@@ -95,6 +95,8 @@ Pre-processes raw TOML text before parsing. Regex: `\$\{([^}:]+)(?::-([^}]*))?\}
 
 This is text substitution on the file content, separate from env var overrides which are field-level after parsing.
 
+Expansion runs before TOML decoding, so a string escape is never expanded. To keep a literal `$` in a value, write it as `\u0024` (the Helm chart does this for every string it renders).
+
 ## Required Fields
 
 No required fields. All configuration has sensible defaults. The contract address is provided per-request via the API endpoints.
