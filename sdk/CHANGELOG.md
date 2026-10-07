@@ -4,9 +4,16 @@
 
 ### Changed
 
-- Published to npmjs.com (public) instead of GitHub Packages, under the same name. Remove any
-  `@starkware-libs:registry=https://npm.pkg.github.com` line from your `.npmrc` and reinstall so
-  your lockfile resolves from npmjs.com. Release candidates are on the `next` dist-tag.
+- Published to npmjs.com (public) as well as GitHub Packages, under the same name. Starting with the
+  first release after `0.14.3-rc.8`, every version is on both registries as the same tarball;
+  `0.14.3-rc.8` and earlier exist only on GitHub Packages. Release candidates are on the `next`
+  dist-tag on both registries, stable releases on `latest`.
+  - If you only depend on the SDK or client: upgrade to a version published after `0.14.3-rc.8`, then
+    remove the `@starkware-libs:registry=https://npm.pkg.github.com` line from your `.npmrc` and
+    reinstall so your lockfile resolves from npmjs.com.
+  - If you also depend on `@starkware-libs/starknet-privacy-bridge` or `pmp-trading-core`: keep the
+    line until those packages move to npmjs.com. The line sends every `@starkware-libs/*` package to
+    GitHub Packages, which keeps receiving new SDK and client versions until then.
 - The package license is now declared as `Apache-2.0`, matching the repository's `LICENSE`.
 - Branch prereleases are no longer published to any registry. Install the `.tgz` attached to an
   `SDK Prerelease Tarball` workflow run instead of a `branch-*` dist-tag.

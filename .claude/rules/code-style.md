@@ -98,6 +98,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 ### An irreversible step that only works one way must refuse the other ways
 - When a step cannot be undone (publishing a version, a deploy, a migration) and only one invocation produces a correct result, make the wrong invocations fail loudly in code instead of relying on documentation. A reader who skips or misreads the docs then gets a refusal, not a permanent broken artifact
 - *Example:* the client's pack hooks pin its SDK dependency only inside the tarball, so publishing the client directory would have recorded `file:../sdk` in npm's registry metadata, and npm versions can never be replaced. A `prepublishOnly` guard now refuses directory publishes; `npm publish <tarball>` runs no lifecycle scripts and passes
+- A guard that lives in a hook is only as strong as the config that runs hooks. Check the artifact itself where you can (`verify <tarball>`), so a user setting like `ignore-scripts=true` cannot skip it
+
+### Name the target of an irreversible command at the setting's highest precedence
+- User-level config can silently override an explicit-looking flag. Before documenting a command that publishes, deploys or deletes, find out which setting actually decides the target and pass that one on the command line
+- *Example:* a publisher's `~/.npmrc` scope line `@starkware-libs:registry=https://npm.pkg.github.com` beats both `--registry` and the package's `publishConfig`, so "publish to npmjs" went to GitHub Packages. Passing `--@starkware-libs:registry=<url>` on each publish names the target unambiguously
 
 ---
 
