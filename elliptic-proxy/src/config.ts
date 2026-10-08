@@ -37,6 +37,10 @@ export interface Config {
   // SN_MAIN must never be combined with a mock elliptic.url — config load
   // rejects it.
   chainId: string;
+  // Bearer token gating GET /metrics, compared timing-safely against the
+  // Authorization header. When unset, /metrics is disabled (404) — the
+  // exposition leaks partner names and traffic volumes, so it fails closed.
+  metricsAuthToken?: string;
 }
 
 // 'SN_MAIN' as a Cairo short string: the felt is the big-endian ASCII bytes.
@@ -187,7 +191,20 @@ function validateConfig(raw: unknown): Config {
     ),
     signingPrivateKey: requireString(root, "signingPrivateKey"),
     chainId,
+    metricsAuthToken: parseOptionalString(root, "metricsAuthToken"),
   };
+}
+
+function parseOptionalString(
+  object: Record<string, unknown>,
+  key: string
+): string | undefined {
+  const value = object[key];
+  if (value === undefined) return undefined;
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`config: ${key} must be a non-empty string`);
+  }
+  return value;
 }
 
 // Operational warning on every fresh config load (cold start and each TTL

@@ -43,7 +43,8 @@ The secret value must be a JSON string with this structure:
   "signingPrivateKey": "0x<stark-curve-private-key>",
   "chainId": "0x534e5f4d41494e",
   "additionalBlockedAddresses": [],
-  "blockOverrideAddresses": []
+  "blockOverrideAddresses": [],
+  "metricsAuthToken": "<bearer-token-for-GET-/metrics>"
 }
 ```
 
@@ -60,6 +61,7 @@ The secret value must be a JSON string with this structure:
 | `blockOverrideAddresses` _(optional)_     | Operator allow list (hex felts): listed addresses always screen as allowed, winning over the deny list, the blocked cache, and the upstream verdict — rescues addresses the upstream wrongly flags (false positives).                                                                                                                            |
 | `signingPrivateKey` _(required)_          | STARK-curve private key (felt hex, `1 <= key < curve order`) signing screening attestations; the production key is FPI-managed.                                                                                                                                                                                                                  |
 | `chainId` _(required)_                    | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN combined with a mock `elliptic.url` is rejected at config load.                                                                                                                                                                                         |
+| `metricsAuthToken` _(optional)_           | Bearer token gating `GET /metrics`, compared timing-safely. Omit it and `/metrics` returns `404` — the exposition names partners and their traffic volumes, so it fails closed. See [Metrics](#metrics).                                                                                                                                          |
 
 ### Generating partner secrets
 
@@ -159,6 +161,18 @@ and a mock url combined with the SN_MAIN `chainId` is rejected at config load.
 - The cache is capped at 20 partners; when full, least-recently-used entries are evicted.
 - Evicted partners lose their current window state and start fresh on the next request.
 - All counters reset on cold start — acceptable for a single-instance low-traffic service.
+
+## Metrics
+
+`GET /metrics` serves a Prometheus text exposition, gated by
+`Authorization: Bearer <metricsAuthToken>`. It is handled before the screening path, so a
+scrape is never counted as partner traffic and a wrong scraper token cannot show up as a
+partner `401`.
+
+Counters live in the instance's memory, like the rate-limiter and the blocked-address cache,
+so they are only coherent while a single instance serves the function — deploy with
+`--max-instances=1` if you intend to alert on them. `process_start_time_seconds` (from
+prom-client's default metrics) marks the cold start that zeroed them.
 
 ## Error handling
 
