@@ -159,6 +159,12 @@ pub struct ValidationLimits {
     pub max_history_transactions: usize,
     /// Server-controlled I/O budget per request.
     pub server_budget: usize,
+    /// Wall-clock time after which a history page stops at the next resumable
+    /// point and returns its cursor. Keep it well below any proxy or load
+    /// balancer timeout in front of the service; a page may overrun it by one
+    /// RPC call.
+    #[serde(deserialize_with = "deserialize_secs")]
+    pub history_time_limit: Duration,
     /// Maximum request body size in bytes.
     pub max_request_body_bytes: usize,
     /// Maximum number of entries in the public key cache.
@@ -173,6 +179,7 @@ impl Default for ValidationLimits {
             max_history_subchannels: 256,
             max_history_transactions: 100,
             server_budget: 10_000,
+            history_time_limit: Duration::from_secs(10),
             max_request_body_bytes: 102_400,
             public_key_cache_capacity: 10_000,
         }
@@ -266,6 +273,11 @@ impl ServiceConfig {
         if let Ok(v) = std::env::var("SERVER_BUDGET") {
             if let Ok(n) = v.parse() {
                 self.limits.server_budget = n;
+            }
+        }
+        if let Ok(v) = std::env::var("HISTORY_TIME_LIMIT_SECS") {
+            if let Ok(secs) = v.parse() {
+                self.limits.history_time_limit = Duration::from_secs(secs);
             }
         }
 
