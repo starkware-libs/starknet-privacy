@@ -1,40 +1,51 @@
-{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- $discovery := .Values.discoveryService -}}
+{{- $component := list . "discovery-service" -}}
 {{- $_ := required "discoveryService.config.rpcUrl is required" $discovery.config.rpcUrl -}}
 {{- $_ := required "discoveryService.config.wsUrl is required" $discovery.config.wsUrl -}}
-{{- if $discovery.ohttp.enabled -}}
-{{- $_ := required "discoveryService.ohttp.key (or global.ohttp.key) is required when OHTTP is enabled" $discovery.ohttp.key -}}
-{{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: discovery-service
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 spec:
-  progressDeadlineSeconds: {{ $discovery.progressDeadlineSeconds }}
-  replicas: {{ $discovery.replicas }}
-  revisionHistoryLimit: {{ $discovery.revisionHistoryLimit }}
+  replicas: {{ $discovery.replicaCount }}
   selector:
     matchLabels:
-      app: discovery-service
-  strategy:
-    type: {{ $discovery.strategy.type }}
-    {{- if eq $discovery.strategy.type "RollingUpdate" }}
-    rollingUpdate:
-      maxSurge: {{ $discovery.strategy.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ $discovery.strategy.rollingUpdate.maxUnavailable }}
-    {{- end }}
+      {{- include "privacy-starknet.selectorLabels" $component | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/discovery-service/configmap.yaml") . | sha256sum }}
+        {{- if $discovery.ohttp.enabled }}
+        checksum/ohttp: {{ include (print $.Template.BasePath "/discovery-service/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with $discovery.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
-        app: discovery-service
+        {{- include "privacy-starknet.labels" $component | nindent 8 }}
+        {{- with $discovery.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $discovery.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: discovery-service
-          image: "{{ $discovery.image.repository }}:{{ $discovery.image.tag }}"
+          image: {{ include "privacy-starknet.image" (list . $discovery.image) | quote }}
           imagePullPolicy: {{ $discovery.image.pullPolicy }}
+          {{- with $discovery.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           args:
             - --config
             - /etc/discovery-service/config.toml
@@ -44,60 +55,50 @@ spec:
             - name: WS_URL
               value: {{ $discovery.config.wsUrl | quote }}
             - name: API_HOST
-              value: {{ $discovery.config.apiHost | quote }}
+              value: {{ printf "0.0.0.0:%v" $discovery.port | quote }}
             - name: RUST_LOG
               value: {{ $discovery.config.rustLog | quote }}
             {{- if $discovery.ohttp.enabled }}
             - name: OHTTP_KEY
-              value: {{ $discovery.ohttp.key | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "privacy-starknet.ohttpSecretName" (list . "discovery-service" $discovery.ohttp) }}
+                  key: key
             {{- end }}
           ports:
-            - containerPort: {{ $discovery.containerPort }}
+            - name: http
+              containerPort: {{ $discovery.port }}
               protocol: TCP
-          {{- with $discovery.readinessProbe }}
-          readinessProbe:
-            httpGet:
-              path: {{ .path | default "/health" }}
-              port: {{ $discovery.containerPort }}
-            initialDelaySeconds: {{ .initialDelaySeconds | default 5 }}
-            periodSeconds: {{ .periodSeconds | default 10 }}
-            timeoutSeconds: {{ .timeoutSeconds | default 2 }}
-            failureThreshold: {{ .failureThreshold | default 3 }}
-            successThreshold: {{ .successThreshold | default 1 }}
-          {{- end }}
           {{- with $discovery.livenessProbe }}
           livenessProbe:
-            httpGet:
-              path: {{ .path | default "/health" }}
-              port: {{ $discovery.containerPort }}
-            initialDelaySeconds: {{ .initialDelaySeconds | default 15 }}
-            periodSeconds: {{ .periodSeconds | default 30 }}
-            timeoutSeconds: {{ .timeoutSeconds | default 2 }}
-            failureThreshold: {{ .failureThreshold | default 3 }}
-            successThreshold: {{ .successThreshold | default 1 }}
+            {{- toYaml . | nindent 12 }}
           {{- end }}
-          volumeMounts:
-            - name: config
-              mountPath: /etc/discovery-service/config.toml
-              readOnly: true
-              subPath: config.toml
+          {{- with $discovery.readinessProbe }}
+          readinessProbe:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with $discovery.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
-      dnsPolicy: {{ $discovery.dnsPolicy }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/discovery-service/config.toml
+              subPath: config.toml
+              readOnly: true
       {{- with $discovery.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $discovery.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with $discovery.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      restartPolicy: {{ $discovery.restartPolicy }}
-      terminationGracePeriodSeconds: {{ $discovery.terminationGracePeriodSeconds }}
       volumes:
         - name: config
           configMap:
-            name: discovery-service-config
-            defaultMode: 420
+            name: {{ include "privacy-starknet.componentName" $component }}

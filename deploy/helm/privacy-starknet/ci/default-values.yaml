@@ -1,8 +1,10 @@
-# Placeholder values for CI rendering only. Satisfies the chart's
-# required-when-enabled guards so `helm lint` / `helm template` /
-# kubeconform can validate the full enabled render path without real
-# credentials. Not suitable for any deployment.
+# Placeholder values for CI rendering only. Satisfies the chart's required values so
+# `helm lint` / `helm template` / kubeconform can validate the full enabled render path
+# without real credentials. Not suitable for any deployment.
 transactionProver:
+  config:
+    rpc_node_url: "https://placeholder.invalid/rpc"
+    chain_id: "SN_SEPOLIA"
   ohttp:
     key: "0000000000000000000000000000000000000000000000000000000000000000"
   proofInterceptor:
@@ -10,7 +12,14 @@ transactionProver:
       url: "https://placeholder.invalid"
       poolAddress: "0x0"
       anonymizerAddress: "0x0"
+  ingress:
+    enabled: true
 
 discoveryService:
+  config:
+    rpcUrl: "https://placeholder.invalid/rpc"
+    wsUrl: "wss://placeholder.invalid/ws"
   ohttp:
     key: "0000000000000000000000000000000000000000000000000000000000000000"
+  ingress:
+    enabled: true

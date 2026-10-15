@@ -1,23 +1,26 @@
-{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
-{{- if $discovery.service }}
+{{- $discovery := .Values.discoveryService -}}
+{{- $component := list . "discovery-service" -}}
+{{- $annotations := deepCopy (default (dict) $discovery.service.annotations) -}}
+{{- if $discovery.backendConfig.enabled -}}
+{{- $_ := set $annotations "cloud.google.com/backend-config" (dict "default" (include "privacy-starknet.componentName" $component) | toJson) -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: discovery-service
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
-  {{- with $discovery.service.annotations }}
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ $discovery.service.type | default "ClusterIP" }}
+  type: {{ $discovery.service.type }}
   ports:
-    - port: {{ $discovery.containerPort }}
+    - name: http
+      port: {{ $discovery.port }}
+      targetPort: http
       protocol: TCP
-      targetPort: {{ $discovery.containerPort }}
   selector:
-    app: discovery-service
-{{- end }}
+    {{- include "privacy-starknet.selectorLabels" $component | nindent 4 }}

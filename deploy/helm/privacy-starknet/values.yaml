@@ -1,28 +1,65 @@
-# Settings for every component at once: transactionProver, discoveryService and the
-# transactionProver.proofInterceptor sidecar. A value set under a component wins over
-# global, and global wins over the chart's built-in defaults (templates/_defaults.tpl).
-# Maps merge key by key; lists, scalars and null replace the value below them.
-#
-# Keys that can be set here or under a component:
-#   image.tag, image.pullPolicy, replicas, progressDeadlineSeconds,
-#   revisionHistoryLimit, strategy, dnsPolicy, restartPolicy,
-#   terminationGracePeriodSeconds, nodeSelector, tolerations, resources (not applied
-#   to the sidecar), livenessProbe, readinessProbe, ohttp.enabled, service,
-#   backendConfig.
-global: {}
-  # image:
-  #   tag: PRIVACY-x.y.z
-  # nodeSelector:
-  #   cloud.google.com/gke-nodepool: services
-  # livenessProbe:
-  #   failureThreshold: 5
+# Override the chart name used in resource names and labels.
+nameOverride: ""
+# Override the release-scoped prefix of every resource name.
+fullnameOverride: ""
+
+# Pull secrets for private registries, shared by all Pods.
+imagePullSecrets: []
+  # - name: ghcr-credentials
 
 # Transaction prover
 transactionProver:
+  replicaCount: 1
+
   image:
     repository: ghcr.io/starkware-libs/starknet-privacy/transaction-prover
+    # Defaults to the chart's appVersion, i.e. the release this chart was published with.
+    tag: ""
+    pullPolicy: IfNotPresent
 
-  # Enable and configure Ingress to expose the transaction prover.
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+
+  # The prover typically needs around 32 CPUs and 48 GiB of memory.
+  resources: {}
+    # requests:
+    #   cpu: "32"
+    #   memory: 48Gi
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # The prover's JSON-RPC server has no GET health route, so its probes check the port.
+  livenessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 10
+    periodSeconds: 30
+  readinessProbe:
+    tcpSocket:
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  service:
+    type: ClusterIP
+    annotations: {}
+      # cloud.google.com/neg: '{"ingress":true}'
+
+  # GKE BackendConfig. The prover's JSON-RPC backend is POST-only, so the GCE health
+  # check targets the proof-interceptor's /health instead. The chart links it to the
+  # Service through the cloud.google.com/backend-config annotation. Disable off GKE.
+  backendConfig:
+    enabled: true
+    healthCheck:
+      type: HTTP
+      requestPath: /health
+      # Defaults to proofInterceptor.port.
+      port: null
+
   ingress:
     enabled: false
     # IngressClass to use (e.g. "gce", "nginx"). Leave empty for the cluster default.
@@ -30,32 +67,22 @@ transactionProver:
     # HTTP-01 certificate issuance requires port 80; use DNS-01 if HTTP must stay off.
     annotations: {}
       # kubernetes.io/ingress.global-static-ip-name: transaction-prover-ip
-      # cert-manager.io/cluster-issuer: letsencrypt-prod   # DNS-01 issuer recommended
-      # kubernetes.io/ingress.allow-http: "true"           # required if the issuer uses HTTP-01
+      # cert-manager.io/cluster-issuer: letsencrypt-prod
     # One rule per host. Omit `host` for a catch-all rule.
     hosts:
       - host: prover.example.com
         paths:
           - path: /
             pathType: Prefix
-            # servicePort defaults to transactionProver.config.port.
-            # servicePort: 3000
-    # TLS blocks map secrets to hosts.
     tls: []
       # - secretName: transaction-prover-tls
       #   hosts:
       #     - prover.example.com
-    # Optional default backend for unmatched requests.
-    defaultBackend: {}
-      # service:
-      #   name: transaction-prover
-      #   port:
-      #     number: 3000
 
-  # Rendered as config.json; rpc_node_url must point to Pathfinder.
+  # Rendered as config.json. rpc_node_url must point to Pathfinder.
   config:
-    rpc_node_url: "<pathfinder-rpc-url>"
-    chain_id: "<chain-id>"
+    rpc_node_url: ""
+    chain_id: ""
     ip: "0.0.0.0"
     port: 3000
     max_concurrent_requests: 2
@@ -66,41 +93,110 @@ transactionProver:
     use_latest_versioned_constants: true
     cors_allow_origin:
       - "*"
-  # Required while ohttp is enabled. Supply it from a private values source, here or as
-  # global.ohttp.key.
-  # ohttp:
-  #   key: "<32-byte-hex-key>"
+
+  ohttp:
+    enabled: true
+    # Name of an existing Secret holding the OHTTP key under `key`. When empty, the chart
+    # creates one from `key` below.
+    existingSecret: ""
+    # 32-byte hex key. Supply it from a private values file, never from this file.
+    key: ""
 
   # Proof-interceptor screening sidecar.
   proofInterceptor:
     enabled: true
     image:
       repository: ghcr.io/starkware-libs/starknet-privacy/proof-interceptor
+      # Defaults to the chart's appVersion.
+      tag: ""
+      pullPolicy: IfNotPresent
     port: 8080
-    # K8s Secret with `partner-name` and `partner-secret` keys (created out-of-band).
-    screeningSecretName: proof-interceptor-screening
+    securityContext: {}
+    resources:
+      requests:
+        cpu: 500m
+        memory: 256Mi
+      limits:
+        cpu: "1"
+        memory: 512Mi
+    livenessProbe:
+      httpGet:
+        path: /health
+        port: interceptor
+      initialDelaySeconds: 5
+      periodSeconds: 10
+    readinessProbe:
+      httpGet:
+        path: /health
+        port: interceptor
+      initialDelaySeconds: 3
+      periodSeconds: 5
     screening:
-      # URL of the elliptic-proxy Cloud Function. Required when enabled.
-      url: "<screening-url>"
-      # Privacy pool contract address. Required when enabled.
-      poolAddress: "<pool-contract-address>"
+      # Existing Secret with `partner-name` and `partner-secret` keys.
+      existingSecret: proof-interceptor-screening
+      # URL of the elliptic-proxy Cloud Function. Required.
+      url: ""
+      # Privacy pool contract address. Required.
+      poolAddress: ""
+      # Anonymizer contract address. Required.
       anonymizerAddress: ""
-      # Sidecar -> elliptic-proxy: fail-closed (block on screening errors).
+      # Sidecar -> elliptic-proxy: fail closed (block on screening errors).
       failOpen: false
       timeoutMs: 10000
       maxRetries: 2
-    # Prover-to-sidecar failures block by default.
+    # Prover -> sidecar: fail closed (block when the sidecar errors or times out).
     blockingCheck:
       timeoutMillis: 2000
       failOpen: false
 
 # Discovery service
 discoveryService:
+  replicaCount: 1
+
   image:
     repository: ghcr.io/starkware-libs/starknet-privacy/discovery-service
-  containerPort: 8080
+    # Defaults to the chart's appVersion.
+    tag: ""
+    pullPolicy: IfNotPresent
 
-  # Enable and configure Ingress to expose the discovery service.
+  podAnnotations: {}
+  podLabels: {}
+  podSecurityContext: {}
+  securityContext: {}
+  resources: {}
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+
+  # The readiness probe also gives GKE a health-check path to infer.
+  livenessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 15
+    periodSeconds: 30
+  readinessProbe:
+    httpGet:
+      path: /health
+      port: http
+    initialDelaySeconds: 5
+    periodSeconds: 10
+
+  # Port the API listens on, used by the container, Service and Ingress.
+  port: 8080
+
+  service:
+    type: ClusterIP
+    annotations: {}
+      # cloud.google.com/neg: '{"ingress":true}'
+
+  # GKE BackendConfig, linked to the Service by the chart. Disable off GKE.
+  backendConfig:
+    enabled: true
+    healthCheck:
+      type: HTTP
+      requestPath: /health
+
   ingress:
     enabled: false
     # IngressClass to use (e.g. "gce", "nginx"). Leave empty for the cluster default.
@@ -108,37 +204,30 @@ discoveryService:
     # HTTP-01 certificate issuance requires port 80; use DNS-01 if HTTP must stay off.
     annotations: {}
       # kubernetes.io/ingress.global-static-ip-name: discovery-service-ip
-      # cert-manager.io/cluster-issuer: letsencrypt-prod   # DNS-01 issuer recommended
-      # kubernetes.io/ingress.allow-http: "true"           # required if the issuer uses HTTP-01
+      # cert-manager.io/cluster-issuer: letsencrypt-prod
     # One rule per host. Omit `host` for a catch-all rule.
     hosts:
       - host: discovery.example.com
         paths:
           - path: /
             pathType: Prefix
-            # servicePort defaults to discoveryService.containerPort.
-            # servicePort: 8080
-    # TLS blocks map secrets to hosts.
     tls: []
       # - secretName: discovery-service-tls
       #   hosts:
       #     - discovery.example.com
-    # Optional default backend for unmatched requests.
-    defaultBackend: {}
-      # service:
-      #   name: discovery-service
-      #   port:
-      #     number: 8080
 
   # HTTP RPC for queries and WebSocket for block and event subscriptions.
   config:
-    rpcUrl: "<rpc-url>"
-    wsUrl: "<ws-url>"
-    apiHost: "0.0.0.0:8080"
-    rustLog: "info"
+    rpcUrl: ""
+    wsUrl: ""
+    rustLog: info
     api:
       health_max_lag_secs: 10
-  # Required while ohttp is enabled. Supply it from a private values source, here or as
-  # global.ohttp.key.
-  # ohttp:
-  #   key: "<32-byte-hex-key>"
+
+  ohttp:
+    enabled: true
+    # Name of an existing Secret holding the OHTTP key under `key`. When empty, the chart
+    # creates one from `key` below.
+    existingSecret: ""
+    # 32-byte hex key. Supply it from a private values file, never from this file.
+    key: ""

@@ -1,50 +1,57 @@
-{{- $prover := include "privacy-starknet.componentValues" (list . "transactionProver") | fromYaml -}}
-{{- $sidecar := include "privacy-starknet.componentValues" (list . "transactionProver" "proofInterceptor") | fromYaml -}}
+{{- $prover := .Values.transactionProver -}}
+{{- $sidecar := $prover.proofInterceptor -}}
+{{- $component := list . "transaction-prover" -}}
 {{- $_ := required "transactionProver.config.rpc_node_url is required" $prover.config.rpc_node_url -}}
 {{- $_ := required "transactionProver.config.chain_id is required" $prover.config.chain_id -}}
-{{- if $prover.ohttp.enabled -}}
-{{- $_ := required "transactionProver.ohttp.key (or global.ohttp.key) is required when OHTTP is enabled" $prover.ohttp.key -}}
-{{- end -}}
 {{- if $sidecar.enabled -}}
-{{- $_ := required "transactionProver.proofInterceptor.image.tag (or global.image.tag) is required when proofInterceptor is enabled" $sidecar.image.tag -}}
 {{- $_ := required "transactionProver.proofInterceptor.screening.url is required when proofInterceptor is enabled" $sidecar.screening.url -}}
 {{- $_ := required "transactionProver.proofInterceptor.screening.poolAddress is required when proofInterceptor is enabled" $sidecar.screening.poolAddress -}}
 {{- $_ := required "transactionProver.proofInterceptor.screening.anonymizerAddress is required when proofInterceptor is enabled" $sidecar.screening.anonymizerAddress -}}
-{{- if hasKey $sidecar.screening "rpcUrl" -}}
-{{- fail "transactionProver.proofInterceptor.screening.rpcUrl is chart-owned: the sidecar's SCREENING_RPC_URL is wired from transactionProver.config.rpc_node_url so both containers read the same node" -}}
-{{- end -}}
 {{- end -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: transaction-prover
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: transaction-prover
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 spec:
-  progressDeadlineSeconds: {{ $prover.progressDeadlineSeconds }}
-  replicas: {{ $prover.replicas }}
-  revisionHistoryLimit: {{ $prover.revisionHistoryLimit }}
+  replicas: {{ $prover.replicaCount }}
   selector:
     matchLabels:
-      app: transaction-prover
-  strategy:
-    type: {{ $prover.strategy.type }}
-    {{- if eq $prover.strategy.type "RollingUpdate" }}
-    rollingUpdate:
-      maxSurge: {{ $prover.strategy.rollingUpdate.maxSurge }}
-      maxUnavailable: {{ $prover.strategy.rollingUpdate.maxUnavailable }}
-    {{- end }}
+      {{- include "privacy-starknet.selectorLabels" $component | nindent 6 }}
   template:
     metadata:
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/transaction-prover/configmap.yaml") . | sha256sum }}
+        {{- if $prover.ohttp.enabled }}
+        checksum/ohttp: {{ include (print $.Template.BasePath "/transaction-prover/secret.yaml") . | sha256sum }}
+        {{- end }}
+        {{- with $prover.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
       labels:
-        app: transaction-prover
+        {{- include "privacy-starknet.labels" $component | nindent 8 }}
+        {{- with $prover.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
     spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $prover.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: transaction-prover
-          image: "{{ $prover.image.repository }}:{{ $prover.image.tag }}"
+          image: {{ include "privacy-starknet.image" (list . $prover.image) | quote }}
           imagePullPolicy: {{ $prover.image.pullPolicy }}
+          {{- with $prover.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           args:
             - --config-file=/etc/config/config.json
           {{- if $prover.ohttp.enabled }}
@@ -52,106 +59,97 @@ spec:
             - name: OHTTP_ENABLED
               value: "true"
             - name: OHTTP_KEY
-              value: {{ $prover.ohttp.key | quote }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "privacy-starknet.ohttpSecretName" (list . "transaction-prover" $prover.ohttp) }}
+                  key: key
           {{- end }}
           ports:
-            - containerPort: {{ $prover.config.port }}
+            - name: http
+              containerPort: {{ $prover.config.port }}
               protocol: TCP
+          {{- with $prover.livenessProbe }}
           livenessProbe:
-            tcpSocket:
-              port: {{ $prover.config.port }}
-            initialDelaySeconds: {{ $prover.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ $prover.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ $prover.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ $prover.livenessProbe.failureThreshold }}
-            successThreshold: {{ $prover.livenessProbe.successThreshold }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $prover.readinessProbe }}
           readinessProbe:
-            tcpSocket:
-              port: {{ $prover.config.port }}
-            initialDelaySeconds: {{ $prover.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ $prover.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ $prover.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ $prover.readinessProbe.failureThreshold }}
-            successThreshold: {{ $prover.readinessProbe.successThreshold }}
-          volumeMounts:
-            - name: transaction-prover-config
-              mountPath: /etc/config
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           {{- with $prover.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          volumeMounts:
+            - name: config
+              mountPath: /etc/config
+              readOnly: true
         {{- if $sidecar.enabled }}
-        {{- with $sidecar }}
         - name: proof-interceptor
-          image: "{{ .image.repository }}:{{ .image.tag }}"
-          imagePullPolicy: {{ .image.pullPolicy }}
-          ports:
-            - containerPort: {{ .port }}
-              protocol: TCP
+          image: {{ include "privacy-starknet.image" (list . $sidecar.image) | quote }}
+          imagePullPolicy: {{ $sidecar.image.pullPolicy }}
+          {{- with $sidecar.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
           env:
             - name: PORT
-              value: {{ .port | quote }}
+              value: {{ $sidecar.port | quote }}
             - name: SCREENING_URL
-              value: {{ .screening.url | quote }}
+              value: {{ $sidecar.screening.url | quote }}
             - name: SCREENING_POOL_ADDRESS
-              value: {{ .screening.poolAddress | quote }}
+              value: {{ $sidecar.screening.poolAddress | quote }}
             - name: SCREENING_ANONYMIZER_ADDRESS
-              value: {{ .screening.anonymizerAddress | quote }}
+              value: {{ $sidecar.screening.anonymizerAddress | quote }}
             - name: SCREENING_FAIL_OPEN
-              value: {{ .screening.failOpen | quote }}
+              value: {{ $sidecar.screening.failOpen | quote }}
             - name: SCREENING_TIMEOUT_MS
-              value: {{ .screening.timeoutMs | quote }}
+              value: {{ $sidecar.screening.timeoutMs | quote }}
             - name: SCREENING_MAX_RETRIES
-              value: {{ .screening.maxRetries | quote }}
+              value: {{ $sidecar.screening.maxRetries | quote }}
+            # The sidecar reads policy from the same node the prover proves against.
             - name: SCREENING_RPC_URL
               value: {{ $prover.config.rpc_node_url | quote }}
             - name: SCREENING_PARTNER_NAME
               valueFrom:
                 secretKeyRef:
-                  name: {{ .screeningSecretName }}
+                  name: {{ $sidecar.screening.existingSecret }}
                   key: partner-name
             - name: SCREENING_PARTNER_SECRET
               valueFrom:
                 secretKeyRef:
-                  name: {{ .screeningSecretName }}
+                  name: {{ $sidecar.screening.existingSecret }}
                   key: partner-secret
+          ports:
+            - name: interceptor
+              containerPort: {{ $sidecar.port }}
+              protocol: TCP
+          {{- with $sidecar.livenessProbe }}
           livenessProbe:
-            httpGet:
-              path: /health
-              port: {{ .port }}
-            initialDelaySeconds: {{ .livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .livenessProbe.failureThreshold }}
-            successThreshold: {{ .livenessProbe.successThreshold }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sidecar.readinessProbe }}
           readinessProbe:
-            httpGet:
-              path: /health
-              port: {{ .port }}
-            initialDelaySeconds: {{ .readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .readinessProbe.failureThreshold }}
-            successThreshold: {{ .readinessProbe.successThreshold }}
-          {{- with .resources }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sidecar.resources }}
           resources:
             {{- toYaml . | nindent 12 }}
           {{- end }}
         {{- end }}
-        {{- end }}
-      dnsPolicy: {{ $prover.dnsPolicy }}
       {{- with $prover.nodeSelector }}
       nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $prover.affinity }}
+      affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       {{- with $prover.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      restartPolicy: {{ $prover.restartPolicy }}
-      terminationGracePeriodSeconds: {{ $prover.terminationGracePeriodSeconds }}
       volumes:
-        - name: transaction-prover-config
+        - name: config
           configMap:
-            name: transaction-prover-config
-            defaultMode: 420
+            name: {{ include "privacy-starknet.componentName" $component }}
