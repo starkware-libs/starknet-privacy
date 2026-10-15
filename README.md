@@ -1,8 +1,31 @@
 # Starknet Privacy
 
-Privacy pool protocol for Starknet.
+This repository contains the protocol implementation behind [STRK20](https://strk20.starknet.io/), the privacy pool developed by StarkWare for ERC-20 assets on Starknet. It includes Cairo contracts, a TypeScript SDK, discovery services and a Lean formal model.
+
+STRK20 uses STARK proofs generated with Stwo to verify private transfers that settle on Starknet. Users choose when to shield assets in the pool. The underlying Starknet blockchain remains public.
 
 [![License: Apache2.0](https://img.shields.io/badge/License-Apache2.0-green.svg)](LICENSE)
+
+## Build with STRK20
+
+Choose the integration route for your project:
+
+| You are building | Integration route | Start here |
+| --- | --- | --- |
+| A private dapp using an existing wallet | Starknet Wallet API through starknet.js. The wallet manages viewing keys, notes and proof generation. | [WalletAccount guide](https://starknet-js.com/docs/guides/account/walletAccount/#strk20-privacy-protocol) and [Wallet API examples](https://strk20-by-example.org/starknet-wallet-api/overview) |
+| A privacy wallet or backend that manages private state | The TypeScript Privacy SDK in this repository, for direct control over keys, note discovery and proving. | [SDK guide](sdk/README.md) and [SDK examples](https://strk20-by-example.org/sdk/getting-started) |
+
+Core STRK20 Wallet API methods first shipped in [starknet.js 10.4.0](https://github.com/starknet-io/starknet.js/releases/tag/v10.4.0). The current WalletAccountV6 guide requires get-starknet 6.0.2 or later. Check the guide for your starknet.js version and the actions available in the connected wallet. For SDK integrations, use the component revisions in the [compatibility matrix](#compatibility-matrix) and the [SDK prerequisites](sdk/README.md#prerequisites).
+
+The [STRK20 builder hub](https://strk20.starknet.io/build) brings together integration routes and starter kits. For app-specific DeFi interactions, see the [Cairo anonymizer contract guide](https://strk20-by-example.org/helpers/privacy-invoke).
+
+## Capabilities and verification
+
+- [Protocol documentation](https://docs.starknet.io/build/starknet-privacy/overview) covers capabilities and deployment information. The [privacy limits](https://docs.starknet.io/build/starknet-privacy/security) explain public deposit and withdrawal data and what external app interactions can reveal.
+- [Formal verification](https://starkware.co/blog/strk20-formal-verification/) describes the protocol-model properties proved in Lean. The [Lean source](lean/) is included in this repository.
+- [Implementation audits](docs/audit/README.md) list the reviewed components, commits and reports. Their scope is separate from the Lean protocol-model proofs.
+
+## How private transfers are processed
 
 Users submit private transfers through the SDK, which compiles client actions and sends them to an operator-side proving service. The proving service executes these actions in virtual Starknet blocks and returns a validity proof together with proof facts back to the SDK. The SDK builds a transaction that the wallet submits (ideally via a paymaster to avoid leaking sender info) to Starknet. Starknet verifies the proof and provides validated proof facts to the pool contract via syscall. A discovery service indexes encrypted on-chain storage so wallets can efficiently sync their notes without scanning the full chain.
 
@@ -85,7 +108,7 @@ Stable toolchain. Install via [rustup](https://rustup.rs/) if needed.
 
 ### Node.js
 
-Version 20 or later.
+The TypeScript SDK requires Node.js 24 or later. See the [SDK prerequisites](sdk/README.md#prerequisites).
 
 ### E2E tests
 
