@@ -1,9 +1,12 @@
 apiVersion: v2
 name: privacy-starknet
-description: Helm chart for Privacy Starknet - transaction-prover and discovery-service
+description: Starknet privacy transaction prover and discovery service
 type: application
-version: 0.3.0
-appVersion: "1.0"
+version: 0.4.0
+# The release workflow overrides this with the pushed release tag. Image tags default to it.
+appVersion: "PRIVACY-0.14.3-RC.8"
 keywords:
   - starknet
   - privacy
+sources:
+  - https://github.com/starkware-libs/starknet-privacy

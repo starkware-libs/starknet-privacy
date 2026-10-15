@@ -1,23 +1,26 @@
-{{- if .Values.transactionProver.service }}
+{{- $prover := .Values.transactionProver -}}
+{{- $component := list . "transaction-prover" -}}
+{{- $annotations := deepCopy (default (dict) $prover.service.annotations) -}}
+{{- if $prover.backendConfig.enabled -}}
+{{- $_ := set $annotations "cloud.google.com/backend-config" (dict "default" (include "privacy-starknet.componentName" $component) | toJson) -}}
+{{- end -}}
 apiVersion: v1
 kind: Service
 metadata:
-  name: transaction-prover
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: transaction-prover
-  {{- with .Values.transactionProver.service.annotations }}
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
+  {{- with $annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.transactionProver.service.type | default "ClusterIP" }}
+  type: {{ $prover.service.type }}
   ports:
     - name: http
-      port: {{ .Values.transactionProver.config.port }}
+      port: {{ $prover.config.port }}
+      targetPort: http
       protocol: TCP
-      targetPort: {{ .Values.transactionProver.config.port }}
   selector:
-    app: transaction-prover
-{{- end }}
+    {{- include "privacy-starknet.selectorLabels" $component | nindent 4 }}

@@ -1,0 +1,179 @@
+name: Docker-Publish
+
+# Builds the multi-arch discovery-service and proof-interceptor images and pushes them
+# to ghcr.io:
+#   - pull request: images whose inputs changed, tagged :pr-<number>
+#   - push to main: images whose inputs changed, tagged :main
+#   - `PRIVACY-*` tag: both images, tagged with the git tag verbatim
+#     (PRIVACY-0.14.3-RC.8 -> :PRIVACY-0.14.3-RC.8), which is what the env values pin
+#   - manual dispatch: both images, tagged :test-<sha> only, never a release tag
+#
+# The third image the chart deploys, transaction-prover, is built from
+# starkware-libs/sequencer by starknet_transaction_prover_docker_publish.yml on the
+# same `PRIVACY-*` tag convention. The Helm chart is published by helm-publish.yml.
+
+on:
+  workflow_dispatch:
+  pull_request:
+  push:
+    branches: [main]
+    tags:
+      - "PRIVACY-*"
+
+permissions:
+  contents: read
+  packages: write
+
+# A tag is an immutable release — never cancel a run that may already have pushed.
+concurrency:
+  group: docker-publish-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ghcr.io/${{ github.repository }}
+
+jobs:
+  images:
+    name: Select images
+    runs-on: ubuntu-latest
+    outputs:
+      images: ${{ steps.select.outputs.images }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      # Each image's Dockerfile copies exactly these inputs.
+      - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
+        id: filter
+        if: github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_type == 'branch')
+        with:
+          filters: |
+            discovery-service:
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'deploy/discovery-service/**'
+              - '.github/workflows/docker-publish.yaml'
+            proof-interceptor:
+              - 'proof-interceptor/**'
+              - 'sdk/**'
+              - 'deploy/proof-interceptor/**'
+              - '.github/workflows/docker-publish.yaml'
+
+      - id: select
+        env:
+          CHANGED: ${{ steps.filter.outputs.changes }}
+        run: |
+          if [ "${{ steps.filter.conclusion }}" = "skipped" ]; then
+            echo 'images=["discovery-service","proof-interceptor"]' >> "$GITHUB_OUTPUT"
+          else
+            echo "images=${CHANGED:-[]}" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.image }} (${{ matrix.platform.name }})
+    needs: images
+    if: needs.images.outputs.images != '[]'
+    runs-on: ${{ matrix.platform.runner }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.images.outputs.images) }}
+        platform:
+          - name: linux/amd64
+            arch: amd64
+            runner: ubuntu-latest
+          - name: linux/arm64
+            arch: arm64
+            runner: ubuntu-24.04-arm
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+
+      - uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7
+        id: build
+        with:
+          context: .
+          file: deploy/${{ matrix.image }}/Dockerfile
+          platforms: ${{ matrix.platform.name }}
+          # One scope per image and arch, shared by PR, main and release builds.
+          cache-from: type=gha,scope=${{ matrix.image }}-${{ matrix.platform.arch }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.image }}-${{ matrix.platform.arch }}
+          labels: ${{ steps.meta.outputs.labels }}
+          outputs: type=image,"name=${{ env.IMAGE_PREFIX }}/${{ matrix.image }}",push-by-digest=true,name-canonical=true,push=true
+
+      - run: |
+          mkdir -p /tmp/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
+        shell: bash
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: digest-${{ matrix.image }}-${{ matrix.platform.arch }}
+          path: /tmp/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+  merge:
+    name: Merge ${{ matrix.image }} manifest
+    needs: [images, build]
+    if: needs.images.outputs.images != '[]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.images.outputs.images) }}
+    steps:
+      - uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0 # v4
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6
+        with:
+          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.image }}
+          # No `type=semver`: PRIVACY-* tags do not parse as semver, so it would emit nothing.
+          # Branch and release tags are limited to pushes, so a manual dispatch only ever
+          # writes :test-<sha>.
+          tags: |
+            type=ref,event=branch,enable=${{ github.event_name == 'push' }}
+            type=ref,event=pr
+            type=raw,value={{tag}},enable=${{ github.event_name == 'push' && github.ref_type == 'tag' }}
+            type=raw,value=test-{{sha}},enable=${{ github.event_name == 'workflow_dispatch' }}
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: /tmp/digests
+          pattern: digest-${{ matrix.image }}-*
+          merge-multiple: true
+
+      - name: Create multi-arch manifest
+        run: |
+          cd /tmp/digests
+          tags=$(jq -cr '.tags | map("-t " + .) | join(" ")' <<< '${{ steps.meta.outputs.json }}')
+          if [ -z "$tags" ]; then
+            echo "No tags were generated by docker/metadata-action; refusing to publish an untagged manifest."
+            exit 1
+          fi
+          sources=$(printf '${{ env.IMAGE_PREFIX }}/${{ matrix.image }}@sha256:%s ' *)
+          docker buildx imagetools create $tags $sources
+        shell: bash

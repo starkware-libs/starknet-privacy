@@ -1,16 +1,17 @@
+{{- $discovery := .Values.discoveryService -}}
+{{- $component := list . "discovery-service" -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: discovery-service-config
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 data:
   config.toml: |
     [api]
-    health_max_lag_secs = {{ .Values.discoveryService.config.api.health_max_lag_secs }}
-    {{- if .Values.discoveryService.ohttp.enabled }}
+    health_max_lag_secs = {{ $discovery.config.api.health_max_lag_secs }}
+    {{- if $discovery.ohttp.enabled }}
     [ohttp]
     enabled = true
     {{- end }}

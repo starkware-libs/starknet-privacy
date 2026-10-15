@@ -1,27 +1,35 @@
 # Privacy Starknet Helm Chart
 
-This chart deploys the Starknet privacy transaction prover and discovery service. The
+Deploys the Starknet privacy transaction prover and discovery service. The
 proof-interceptor screening sidecar runs in the transaction-prover Pod and is enabled by
 default.
 
+See [`values.yaml`](values.yaml) for every setting and its default.
+
 ## Prerequisites
 
-- Helm 3.14 or newer and access to the target Kubernetes cluster.
+- Helm 3.14 or newer.
 - A Pathfinder RPC endpoint for the transaction prover. It must retain enough recent
-  state tries for the blocks you intend to prove; configure
-  `PATHFINDER_STORAGE_STATE_TRIES` when you operate the node.
+  state tries for the blocks you intend to prove (`PATHFINDER_STORAGE_STATE_TRIES`).
 - HTTP RPC and WebSocket endpoints for the discovery service.
-- Nodes that satisfy the configured selectors, tolerations, and resource requests. The
-  defaults select GKE node pools, and the prover requests 32 CPUs and 48 GiB of memory.
+- Nodes that fit the prover, which typically needs around 32 CPUs and 48 GiB of memory.
 - Screening partner credentials when the proof interceptor is enabled.
 
-Resource names and workload selectors are fixed, so install at most one release of this
-chart in a namespace.
+## Install
 
-## Configure and install
+The chart is published to `oci://ghcr.io/starkware-libs/starknet-privacy/charts` on every
+`PRIVACY-*` release. Its images default to that release's tag.
 
-Create a private values file or produce one from your secret manager. At minimum,
-replace the placeholders below:
+Create the Secret the sidecar reads its partner credentials from:
+
+```bash
+kubectl create secret generic proof-interceptor-screening \
+  --namespace <namespace> \
+  --from-literal=partner-name="<partner-name>" \
+  --from-literal=partner-secret="<partner-secret>"
+```
+
+Write a private values file with the required settings:
 
 ```yaml
 transactionProver:
@@ -31,8 +39,6 @@ transactionProver:
   ohttp:
     key: "<32-byte-hex-key>"
   proofInterceptor:
-    image:
-      tag: "<proof-interceptor-image-tag>"
     screening:
       url: "<screening-proxy-url>"
       poolAddress: "<pool-contract-address>"
@@ -46,37 +52,35 @@ discoveryService:
     key: "<32-byte-hex-key>"
 ```
 
-`transactionProver.proofInterceptor.screening.rpcUrl` is chart-owned and must not be
-set. The chart uses `transactionProver.config.rpc_node_url` for both prover and sidecar
-policy reads.
-
-Ensure the namespace exists, then create the Secret referenced by the sidecar:
+Then install:
 
 ```bash
-kubectl create namespace <namespace>
-kubectl create secret generic proof-interceptor-screening \
-  --namespace <namespace> \
-  --from-literal=partner-name="<partner-name>" \
-  --from-literal=partner-secret="<partner-secret>"
-```
-
-Install the release:
-
-```bash
-helm install privacy ./privacy-starknet \
+helm install privacy-starknet oci://ghcr.io/starkware-libs/starknet-privacy/charts/privacy-starknet \
+  --version <chart-version> \
   --namespace <namespace> \
   --atomic --timeout 15m \
   -f <private-values-file>
 ```
 
-OHTTP keys are stored in the Helm release state as well as the rendered workloads.
-Protect values files and release-state Secrets, and avoid passing sensitive values with
-`--set`, which also records them in shell history.
+Resources are named `<release>-transaction-prover` and `<release>-discovery-service`, or
+just `<release>-…` when the release name contains `privacy-starknet`. Use
+`fullnameOverride` to choose the prefix.
 
-## Optional components
+## Secrets
 
-OHTTP and proof interception are enabled by default. Disable a feature explicitly when
-it is not part of the deployment:
+The chart stores each OHTTP key in a Secret it creates from `ohttp.key`, so the key is
+also kept in the Helm release state. To keep it out of Helm, create the Secret yourself
+with the key under `key` and reference it instead:
+
+```yaml
+transactionProver:
+  ohttp:
+    existingSecret: <secret-name>
+```
+
+## Optional features
+
+OHTTP and proof interception are enabled by default. Disable them explicitly:
 
 ```yaml
 transactionProver:
@@ -89,111 +93,55 @@ discoveryService:
     enabled: false
 ```
 
-Both screening failure policies default to closed. A screening error, timeout, or
-unreachable sidecar therefore blocks the transaction. Review
-`transactionProver.proofInterceptor.screening.failOpen` and
-`transactionProver.proofInterceptor.blockingCheck.failOpen` before changing that policy.
+Both screening failure policies fail closed: a screening error, timeout, or unreachable
+sidecar blocks the transaction. Review `proofInterceptor.screening.failOpen` and
+`proofInterceptor.blockingCheck.failOpen` before changing that.
 
-The sidecar is reachable only inside its Pod at `localhost:8080`; the chart does not
-create a Service for it.
+## GKE
 
-## Cluster-specific defaults
-
-The defaults include GKE node selectors, a prover toleration, NEG Service annotations,
-and `cloud.google.com/v1` BackendConfig resources. Override scheduling and resources for
-your cluster. On a non-GKE cluster, also remove the annotations and disable the
-BackendConfig resources:
+Each component gets a `cloud.google.com/v1` BackendConfig, linked to its Service by the
+`cloud.google.com/backend-config` annotation. The prover's health check targets the
+sidecar, because the prover has no GET health route. On other clusters, disable it:
 
 ```yaml
 transactionProver:
-  nodeSelector: null
-  tolerations: []
-  service:
-    annotations: null
   backendConfig:
     enabled: false
-
 discoveryService:
-  nodeSelector: null
-  service:
-    annotations: null
   backendConfig:
     enabled: false
 ```
-
-See [`values.yaml`](values.yaml) for every setting and its default.
 
 ## Network exposure
 
-Both Services default to `ClusterIP`, and both Ingresses default to disabled. Configure
-the Ingress blocks for public access, including the class, host, annotations, and TLS
-Secret. If the issuer uses ACME HTTP-01, port 80 must remain reachable during certificate
-issuance; use DNS-01 when HTTP must stay disabled.
+Both Services are `ClusterIP` and both Ingresses are disabled. For public access,
+configure the `ingress` blocks (class, hosts, annotations, TLS). With an ACME HTTP-01
+issuer, port 80 must stay reachable during certificate issuance; use DNS-01 otherwise.
+Setting a Service `type` to `LoadBalancer` exposes it directly, bypassing Ingress TLS.
 
-To expose a Service directly, set its type explicitly:
+## Upgrading from 0.3.x
 
-```yaml
-transactionProver:
-  service:
-    type: LoadBalancer
-discoveryService:
-  service:
-    type: LoadBalancer
-```
+0.4.0 follows standard Helm conventions, which changes resource names, selectors and
+values:
 
-Direct Service exposure can bypass Ingress TLS and policy. Set a component's complete
-`service` block to `null` when another resource manages access and the chart should not
-create that Service.
-
-## Upgrade notes
-
-Chart `0.3.0` changes both default Service types from `LoadBalancer` to `ClusterIP`.
-Deployments that require direct load balancers must set both Service types explicitly
-before upgrading.
-
-Recent chart versions also enable OHTTP and proof interception by default. The
-`--reset-then-reuse-values` flag starts with the new chart defaults and reapplies existing
-user values, so provide the required keys, addresses, image tag, and Secret or disable
-those features. Plain `--reuse-values` can omit newly introduced nested defaults.
-
-```bash
-helm upgrade privacy ./privacy-starknet \
-  --namespace <namespace> \
-  --reset-then-reuse-values \
-  --atomic --timeout 15m \
-  -f <private-values-file>
-```
-
-For Helm versions older than 3.14, export the current user-supplied values and pass them
-back with `-f`:
-
-```bash
-helm get values privacy --namespace <namespace> -o yaml > /secure/path/privacy-values.yaml
-helm upgrade privacy ./privacy-starknet \
-  --namespace <namespace> \
-  --atomic --timeout 15m \
-  -f /secure/path/privacy-values.yaml \
-  -f <new-private-values-file>
-```
-
-The exported file can contain credentials; store and remove it according to your secret
-handling policy.
-
-To disable the sidecar after rollout, upgrade with existing values and the explicit
-override:
-
-```bash
-helm upgrade privacy ./privacy-starknet \
-  --namespace <namespace> \
-  --reuse-values \
-  --set transactionProver.proofInterceptor.enabled=false
-```
-
-Use `helm rollback privacy <revision> --namespace <namespace>` for a full release
-rollback.
+- Resources are named after the release and selected by `app.kubernetes.io/*` labels.
+  Deployment selectors are immutable, so the upgrade replaces the Deployments and
+  Services instead of updating them, and in-cluster Service DNS names change.
+- Image tags default to the chart's appVersion; `image.tag` is only needed to pin a
+  different release. `pullPolicy` defaults to `IfNotPresent`.
+- `replicas` is now `replicaCount`. `discoveryService.containerPort` is now
+  `discoveryService.port`, and `config.apiHost` is derived from it.
+- `proofInterceptor.screeningSecretName` is now `proofInterceptor.screening.existingSecret`.
+- Probes are full Kubernetes probe objects. Pod settings that only repeated Kubernetes
+  defaults (`dnsPolicy`, `restartPolicy`, `strategy`, …) are removed.
+- Ingress `defaultBackend` and per-path `servicePort` are removed; every path routes to
+  the component's Service.
+- The OHTTP key is read from a Secret instead of a plain environment variable.
+- The `cloud.google.com/backend-config` Service annotation is set by the chart; remove
+  it from your values.
 
 ## Uninstall
 
 ```bash
-helm uninstall privacy --namespace <namespace>
+helm uninstall privacy-starknet --namespace <namespace>
 ```
