@@ -44,6 +44,7 @@ const ILLICIT = "8f023e48-b9c2-41c6-8c8a-42a936eee86d";
 const SANCTIONED = "1f86dce1-166a-4749-a5df-3972fae7635a";
 const OBFUSCATING = "1e24a6cf-620a-4c89-b423-5e43b2f13614";
 const DPRK = "090208b1-18e3-4da0-94d3-23e7eca5fd92";
+const TERRORISM = "32537f83-50d7-43ee-a916-4e85301e0949";
 
 describe("scoreResponse", () => {
   describe("error handling", () => {
@@ -136,7 +137,7 @@ describe("scoreResponse", () => {
   describe("ILLICIT_ACTIVITY (OR — either threshold triggers)", () => {
     it("blocks when both counterparty and contribution exceeded", () => {
       const result = scoreResponse(
-        ellipticResponse([evaluation(ILLICIT, [element(1, 100, 50, 50)])])
+        ellipticResponse([evaluation(ILLICIT, [element(1, 300, 50, 50)])])
       );
       expect(result.blocked).toBe(true);
       expect(result.reason).toBe("rule_triggered");
@@ -152,7 +153,7 @@ describe("scoreResponse", () => {
 
     it("blocks when only contribution exceeded", () => {
       const result = scoreResponse(
-        ellipticResponse([evaluation(ILLICIT, [element(1, 100, 0, 0)])])
+        ellipticResponse([evaluation(ILLICIT, [element(1, 300, 0, 0)])])
       );
       expect(result.blocked).toBe(true);
     });
@@ -161,6 +162,21 @@ describe("scoreResponse", () => {
       expect(
         scoreResponse(
           ellipticResponse([evaluation(ILLICIT, [element(0.05, 5, 50, 50)])])
+        ).blocked
+      ).toBe(false);
+    });
+  });
+
+  describe("raised contribution thresholds", () => {
+    it.each([
+      ["ILLICIT", ILLICIT, 250],
+      ["OBFUSCATING", OBFUSCATING, 250],
+      ["SANCTIONED", SANCTIONED, 100],
+      ["DPRK", DPRK, 100],
+    ])("%s allows contribution of exactly $%i", (_, ruleId, usd) => {
+      expect(
+        scoreResponse(
+          ellipticResponse([evaluation(ruleId, [element(1, usd, 0, 0)])])
         ).blocked
       ).toBe(false);
     });
@@ -178,7 +194,7 @@ describe("scoreResponse", () => {
     it("blocks when only contribution exceeded", () => {
       expect(
         scoreResponse(
-          ellipticResponse([evaluation(SANCTIONED, [element(1, 100, 0, 0)])])
+          ellipticResponse([evaluation(SANCTIONED, [element(1, 150, 0, 0)])])
         ).blocked
       ).toBe(true);
     });
@@ -196,7 +212,7 @@ describe("scoreResponse", () => {
     it("blocks when contribution exceeded", () => {
       expect(
         scoreResponse(
-          ellipticResponse([evaluation(OBFUSCATING, [element(1, 100, 0, 0)])])
+          ellipticResponse([evaluation(OBFUSCATING, [element(1, 300, 0, 0)])])
         ).blocked
       ).toBe(true);
     });
@@ -212,6 +228,38 @@ describe("scoreResponse", () => {
     });
   });
 
+  describe("TERRORISM (any counterparty, contribution > $10)", () => {
+    it("blocks on any counterparty exposure", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([
+            evaluation(TERRORISM, [element(0.001, 0, 5, 0.01)]),
+          ])
+        ).blocked
+      ).toBe(true);
+    });
+
+    it("blocks when contribution is over $10 and over 0.1%", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([
+            evaluation(TERRORISM, [element(0.11, 10.001, 0, 0)]),
+          ])
+        ).blocked
+      ).toBe(true);
+    });
+
+    it("allows when contribution is under $10", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([
+            evaluation(TERRORISM, [element(0.11, 9.999, 0, 0)]),
+          ])
+        ).blocked
+      ).toBe(false);
+    });
+  });
+
   describe("hard block", () => {
     it("blocks on ILLICIT contribution >= $5000 regardless of percentages", () => {
       expect(
@@ -221,14 +269,33 @@ describe("scoreResponse", () => {
       ).toBe(true);
     });
 
-    it("blocks on SANCTIONED contribution >= $5000", () => {
+    it.each([
+      ["SANCTIONED", SANCTIONED],
+      ["DPRK", DPRK],
+      ["TERRORISM", TERRORISM],
+    ])(
+      "blocks on %s contribution >= $500 even with risk_score 0",
+      (_, ruleId) => {
+        expect(
+          scoreResponse(
+            ellipticResponse([
+              evaluation(ruleId, [element(0.01, 500, 0, 0)], 0),
+            ])
+          ).blocked
+        ).toBe(true);
+      }
+    );
+
+    it.each([
+      ["SANCTIONED", SANCTIONED],
+      ["DPRK", DPRK],
+      ["TERRORISM", TERRORISM],
+    ])("allows %s contribution under $500 with low percentage", (_, ruleId) => {
       expect(
         scoreResponse(
-          ellipticResponse([
-            evaluation(SANCTIONED, [element(0.01, 5000, 0, 0)]),
-          ])
+          ellipticResponse([evaluation(ruleId, [element(0.01, 499, 0, 0)])])
         ).blocked
-      ).toBe(true);
+      ).toBe(false);
     });
 
     it("does not hard-block OBFUSCATING at $5000", () => {
@@ -246,7 +313,7 @@ describe("scoreResponse", () => {
     it("allows when evaluation passes filter but risk_score is 0", () => {
       expect(
         scoreResponse(
-          ellipticResponse([evaluation(SANCTIONED, [element(1, 100, 0, 0)], 0)])
+          ellipticResponse([evaluation(SANCTIONED, [element(1, 150, 0, 0)], 0)])
         ).blocked
       ).toBe(false);
     });
@@ -254,7 +321,7 @@ describe("scoreResponse", () => {
     it("blocks when risk_score from Elliptic exceeds threshold", () => {
       expect(
         scoreResponse(
-          ellipticResponse([evaluation(SANCTIONED, [element(1, 100, 0, 0)], 5)])
+          ellipticResponse([evaluation(SANCTIONED, [element(1, 150, 0, 0)], 5)])
         ).blocked
       ).toBe(true);
     });
@@ -263,7 +330,7 @@ describe("scoreResponse", () => {
       expect(
         scoreResponse(
           ellipticResponse([
-            evaluation(SANCTIONED, [element(1, 100, 0, 0)], 0.005),
+            evaluation(SANCTIONED, [element(1, 150, 0, 0)], 0.005),
           ])
         ).blocked
       ).toBe(false);
@@ -273,7 +340,7 @@ describe("scoreResponse", () => {
       const body = ellipticResponse([
         {
           rule_id: SANCTIONED,
-          matched_elements: [element(1, 100, 0, 0)],
+          matched_elements: [element(1, 150, 0, 0)],
         },
       ]);
       expect(scoreResponse(body).blocked).toBe(true);
@@ -286,7 +353,7 @@ describe("scoreResponse", () => {
         process_status: "complete",
         evaluation_detail: {
           source: [],
-          destination: [evaluation(SANCTIONED, [element(1, 100, 1, 50)])],
+          destination: [evaluation(SANCTIONED, [element(1, 150, 1, 50)])],
         },
       });
       const result = scoreResponse(body);
