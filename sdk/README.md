@@ -4,21 +4,62 @@ TypeScript SDK for private transfers on Starknet.
 
 ## Publishing
 
-To publish a release:
+The SDK and [client](../client) are published by hand, by a member of the `starkware-libs` npm org
+with two-factor authentication enabled. Publish from a clean checkout of the release commit.
 
-1. Bump `version` in `package.json` to the desired release version
-2. Authenticate with GitHub Packages:
+During the transition from GitHub Packages, every release goes to **both** npmjs.com and GitHub
+Packages, as the same tarball, so one version is byte-identical on both. A scope line in `.npmrc`
+sends every `@starkware-libs/*` package to one registry, and `@starkware-libs/starknet-privacy-bridge`
+and `pmp-trading-core` are still only on GitHub Packages, so their consumers keep resolving the SDK
+from there. Stop publishing to GitHub Packages once they move to npmjs.com.
+
+1. Set `version` in `package.json` (SDK and client separately) to a version that exists on **neither**
+   registry. A rebuilt tarball never matches an already published one byte for byte, so a reused
+   number would name two different artifacts.
+2. Log in to both registries. GitHub Packages needs a personal access token with `write:packages`:
    ```sh
+   npm login --registry=https://registry.npmjs.org
    echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
    ```
-3. Build and publish:
+3. Build, pack and publish the SDK, then the client:
+   - Always publish the packed tarball. The client's `prepack` pins its SDK dependency to the SDK's
+     exact version (which must already be published), but a publish from the client directory would
+     record `file:../sdk` in the registry metadata, so the client refuses it. `verify` rejects a
+     tarball that still links a local path, e.g. one packed with `ignore-scripts=true` in your npm
+     config; `--ignore-scripts=false` makes the pack hooks run regardless.
+   - Every publish names its registry with `--@starkware-libs:registry=...`. A scope line in your
+     `~/.npmrc` overrides both `--registry` and the package's `publishConfig`.
+   - The dist-tag comes from the version: `next` for release candidates (`-rc.N`), `latest` for stable.
    ```sh
+   NPMJS=--@starkware-libs:registry=https://registry.npmjs.org
+   GITHUB=--@starkware-libs:registry=https://npm.pkg.github.com
+   tag_for_version() { node -p "require('./package.json').version.includes('-') ? 'next' : 'latest'"; }
+
    cd sdk
    npm ci
    npm run generate
    npm run build
-   npm publish
+   TARBALL=$(npm pack --silent | tail -n 1)
+   TAG=$(tag_for_version)
+   npm publish "$TARBALL" --tag "$TAG" "$NPMJS" --dry-run  # check the file list and target registry
+   npm publish "$TARBALL" --tag "$TAG" "$NPMJS"
+   npm publish "$TARBALL" --tag "$TAG" "$GITHUB"
+
+   cd ../client
+   npm ci
+   npm run build
+   TARBALL=$(npm pack --ignore-scripts=false --silent | tail -n 1)  # hooks print before the file name
+   node scripts/publish-sdk-dep.mjs verify "$TARBALL"
+   TAG=$(tag_for_version)
+   npm publish "$TARBALL" --tag "$TAG" "$NPMJS" --dry-run
+   npm publish "$TARBALL" --tag "$TAG" "$NPMJS"
+   npm publish "$TARBALL" --tag "$TAG" "$GITHUB"
    ```
+
+npm versions are immutable: a published version can never be republished, even after an unpublish.
+
+For a branch build to test without publishing, run the `SDK Prerelease Tarball` workflow on the
+branch and install the `.tgz` attached to the run.
 
 ## Prerequisites
 
@@ -35,10 +76,11 @@ npm run test:fast # run tests excluding devnet
 
 ## Installation
 
-From a tagged release (GitHub npm registry):
+From npm:
 
 ```bash
-npm install @starkware-libs/starknet-privacy-sdk
+npm install @starkware-libs/starknet-privacy-sdk        # latest stable release
+npm install @starkware-libs/starknet-privacy-sdk@next   # latest release candidate
 ```
 
 From a specific commit (git):
@@ -51,7 +93,10 @@ npm install "starkware-libs/starknet-privacy#<commit-sha>"
 
 ```typescript
 import { Account, RpcProvider } from "starknet";
-import { createPrivateTransfers, IndexerDiscoveryProvider } from "starknet-sdk";
+import {
+  createPrivateTransfers,
+  IndexerDiscoveryProvider,
+} from "@starkware-libs/starknet-privacy-sdk";
 
 const provider = new RpcProvider({ nodeUrl: "http://localhost:5050" });
 const account = new Account(provider, accountAddress, privateKey);
@@ -659,7 +704,7 @@ The wallet sends `callAndProof` in a transaction to the contract's `execute_acti
 
 ## Testing
 
-The SDK exports testing utilities from `starknet-sdk/testing`:
+The SDK exports testing utilities from `@starkware-libs/starknet-privacy-sdk/testing`:
 
 ```typescript
 import {
@@ -667,7 +712,7 @@ import {
   createDevnetTestEnv,
   MockPoolContract,
   MockProofProvider,
-} from "starknet-sdk/testing";
+} from "@starkware-libs/starknet-privacy-sdk/testing";
 ```
 
 Key exports:
