@@ -1,20 +1,17 @@
-{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
-{{- if and $discovery.backendConfig $discovery.backendConfig.enabled }}
+{{- $discovery := .Values.discoveryService -}}
+{{- if $discovery.backendConfig.enabled }}
+{{- $component := list . "discovery-service" }}
+{{- $healthCheck := $discovery.backendConfig.healthCheck }}
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: discovery-service
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 spec:
   healthCheck:
-    type: {{ $discovery.backendConfig.healthCheck.type | default "HTTP" }}
-    {{- with $discovery.backendConfig.healthCheck.requestPath }}
-    requestPath: {{ . }}
-    {{- end }}
-    {{- with $discovery.backendConfig.healthCheck.port }}
-    port: {{ . }}
-    {{- end }}
+    type: {{ $healthCheck.type }}
+    requestPath: {{ $healthCheck.requestPath }}
+    port: {{ $healthCheck.port | default $discovery.port }}
 {{- end }}

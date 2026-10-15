@@ -1,12 +1,12 @@
-{{- $discovery := include "privacy-starknet.componentValues" (list . "discoveryService") | fromYaml -}}
+{{- $discovery := .Values.discoveryService -}}
+{{- $component := list . "discovery-service" -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: discovery-service-config
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 data:
   config.toml: |
     [api]
