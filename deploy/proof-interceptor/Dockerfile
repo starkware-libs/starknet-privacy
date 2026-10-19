@@ -14,13 +14,15 @@
 FROM node:22-slim AS build
 WORKDIR /app
 
-# Install both workspace members from the root lockfile. Every member's
-# package.json must be present for `npm ci` to accept that lockfile.
+# Install both workspace members from the root lockfile. Only their manifests
+# are needed here; sources are copied afterwards so source edits don't
+# invalidate the install layer.
 COPY package.json package-lock.json ./
-COPY client/package.json ./client/
+COPY sdk/package.json ./sdk/
+COPY proof-interceptor/package.json ./proof-interceptor/
+RUN npm ci -w sdk -w proof-interceptor
 COPY sdk/ ./sdk/
 COPY proof-interceptor/ ./proof-interceptor/
-RUN npm ci -w sdk -w proof-interceptor
 
 # The SDK builds first: proof-interceptor imports its compiled `dist/`.
 RUN npm run build -w sdk \
@@ -37,8 +39,7 @@ WORKDIR /app/proof-interceptor
 # Workspace layout must survive into the runtime: the hoisted
 # /app/node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
 # and proof-interceptor/node_modules holds only the versions that could not be
-# hoisted. No first-party sources, tests or configs are copied. The node_modules
-# trees are not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
+# hoisted.
 COPY --from=build /app/sdk/package.json /app/sdk/package.json
 COPY --from=build /app/sdk/dist /app/sdk/dist
 COPY --from=build /app/node_modules /app/node_modules
