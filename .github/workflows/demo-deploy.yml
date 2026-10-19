@@ -19,7 +19,7 @@ jobs:
         with:
           node-version: '22'
           cache: 'npm'
-          cache-dependency-path: sdk/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Build SDK
         working-directory: sdk

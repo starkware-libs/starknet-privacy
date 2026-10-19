@@ -14,26 +14,26 @@ jobs:
       - uses: dorny/paths-filter@d1c1ffe0248fe513906c8e24db8ea791d46f8590 # v3
         id: filter
         with:
-          # The client resolves @starkware-libs/starknet-privacy-sdk via file:../sdk, so an
-          # SDK change can break the client's type-check just as a client change can.
+          # The client resolves @starkware-libs/starknet-privacy-sdk from the sdk/ workspace, so
+          # an SDK change can break the client's type-check just as a client change can.
           filters: |
             client:
               - 'client/**'
               - 'sdk/**'
+              - 'package.json'
+              - 'package-lock.json'
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.filter.outputs.client == 'true'
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: |
-            sdk/package-lock.json
-            client/package-lock.json
+          cache-dependency-path: package-lock.json
       # The SDK's package exports point at ./dist; build it before linting the client so
       # `tsc --noEmit` can resolve the SDK's types.
       - if: steps.filter.outputs.client == 'true'
-        run: cd sdk && npm ci && npm run build
+        run: npm ci && npm run build -w sdk
       - if: steps.filter.outputs.client == 'true'
-        run: cd client && npm ci && npm run lint
+        run: cd client && npm run lint
 
   check:
     name: Client Build & Test
@@ -45,17 +45,12 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: |
-            sdk/package-lock.json
-            client/package-lock.json
+          cache-dependency-path: package-lock.json
 
-      # Build the SDK first: the client depends on it via a file: link and imports its
-      # compiled ./dist entry points.
-      - name: Build SDK
-        run: cd sdk && npm ci && npm run build
-
-      - name: Install client dependencies
-        run: cd client && npm ci
+      # Build the SDK first: the client links it as a workspace and imports its compiled
+      # ./dist entry points.
+      - name: Install workspace and build SDK
+        run: npm ci && npm run build -w sdk
 
       - name: Build client
         run: cd client && npm run build
