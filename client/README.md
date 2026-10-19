@@ -17,8 +17,7 @@ npm install @starkware-libs/starknet-privacy-client @starkware-libs/starknet-pri
 ```
 
 In this repo, `client` and `sdk` are npm workspaces: run `npm ci` at the repo root and the client
-links the local `sdk/`. That link only holds while the SDK's version satisfies the client's
-`^` range, so an SDK bump outside it must update both `peerDependencies` and `devDependencies` here.
+links the local `sdk/`.
 
 ## Signers
 

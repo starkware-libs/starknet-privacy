@@ -39,7 +39,7 @@ jobs:
           # Strip any existing prerelease suffix from BASE so reruns stay clean.
           BASE_CLEAN=${BASE%%-*}
           NEW_VERSION="${BASE_CLEAN}-${BRANCH}.${SHORT_SHA}"
-          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version --no-workspaces-update
+          npm pkg set version="$NEW_VERSION"
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=branch-${BRANCH}" >> "$GITHUB_OUTPUT"
 

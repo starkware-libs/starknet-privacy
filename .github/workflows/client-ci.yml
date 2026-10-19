@@ -31,9 +31,9 @@ jobs:
       # The SDK's package exports point at ./dist; build it before linting the client so
       # `tsc --noEmit` can resolve the SDK's types.
       - if: steps.filter.outputs.client == 'true'
-        run: npm ci && npm run build -w sdk
+        run: npm ci -w sdk -w client && npm run build -w sdk
       - if: steps.filter.outputs.client == 'true'
-        run: cd client && npm run lint
+        run: npm run lint -w client
 
   check:
     name: Client Build & Test
@@ -50,10 +50,10 @@ jobs:
       # Build the SDK first: the client links it as a workspace and imports its compiled
       # ./dist entry points.
       - name: Install workspace and build SDK
-        run: npm ci && npm run build -w sdk
+        run: npm ci -w sdk -w client && npm run build -w sdk
 
       - name: Build client
-        run: cd client && npm run build
+        run: npm run build -w client
 
       - name: Run client tests
-        run: cd client && npm run test
+        run: npm run test -w client
