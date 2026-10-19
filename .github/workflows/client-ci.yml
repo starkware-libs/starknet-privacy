@@ -52,6 +52,17 @@ jobs:
       - name: Install workspace and build SDK
         run: npm ci -w sdk -w client && npm run build -w sdk
 
+      # The workspace links the local SDK regardless of the client's peer range, so a stale
+      # range never fails an install here; it only breaks dapps installing the published pair.
+      # A prerelease satisfies a range only within the same x.y.z (0.14.4-rc.0 is outside
+      # ^0.14.3-rc.8), so every new SDK patch rc needs the range bumped.
+      - name: Check the client's SDK peer range covers the workspace SDK
+        run: |
+          SDK_VERSION=$(node -p "require('./sdk/package.json').version")
+          PEER_RANGE=$(node -p "require('./client/package.json').peerDependencies['@starkware-libs/starknet-privacy-sdk']")
+          npx --no-install semver --range "$PEER_RANGE" "$SDK_VERSION" > /dev/null \
+            || { echo "::error::SDK $SDK_VERSION is outside the client's peer range $PEER_RANGE; bump it in client/package.json"; exit 1; }
+
       - name: Build client
         run: npm run build -w client
 
