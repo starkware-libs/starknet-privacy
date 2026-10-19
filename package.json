@@ -3,6 +3,7 @@
   "private": true,
   "workspaces": [
     "sdk",
-    "client"
+    "client",
+    "proof-interceptor"
   ]
 }

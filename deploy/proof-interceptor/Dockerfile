@@ -1,8 +1,8 @@
 # Multi-stage build for the proof-interceptor sidecar.
 #
-# Build context MUST be the workspace root (`starknet-privacy/`) because
-# proof-interceptor depends on the local SDK via `"file:../sdk"` in its
-# package.json. Build with:
+# Build context MUST be the repo root (`starknet-privacy/`) because
+# proof-interceptor and the SDK are npm workspace members installed from the
+# root package-lock.json. Build with:
 #
 #   docker build -f deploy/proof-interceptor/Dockerfile -t proof-interceptor:<tag> .
 #
@@ -14,42 +14,31 @@
 FROM node:22-slim AS build
 WORKDIR /app
 
-# Build the local SDK first so its compiled `dist/` is available when
-# proof-interceptor's `npm ci` resolves `file:../sdk`. The SDK is an npm workspace
-# member, so it installs from the root lockfile into the hoisted /app/node_modules.
-# Every member's package.json must be present for `npm ci` to accept that lockfile.
+# Install both workspace members from the root lockfile. Every member's
+# package.json must be present for `npm ci` to accept that lockfile.
 COPY package.json package-lock.json ./
 COPY client/package.json ./client/
 COPY sdk/ ./sdk/
-RUN cd sdk \
- && npm ci \
- && npm run build
-
-# Build proof-interceptor against the just-built SDK.
 COPY proof-interceptor/ ./proof-interceptor/
-RUN cd proof-interceptor \
- && npm ci \
- && npm run build
+RUN npm ci -w sdk -w proof-interceptor
+
+# The SDK builds first: proof-interceptor imports its compiled `dist/`.
+RUN npm run build -w sdk \
+ && npm run build -w proof-interceptor
 
 # Drop devDependencies once compilation is done; the runtime stage only needs
-# the production deps. The SDK is pruned too — it is a file: dependency, so its
-# hoisted workspace tree ships in the image rather than being flattened into the
-# interceptor's.
-RUN cd proof-interceptor \
- && npm prune --omit=dev \
- && cd ../sdk \
- && npm prune --omit=dev
+# the production deps.
+RUN npm prune --omit=dev -w sdk -w proof-interceptor
 
 # ---- runtime stage --------------------------------------------------------
 FROM node:22-slim
 WORKDIR /app/proof-interceptor
 
-# The SDK is a file: dependency, so the runtime needs both directories present
-# at the path npm resolved during install: the interceptor's
-# node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
-# whose own dependencies resolve from the workspace's hoisted /app/node_modules.
-# No first-party sources, tests or configs are copied. The node_modules trees are
-# not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
+# Workspace layout must survive into the runtime: the hoisted
+# /app/node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
+# and proof-interceptor/node_modules holds only the versions that could not be
+# hoisted. No first-party sources, tests or configs are copied. The node_modules
+# trees are not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
 COPY --from=build /app/sdk/package.json /app/sdk/package.json
 COPY --from=build /app/sdk/dist /app/sdk/dist
 COPY --from=build /app/node_modules /app/node_modules

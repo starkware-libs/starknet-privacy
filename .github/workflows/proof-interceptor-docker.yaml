@@ -10,12 +10,16 @@ on:
     paths:
       - 'proof-interceptor/**'
       - 'sdk/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'deploy/proof-interceptor/**'
       - '.github/workflows/proof-interceptor-docker.yaml'
   pull_request:
     paths:
       - 'proof-interceptor/**'
       - 'sdk/**'
+      - 'package.json'
+      - 'package-lock.json'
       - 'deploy/proof-interceptor/**'
       - '.github/workflows/proof-interceptor-docker.yaml'
 
