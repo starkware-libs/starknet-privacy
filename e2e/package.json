@@ -26,9 +26,9 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@starkware-libs/proof-interceptor": "^0.1.0",
-    "@starkware-libs/starknet-privacy-client": "^0.1.0",
-    "@starkware-libs/starknet-privacy-sdk": "^0.14.3-rc.8",
+    "@starkware-libs/proof-interceptor": "*",
+    "@starkware-libs/starknet-privacy-client": "*",
+    "@starkware-libs/starknet-privacy-sdk": "*",
     "starknet": "10.5.0"
   },
   "devDependencies": {

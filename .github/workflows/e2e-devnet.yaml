@@ -99,7 +99,6 @@ jobs:
       - name: Build discovery service
         run: cargo build --release -p discovery-service
 
-      # Install the workspace (sdk, client, proof-interceptor, e2e) and build the SDK
       - name: Install workspace and build SDK
         run: npm ci && npm run build -w sdk
 

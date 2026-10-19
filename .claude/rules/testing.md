@@ -11,7 +11,7 @@
 - The task is not complete until all tests pass with 0 failures.
 
 **Workaround for unrelated-looking test failures:**
-- If tests fail in ways that seem unrelated to current changes, first try a clean reinstall: delete `node_modules/` (repo root, `sdk/`, `client/`, `e2e/`) and the root and `e2e/` lock files, then `npm install` fresh. Dependency drift and stale caches cause phantom failures.
+- If tests fail in ways that seem unrelated to current changes, first try a clean reinstall from the repo root: `rm -rf node_modules */node_modules && npm ci` (then `npm ci` again in `demo/` or `elliptic-proxy/` if you use them; they are outside the workspace). Dependency drift and stale caches cause phantom failures.
 
 **Test quality requirements:**
 - Tests must be meaningful - `assert_ne` or trivial assertions give false coverage impression
