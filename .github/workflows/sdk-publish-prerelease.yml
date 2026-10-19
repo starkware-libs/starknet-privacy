@@ -22,7 +22,7 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@starkware-libs'
           cache: 'npm'
-          cache-dependency-path: sdk/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install npm dependencies
         run: npm ci
@@ -39,7 +39,7 @@ jobs:
           # Strip any existing prerelease suffix from BASE so reruns stay clean.
           BASE_CLEAN=${BASE%%-*}
           NEW_VERSION="${BASE_CLEAN}-${BRANCH}.${SHORT_SHA}"
-          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version
+          npm version "$NEW_VERSION" --no-git-tag-version --allow-same-version --no-workspaces-update
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=branch-${BRANCH}" >> "$GITHUB_OUTPUT"
 

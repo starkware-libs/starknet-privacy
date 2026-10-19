@@ -7,6 +7,19 @@ Starknet/EVM wallet signing (SNIP-12 / EIP-712 CallSet signers), and builds priv
 This package is under active development; the public API is being added incrementally. See the
 design in `.claude/plans/dapp-sdk-design.md`.
 
+## Installation
+
+The SDK is a peer dependency: dapps pass SDK objects (discovery and proof providers, the note
+registry) into the client, so both must share one SDK copy. Install them side by side:
+
+```bash
+npm install @starkware-libs/starknet-privacy-client @starkware-libs/starknet-privacy-sdk
+```
+
+In this repo, `client` and `sdk` are npm workspaces: run `npm ci` at the repo root and the client
+links the local `sdk/`. That link only holds while the SDK's version satisfies the client's
+`^` range, so an SDK bump outside it must update both `peerDependencies` and `devDependencies` here.
+
 ## Signers
 
 The `./signers` subpath exports `Snip12CallSetSigner` (legacy Starknet wallets) and
