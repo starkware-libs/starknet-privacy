@@ -19,7 +19,11 @@ FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 # Build the local SDK first so its compiled `dist/` is available when
-# proof-interceptor's `npm ci` resolves `file:../sdk`.
+# proof-interceptor's `npm ci` resolves `file:../sdk`. The SDK is an npm workspace
+# member, so it installs from the root lockfile into the hoisted /app/node_modules.
+# Every member's package.json must be present for `npm ci` to accept that lockfile.
+COPY package.json package-lock.json ./
+COPY client/package.json ./client/
 COPY sdk/ ./sdk/
 RUN cd sdk \
  && npm ci \
@@ -33,7 +37,8 @@ RUN cd proof-interceptor \
 
 # Drop devDependencies once compilation is done; the runtime stage only needs
 # the production deps. The SDK is pruned too — it is a file: dependency, so its
-# tree ships in the image rather than being flattened into the interceptor's.
+# hoisted workspace tree ships in the image rather than being flattened into the
+# interceptor's.
 RUN cd proof-interceptor \
  && npm prune --omit=dev \
  && cd ../sdk \
@@ -45,12 +50,13 @@ WORKDIR /app/proof-interceptor
 
 # The SDK is a file: dependency, so the runtime needs both directories present
 # at the path npm resolved during install: the interceptor's
-# node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk.
+# node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
+# whose own dependencies resolve from the workspace's hoisted /app/node_modules.
 # No first-party sources, tests or configs are copied. The node_modules trees are
 # not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
 COPY --from=build /app/sdk/package.json /app/sdk/package.json
 COPY --from=build /app/sdk/dist /app/sdk/dist
-COPY --from=build /app/sdk/node_modules /app/sdk/node_modules
+COPY --from=build /app/node_modules /app/node_modules
 COPY --from=build /app/proof-interceptor/package.json /app/proof-interceptor/package.json
 COPY --from=build /app/proof-interceptor/dist /app/proof-interceptor/dist
 COPY --from=build /app/proof-interceptor/node_modules /app/proof-interceptor/node_modules
