@@ -9,8 +9,8 @@ Developer-facing demo app for interacting with the privacy pool on StarkNet inte
 ## Setup
 
 ```bash
-# Build the SDK (demo links to it via file:../sdk)
-cd sdk && npm install && npm run build && cd ..
+# Build the SDK from the repo root: sdk/ is an npm workspace member (demo links it via file:../sdk)
+npm ci -w sdk && npm run build -w sdk
 
 cd demo
 cp .env.example .env.testnet.local       # fill in testnet addresses/keys
