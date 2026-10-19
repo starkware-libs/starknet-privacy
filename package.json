@@ -4,6 +4,7 @@
   "workspaces": [
     "sdk",
     "client",
-    "proof-interceptor"
+    "proof-interceptor",
+    "e2e"
   ]
 }
