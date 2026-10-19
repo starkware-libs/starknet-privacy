@@ -96,8 +96,9 @@ See [e2e/README.md](e2e/README.md) for additional setup requirements (devnet, `.
 ```bash
 scarb build && scarb test          # Cairo contract
 cargo build && cargo test          # Rust crates
-cd sdk && npm ci && npm test       # TypeScript SDK
-cd e2e && npm ci && npm test       # E2E
+npm ci                             # npm workspace: sdk, client, proof-interceptor, e2e
+cd sdk && npm test                 # TypeScript SDK
+cd e2e && npm test                 # E2E
 ```
 
 ## License

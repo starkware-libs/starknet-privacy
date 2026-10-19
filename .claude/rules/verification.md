@@ -17,9 +17,9 @@
 ## E2E integration gate
 
 After finalizing any change to Rust crates or the TypeScript SDK, propose running E2E tests to the user. Before running them:
-1. Rebuild affected Rust binaries: `cargo build -p <crate>` (E2E spawns binaries from `target/debug/`)
-2. Rebuild the SDK: `cd sdk && npm run build` (E2E resolves `starknet-sdk` from built `.d.ts`/`.js`, not source)
-3. Rebuild the proof interceptor and the client: `cd proof-interceptor && npm run build`, `cd client && npm run build` — E2E imports both from their built `dist/`, so a stale build silently exercises old code
+1. Rebuild affected Rust binaries: `cargo build --release -p <crate>` (E2E spawns binaries from `target/release/`)
+2. Rebuild the SDK: `npm run build -w sdk` from the repo root (E2E resolves `@starkware-libs/starknet-privacy-sdk` from built `.d.ts`/`.js`, not source)
+3. Rebuild the proof interceptor and the client: `npm run build -w proof-interceptor -w client` — E2E imports both from their built `dist/`, so a stale build silently exercises old code
 4. Run E2E: `cd e2e && npm test`
 
 ## Cross-layer consistency
