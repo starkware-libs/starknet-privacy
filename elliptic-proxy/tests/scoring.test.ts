@@ -40,10 +40,11 @@ function element(
 }
 
 // Rule IDs
-const ILLICIT = "8f023e48-b9c2-41c6-8c8a-42a936eee86d";
-const SANCTIONED = "1f86dce1-166a-4749-a5df-3972fae7635a";
-const OBFUSCATING = "1e24a6cf-620a-4c89-b423-5e43b2f13614";
-const DPRK = "090208b1-18e3-4da0-94d3-23e7eca5fd92";
+const ILLICIT = "ea184575-0abc-4047-a554-e647c33b0691";
+const SANCTIONED = "8dfb1940-b138-4cd6-af80-a574d7c1109c";
+const OBFUSCATING = "bc2541f9-cafa-43ba-bddc-427b19e46dfe";
+const DPRK = "09698cee-bfa9-4bea-a8a0-b10fdf06eb7b";
+const LEGACY_SANCTIONED = "1f86dce1-166a-4749-a5df-3972fae7635a";
 const TERRORISM = "32537f83-50d7-43ee-a916-4e85301e0949";
 
 describe("scoreResponse", () => {
@@ -203,6 +204,16 @@ describe("scoreResponse", () => {
       expect(
         scoreResponse(
           ellipticResponse([evaluation(SANCTIONED, [element(0.05, 5, 0, 0)])])
+        ).blocked
+      ).toBe(false);
+    });
+
+    it("applies the same thresholds to the legacy rule id", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([
+            evaluation(LEGACY_SANCTIONED, [element(0.05, 5, 0, 0)]),
+          ])
         ).blocked
       ).toBe(false);
     });

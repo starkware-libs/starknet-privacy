@@ -40,47 +40,59 @@ interface RuleThresholds {
 const SEVERE_RULES_HARD_BLOCK_USD = 500;
 const HARD_BLOCK_RISK_SCORE = 10;
 
+const ILLICIT_ACTIVITY: RuleThresholds = {
+  counterpartyPercentage: 0.1,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 250,
+  hardBlockUsd: 5000,
+};
+
+const SANCTIONED_ENTITY: RuleThresholds = {
+  counterpartyPercentage: 0,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 100,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
+const OBFUSCATING: RuleThresholds = {
+  counterpartyPercentage: 0.1,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 250,
+};
+
+const DPRK_BYBIT_EXPLOIT: RuleThresholds = {
+  counterpartyPercentage: 0.00001,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 100,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
+const TERRORISM: RuleThresholds = {
+  counterpartyPercentage: 0,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 10,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
 // Rule IDs from Elliptic, matching starknet-apps screening config
 const RULES: Record<string, RuleThresholds> = {
-  // ILLICIT_ACTIVITY
-  "8f023e48-b9c2-41c6-8c8a-42a936eee86d": {
-    counterpartyPercentage: 0.1,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 250,
-    hardBlockUsd: 5000,
-  },
-  // SANCTIONED_ENTITY / TF_CSAM
-  "1f86dce1-166a-4749-a5df-3972fae7635a": {
-    counterpartyPercentage: 0,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 100,
-    hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
-  },
-  // OBFUSCATING
-  "1e24a6cf-620a-4c89-b423-5e43b2f13614": {
-    counterpartyPercentage: 0.1,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 250,
-  },
-  // DPRK_BYBIT_EXPLOIT
-  "090208b1-18e3-4da0-94d3-23e7eca5fd92": {
-    counterpartyPercentage: 0.00001,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 100,
-    hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
-  },
-  // TERRORISM
-  "32537f83-50d7-43ee-a916-4e85301e0949": {
-    counterpartyPercentage: 0,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 10,
-    hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
-  },
+  "ea184575-0abc-4047-a554-e647c33b0691": ILLICIT_ACTIVITY,
+  "8dfb1940-b138-4cd6-af80-a574d7c1109c": SANCTIONED_ENTITY,
+  "bc2541f9-cafa-43ba-bddc-427b19e46dfe": OBFUSCATING,
+  "09698cee-bfa9-4bea-a8a0-b10fdf06eb7b": DPRK_BYBIT_EXPLOIT,
+  "32537f83-50d7-43ee-a916-4e85301e0949": TERRORISM,
+  // Rule IDs of the Elliptic ruleset that was replaced on 2026-10-14. They still show up in
+  // some Elliptic responses, and unknown rules are never filtered, so keep them mapped
+  "8f023e48-b9c2-41c6-8c8a-42a936eee86d": ILLICIT_ACTIVITY,
+  "238fe69b-341f-4324-9c05-3cf9d2aa13d4": ILLICIT_ACTIVITY,
+  "1f86dce1-166a-4749-a5df-3972fae7635a": SANCTIONED_ENTITY,
+  "1e24a6cf-620a-4c89-b423-5e43b2f13614": OBFUSCATING,
+  "090208b1-18e3-4da0-94d3-23e7eca5fd92": DPRK_BYBIT_EXPLOIT,
 };
 
 // Matches APP_ALLOWED_RISK_EXPOSURE default in starknet-apps
