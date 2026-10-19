@@ -125,12 +125,14 @@ transactionProver:
         port: interceptor
       initialDelaySeconds: 5
       periodSeconds: 10
+      timeoutSeconds: 2
     readinessProbe:
       httpGet:
         path: /health
         port: interceptor
       initialDelaySeconds: 3
       periodSeconds: 5
+      timeoutSeconds: 2
     screening:
       # Existing Secret with `partner-name` and `partner-secret` keys.
       existingSecret: proof-interceptor-screening
@@ -175,12 +177,14 @@ discoveryService:
       port: http
     initialDelaySeconds: 15
     periodSeconds: 30
+    timeoutSeconds: 2
   readinessProbe:
     httpGet:
       path: /health
       port: http
     initialDelaySeconds: 5
     periodSeconds: 10
+    timeoutSeconds: 2
 
   # Port the API listens on, used by the container, Service and Ingress.
   port: 8080
