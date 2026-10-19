@@ -7,9 +7,8 @@ TypeScript SDK for private transfers on Starknet.
 To publish a release:
 
 1. Bump `version` with `npm version <version> --no-git-tag-version` (it also updates the repo-root
-   `package-lock.json`, which `sdk` shares with the `client` workspace). If the new version falls
-   outside the client's SDK range (e.g. `0.14.x` → `0.15.0`), bump that range in
-   `client/package.json` first, or npm tries to fetch a published SDK instead of linking this one
+   `package-lock.json`). If the new version falls outside the client's SDK `peerDependencies`
+   range (e.g. `0.14.x` → `0.15.0`), bump that range in `client/package.json` too
 2. Authenticate with GitHub Packages:
    ```sh
    echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
