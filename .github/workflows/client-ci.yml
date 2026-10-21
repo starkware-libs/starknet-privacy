@@ -27,7 +27,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          # Keyed per install scope: a narrower install sharing the root lockfile's hash would otherwise
+          # fill this cache with only its packages.
+          cache-dependency-path: |
+            package-lock.json
+            client/package.json
       # The SDK's package exports point at ./dist; build it before linting the client so
       # `tsc --noEmit` can resolve the SDK's types.
       - if: steps.filter.outputs.client == 'true'
@@ -45,7 +49,11 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          # Keyed per install scope: a narrower install sharing the root lockfile's hash would otherwise
+          # fill this cache with only its packages.
+          cache-dependency-path: |
+            package-lock.json
+            client/package.json
 
       # Build the SDK first: the client links it as a workspace and imports its compiled
       # ./dist entry points.
@@ -60,7 +68,7 @@ jobs:
         run: |
           SDK_VERSION=$(node -p "require('./sdk/package.json').version")
           PEER_RANGE=$(node -p "require('./client/package.json').peerDependencies['@starkware-libs/starknet-privacy-sdk']")
-          npx --no-install semver --range "$PEER_RANGE" "$SDK_VERSION" > /dev/null \
+          npm exec -w client -- semver --range "$PEER_RANGE" "$SDK_VERSION" > /dev/null \
             || { echo "::error::SDK $SDK_VERSION is outside the client's peer range $PEER_RANGE; bump it in client/package.json"; exit 1; }
 
       - name: Build client
