@@ -37,45 +37,63 @@ interface RuleThresholds {
   hardBlockUsd?: number;
 }
 
-// Rule IDs from Elliptic, matching starknet-apps screening config
-const RULES: Record<string, RuleThresholds> = {
-  // ILLICIT_ACTIVITY
-  "8f023e48-b9c2-41c6-8c8a-42a936eee86d": {
-    counterpartyPercentage: 0.1,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 10,
-    hardBlockUsd: 5000,
-  },
-  // SANCTIONED_ENTITY / TF_CSAM
-  "1f86dce1-166a-4749-a5df-3972fae7635a": {
-    counterpartyPercentage: 0,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 10,
-    hardBlockUsd: 5000,
-  },
-  // OBFUSCATING
-  "1e24a6cf-620a-4c89-b423-5e43b2f13614": {
-    counterpartyPercentage: 0.1,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 10,
-  },
-  // DPRK_BYBIT_EXPLOIT
-  "090208b1-18e3-4da0-94d3-23e7eca5fd92": {
-    counterpartyPercentage: 0.00001,
-    counterpartyUsd: 0,
-    contributionPercentage: 0.1,
-    contributionUsd: 10,
-  },
+const SEVERE_RULES_HARD_BLOCK_USD = 500;
+const HARD_BLOCK_RISK_SCORE = 10;
+
+const ILLICIT_ACTIVITY: RuleThresholds = {
+  counterpartyPercentage: 0.1,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 250,
+  hardBlockUsd: 5000,
 };
 
-// Rules that get risk_score overridden to 10 on hard block (SpecialRulesMap)
-const HARD_BLOCK_RULES = new Set([
-  "8f023e48-b9c2-41c6-8c8a-42a936eee86d", // ILLICIT_ACTIVITY
-  "1f86dce1-166a-4749-a5df-3972fae7635a", // SANCTIONED_ENTITY / TF_CSAM
-]);
+const SANCTIONED_ENTITY: RuleThresholds = {
+  counterpartyPercentage: 0,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 100,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
+const OBFUSCATING: RuleThresholds = {
+  counterpartyPercentage: 0.1,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 250,
+};
+
+const DPRK_BYBIT_EXPLOIT: RuleThresholds = {
+  counterpartyPercentage: 0.00001,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 100,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
+const TERRORISM: RuleThresholds = {
+  counterpartyPercentage: 0,
+  counterpartyUsd: 0,
+  contributionPercentage: 0.1,
+  contributionUsd: 10,
+  hardBlockUsd: SEVERE_RULES_HARD_BLOCK_USD,
+};
+
+// Rule IDs from Elliptic, matching starknet-apps screening config
+const RULES: Record<string, RuleThresholds> = {
+  "ea184575-0abc-4047-a554-e647c33b0691": ILLICIT_ACTIVITY,
+  "8dfb1940-b138-4cd6-af80-a574d7c1109c": SANCTIONED_ENTITY,
+  "bc2541f9-cafa-43ba-bddc-427b19e46dfe": OBFUSCATING,
+  "09698cee-bfa9-4bea-a8a0-b10fdf06eb7b": DPRK_BYBIT_EXPLOIT,
+  "32537f83-50d7-43ee-a916-4e85301e0949": TERRORISM,
+  // Rule IDs of the Elliptic ruleset that was replaced on 2026-10-14. They still show up in
+  // some Elliptic responses, and unknown rules are never filtered, so keep them mapped
+  "8f023e48-b9c2-41c6-8c8a-42a936eee86d": ILLICIT_ACTIVITY,
+  "238fe69b-341f-4324-9c05-3cf9d2aa13d4": ILLICIT_ACTIVITY,
+  "1f86dce1-166a-4749-a5df-3972fae7635a": SANCTIONED_ENTITY,
+  "1e24a6cf-620a-4c89-b423-5e43b2f13614": OBFUSCATING,
+  "090208b1-18e3-4da0-94d3-23e7eca5fd92": DPRK_BYBIT_EXPLOIT,
+};
 
 // Matches APP_ALLOWED_RISK_EXPOSURE default in starknet-apps
 const ALLOWED_RISK_EXPOSURE = 0.01;
@@ -99,7 +117,7 @@ export interface ScoringResult {
  *
  * Replicates the exact decision path of starknet-apps:
  *   1. Parse & aggregate matched_elements per evaluation
- *   2. Apply SpecialRulesMap (risk_score = 10 on hard block)
+ *   2. Override risk_score to 10 for any rule whose hard block is reached
  *   3. Filter evaluations by rule thresholds (contribution OR counterparty)
  *      — unknown rule_ids pass through (starknet-apps returns true for those)
  *   4. Build trigger: percentage = totalContributionPercentage,
@@ -160,15 +178,13 @@ function filterAndBuildTriggers(evaluations: Evaluation[]): Trigger[] {
   for (const evaluation of evaluations) {
     const aggregated = aggregateElements(evaluation.matched_elements ?? []);
 
-    // Apply SpecialRulesMap: override risk_score on hard block
     let riskScore = evaluation.risk_score;
     const rule = RULES[evaluation.rule_id];
     if (
       rule?.hardBlockUsd != null &&
-      HARD_BLOCK_RULES.has(evaluation.rule_id) &&
       aggregated.contributionUsd >= rule.hardBlockUsd
     ) {
-      riskScore = 10;
+      riskScore = HARD_BLOCK_RISK_SCORE;
     }
 
     // Filter: known rules checked against thresholds, unknown rules pass through
