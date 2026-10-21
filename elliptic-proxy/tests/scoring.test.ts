@@ -44,8 +44,14 @@ const ILLICIT = "ea184575-0abc-4047-a554-e647c33b0691";
 const SANCTIONED = "8dfb1940-b138-4cd6-af80-a574d7c1109c";
 const OBFUSCATING = "bc2541f9-cafa-43ba-bddc-427b19e46dfe";
 const DPRK = "09698cee-bfa9-4bea-a8a0-b10fdf06eb7b";
-const LEGACY_SANCTIONED = "1f86dce1-166a-4749-a5df-3972fae7635a";
 const TERRORISM = "32537f83-50d7-43ee-a916-4e85301e0949";
+
+// Rule IDs of the Elliptic ruleset replaced on 2026-10-14
+const LEGACY_ILLICIT = "8f023e48-b9c2-41c6-8c8a-42a936eee86d";
+const LEGACY_ILLICIT_PRE_RECREATION = "238fe69b-341f-4324-9c05-3cf9d2aa13d4";
+const LEGACY_SANCTIONED = "1f86dce1-166a-4749-a5df-3972fae7635a";
+const LEGACY_OBFUSCATING = "1e24a6cf-620a-4c89-b423-5e43b2f13614";
+const LEGACY_DPRK = "090208b1-18e3-4da0-94d3-23e7eca5fd92";
 
 describe("scoreResponse", () => {
   describe("error handling", () => {
@@ -207,15 +213,39 @@ describe("scoreResponse", () => {
         ).blocked
       ).toBe(false);
     });
+  });
 
-    it("applies the same thresholds to the legacy rule id", () => {
-      expect(
-        scoreResponse(
-          ellipticResponse([
-            evaluation(LEGACY_SANCTIONED, [element(0.05, 5, 0, 0)]),
-          ])
-        ).blocked
-      ).toBe(false);
+  describe("legacy rule ids", () => {
+    // Each element separates rules the others cannot: the $100 contribution
+    // rules from the $250 ones, the $500 hard-block rules from the rest,
+    // ILLICIT's $5000 hard block from OBFUSCATING, and SANCTIONED's zero
+    // counterparty threshold from DPRK's 0.00001%
+    const thresholdProbes = [
+      element(1, 150, 0, 0),
+      element(0.01, 500, 0, 0),
+      element(0.01, 5000, 0, 0),
+      element(0.0001, 0, 5, 1),
+    ];
+
+    it.each([
+      ["LEGACY_ILLICIT", LEGACY_ILLICIT, ILLICIT],
+      ["LEGACY_ILLICIT_PRE_RECREATION", LEGACY_ILLICIT_PRE_RECREATION, ILLICIT],
+      ["LEGACY_SANCTIONED", LEGACY_SANCTIONED, SANCTIONED],
+      ["LEGACY_OBFUSCATING", LEGACY_OBFUSCATING, OBFUSCATING],
+      ["LEGACY_DPRK", LEGACY_DPRK, DPRK],
+    ])("%s scores like its active rule id", (_, legacyRuleId, activeRuleId) => {
+      for (const probe of thresholdProbes) {
+        const { blocked, reason } = scoreResponse(
+          ellipticResponse([evaluation(legacyRuleId, [probe])])
+        );
+        const activeResult = scoreResponse(
+          ellipticResponse([evaluation(activeRuleId, [probe])])
+        );
+        expect({ blocked, reason }).toEqual({
+          blocked: activeResult.blocked,
+          reason: activeResult.reason,
+        });
+      }
     });
   });
 
@@ -234,6 +264,14 @@ describe("scoreResponse", () => {
       expect(
         scoreResponse(
           ellipticResponse([evaluation(DPRK, [element(0.001, 0, 2, 1)])])
+        ).blocked
+      ).toBe(true);
+    });
+
+    it("blocks when only contribution exceeded", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([evaluation(DPRK, [element(1, 150, 0, 0)])])
         ).blocked
       ).toBe(true);
     });
@@ -278,6 +316,14 @@ describe("scoreResponse", () => {
           ellipticResponse([evaluation(ILLICIT, [element(0.01, 5000, 0, 0)])])
         ).blocked
       ).toBe(true);
+    });
+
+    it("allows ILLICIT contribution under $5000 with low percentage", () => {
+      expect(
+        scoreResponse(
+          ellipticResponse([evaluation(ILLICIT, [element(0.01, 4999, 0, 0)])])
+        ).blocked
+      ).toBe(false);
     });
 
     it.each([
