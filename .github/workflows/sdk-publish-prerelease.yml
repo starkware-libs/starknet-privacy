@@ -84,6 +84,10 @@ jobs:
             echo "npm install @starkware-libs/starknet-privacy-sdk@${DIST_TAG}"
             echo '```'
             echo
+            # Prerelease identifiers compare lexically, so `<x.y.z>-<branch>.<sha>` sorts below the
+            # client's `^x.y.z-rc.N` peer floor for most branch names.
+            echo "Next to a published \`@starkware-libs/starknet-privacy-client\`, this version may fall outside the client's SDK peer range; add \`--legacy-peer-deps\` if npm reports \`ERESOLVE\`."
+            echo
             echo "**Or download the tarball from this run** (browser, GitHub login only)."
             echo "Open the run page below and grab \`${TARBALL}\` from the *Artifacts* section at the bottom:"
             echo
