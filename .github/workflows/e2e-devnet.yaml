@@ -99,16 +99,10 @@ jobs:
       - name: Build discovery service
         run: cargo build --release -p discovery-service
 
-      - name: Install workspace and build SDK
-        run: npm ci && npm run build -w sdk
-
-      # Build client (e2e links it as a workspace; it resolves the built dist/, not source)
-      - name: Build client
-        run: npm run build -w client
-
-      # Build the proof interceptor (e2e resolves its built dist/ for the screening subject rule)
-      - name: Build proof interceptor
-        run: npm run build -w proof-interceptor
+      # e2e resolves the built dist/ of all three, not their sources. The SDK builds on its own
+      # first: the client and proof interceptor import its dist/.
+      - name: Install workspace and build sdk, client and proof interceptor
+        run: npm ci && npm run build -w sdk && npm run build -w client -w proof-interceptor
 
       - name: Run devnet tests
         run: cd e2e && npm run test:devnet
