@@ -354,12 +354,14 @@ Retrieves paginated transaction history by scanning backward through note subcha
 - A page may therefore return **few or zero transactions** while still advancing `begin_block_number` through a long stretch with no activity. Clients must keep paginating until `history_complete` is `true` rather than treating an empty page as the end.
 - The gap window is always strictly **above** the note block it anchors, so a withdrawal in a note's own block is attributed once (via that block's events) and never re-scanned by a later page's gap.
 - One gap window can attach every withdrawal it contains at once, so a page covering a withdrawal-dense range may return **more than `max_transactions`** transactions. `max_transactions` is a per-page target, not a hard cap on a single page's size.
+- A page also ends once `history_time_limit` has elapsed, since the budget bounds how many RPC calls a page makes but not how long the node takes to answer them. The gap window is fetched in fixed-size sub-windows and the limit is checked after each sub-window and after each note block, so a page stops only after moving the cursor and may overrun the limit by one call. This keeps each response well inside a proxy or load balancer timeout, at the cost of more pages over a long idle gap.
 - A page that can make **no** forward progress (the budget covers neither a gap chunk nor the next note step) returns `500 INTERNAL_ERROR` rather than an endless stream of empty `200`s. This only occurs when `server_budget` is set too low for the account's per-request cost — many subchannels, or many notes sharing one block, since draining a block refills once per note — and repeats until `server_budget` is raised.
 
 **Validation limits:**
 
 - `max_history_subchannels` (default: 256): Maximum number of subchannels in a history cursor.
 - `max_history_transactions` (default: 100): Maximum allowed `max_transactions` value.
+- `history_time_limit` (default: 10 seconds): Wall-clock time after which a page stops at the next resumable point (see Chunked gap scan).
 - `max_transactions` must be at least `1`. A zero-size page can neither advance the scan nor mark it complete.
 
 **Error responses:**

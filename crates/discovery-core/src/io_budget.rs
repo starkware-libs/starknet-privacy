@@ -6,6 +6,7 @@
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Instant;
 
 /// Error returned when a budget consumption fails.
 #[derive(Debug)]
@@ -21,17 +22,38 @@ pub struct InsufficientBudgetError {
 ///
 /// `IoBudget` is cheap to clone - clones share the same underlying counter,
 /// making it easy to pass across async tasks.
+///
+/// A budget may also carry a wall-clock `deadline`. The counter bounds how much
+/// I/O a request may issue, but not how long that I/O takes, and the RPC node's
+/// latency is outside the server's control. Scans that can stop at a resumable
+/// point consult [`IoBudget::deadline_reached`] to end the page early.
 #[derive(Debug, Clone)]
 pub struct IoBudget {
     remaining: Arc<AtomicUsize>,
+    deadline: Option<Instant>,
 }
 
 impl IoBudget {
-    /// Creates a new budget with the given limit.
+    /// Creates a new budget with the given limit and no deadline.
     pub fn new(limit: usize) -> Self {
         Self {
             remaining: Arc::new(AtomicUsize::new(limit)),
+            deadline: None,
         }
+    }
+
+    /// Returns this budget with a wall-clock `deadline`.
+    pub fn with_deadline(self, deadline: Instant) -> Self {
+        Self {
+            deadline: Some(deadline),
+            ..self
+        }
+    }
+
+    /// Returns `true` once the deadline has passed. Always `false` without a deadline.
+    pub fn deadline_reached(&self) -> bool {
+        self.deadline
+            .is_some_and(|deadline| Instant::now() >= deadline)
     }
 
     /// Returns the current remaining budget.
@@ -113,6 +135,19 @@ impl IoBudget {
 mod tests {
     use super::*;
     use std::thread;
+    use std::time::Duration;
+
+    #[test]
+    fn test_deadline_reached() {
+        assert!(!IoBudget::new(10).deadline_reached());
+        assert!(IoBudget::new(10)
+            .with_deadline(Instant::now())
+            .deadline_reached());
+        let future_deadline = Instant::now() + Duration::from_secs(3600);
+        assert!(!IoBudget::new(10)
+            .with_deadline(future_deadline)
+            .deadline_reached());
+    }
 
     #[test]
     fn test_consume_success() {
