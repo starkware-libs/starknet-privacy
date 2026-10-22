@@ -81,6 +81,26 @@ function parseOutput(output: string): Record<string, unknown> | null {
 }
 
 /**
+ * Sort object keys recursively. snforge runs the generator tests in no fixed
+ * order, and several of them print into the same section, so insertion order
+ * would change from run to run. Arrays are indexed by position and keep theirs.
+ */
+function sortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map(sortKeys);
+  }
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return Object.fromEntries(
+      Object.keys(record)
+        .sort()
+        .map((key) => [key, sortKeys(record[key])])
+    );
+  }
+  return value;
+}
+
+/**
  * Update the fixtures file with Cairo values.
  */
 function updateFixtures(data: Record<string, unknown>): void {
@@ -91,7 +111,7 @@ function updateFixtures(data: Record<string, unknown>): void {
   };
 
   // Merge metadata with Cairo data
-  const updated = { ...metadata, ...data };
+  const updated = sortKeys({ ...metadata, ...data });
 
   writeFileSync(fixturesPath, JSON.stringify(updated, null, 2) + "\n");
   console.log("Updated fixtures file:", fixturesPath);
