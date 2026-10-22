@@ -6,13 +6,28 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { buildProofFacts, buildMessagePayload } from "../../src/utils/proof-facts.js";
+import {
+  buildProofFacts,
+  buildMessagePayload,
+  type ProofFactsConfig,
+} from "../../src/utils/proof-facts.js";
 import { shortStringToFelt } from "../../src/utils/crypto.js";
 import { hash, constants } from "starknet";
 import referenceData from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
 describe("ProofFacts Compatibility with Cairo", () => {
   const { proofFacts: reference } = referenceData;
+
+  const buildReferenceProofFacts = (chainId: string, config?: ProofFactsConfig) =>
+    buildProofFacts(
+      reference.poolAddress,
+      reference.poolClassHash,
+      reference.serializedActions,
+      BigInt(reference.baseBlockNumber),
+      "0x0",
+      chainId,
+      config
+    );
 
   it("shortStringToFelt matches Cairo constants", () => {
     expect(`0x${shortStringToFelt("VIRTUAL_SNOS").toString(16)}`).toBe(reference.virtualSnos);
@@ -34,27 +49,83 @@ describe("ProofFacts Compatibility with Cairo", () => {
     expect(messageHash).toBe(reference.messageHash);
   });
 
-  it("computes correct virtual OS config hash for Sepolia", () => {
-    const STARKNET_OS_CONFIG_HASH_VERSION = "0x537461726b6e65744f73436f6e66696733";
-    const STRK_FEE_TOKEN = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
+  it("defaults to the 0.14.4 protocol fields a mainnet apply_actions carries", () => {
+    // proof_facts of mainnet tx 0x56a224012f76e8451b9d22e7b6812801ec07fcef8ef74b871e3c9f735a215ba
+    // (block 16763201, Starknet 0.14.4): [0..3] and [6] are protocol fields, independent of the
+    // pool, its actions and the base block.
+    const mainnetProofFacts = [
+      "0x50524f4f4631", // 'PROOF1'
+      "0x5649525455414c5f534e4f53",
+      "0x53f6c9fcfd31d27279ff7d7e422b44623550a732b59fe193354a7316a96daa1",
+      "0x5649525455414c5f534e4f5330",
+    ];
+    const mainnetConfigHash = "0x5b3bc83b3a47231aa5f15e73309ef7e09e087bd4ace767656fe5d713f6e2d7a";
 
+    const proofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN);
+
+    expect(proofFacts.slice(0, 4)).toEqual(mainnetProofFacts);
+    expect(proofFacts[6]).toBe(mainnetConfigHash);
+  });
+
+  it("computes the Blake config hash from the chain id, not a constant", () => {
+    const sepoliaProofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_SEPOLIA);
+    const mainnetProofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN);
+
+    // Blake2Felt252(['StarknetOsConfig4', SN_SEPOLIA, STRK]); no Sepolia tx carrying proof facts
+    // was available to pin it, so it is the mainnet-verified formula applied to SN_SEPOLIA.
+    expect(sepoliaProofFacts[6]).toBe(
+      "0x57ed4d5e20d617d8cc087a5882eae4f71d005172326be6439b2e1fd8b4dc57"
+    );
+    expect(sepoliaProofFacts[6]).not.toBe(mainnetProofFacts[6]);
+  });
+
+  it("selects the 0.14.4 fields from 0.14.3 on", () => {
+    expect(
+      buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN, { starknetVersion: "0.14.3" })
+    ).toEqual(buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN));
+  });
+
+  it("selects the 0.14.2 protocol (devnet) for versions before 0.14.3", () => {
     const expectedConfigHash = hash.computeHashOnElements([
-      STARKNET_OS_CONFIG_HASH_VERSION,
+      "0x537461726b6e65744f73436f6e66696733", // 'StarknetOsConfig3'
       constants.StarknetChainId.SN_SEPOLIA,
-      STRK_FEE_TOKEN,
+      "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d",
     ]);
 
-    const proofFacts = buildProofFacts(
-      reference.poolAddress,
-      reference.poolClassHash,
-      reference.serializedActions,
-      BigInt(reference.baseBlockNumber),
-      "0x0",
-      constants.StarknetChainId.SN_SEPOLIA
-    );
+    const proofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_SEPOLIA, {
+      starknetVersion: "0.14.2",
+    });
 
-    // [6] is starknet_os_config_hash
+    expect(proofFacts[0]).toBe("0x50524f4f4630"); // 'PROOF0'
+    expect(proofFacts[2]).toBe("0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473");
     expect(proofFacts[6]).toBe(expectedConfigHash);
+  });
+
+  it("applies each override over the version defaults and leaves the other fields alone", () => {
+    const defaults = buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN);
+
+    const proofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN, {
+      proofVersion: shortStringToFelt("PROOF2"),
+      virtualProgramHash: "0x1c7be3225dfb33359b3ba9ffbe1542b7da27879b6d89f47b967e512463fd324",
+      osConfigHash: 0xabcn,
+    });
+
+    expect(proofFacts[0]).toBe("0x50524f4f4632");
+    expect(proofFacts[2]).toBe("0x1c7be3225dfb33359b3ba9ffbe1542b7da27879b6d89f47b967e512463fd324");
+    expect(proofFacts[6]).toBe("0xabc");
+    for (const unchangedIndex of [1, 3, 4, 5, 7, 8]) {
+      expect(proofFacts[unchangedIndex]).toBe(defaults[unchangedIndex]);
+    }
+  });
+
+  it("an override wins over the starknetVersion it is combined with", () => {
+    const proofFacts = buildReferenceProofFacts(constants.StarknetChainId.SN_MAIN, {
+      starknetVersion: "0.14.2",
+      proofVersion: shortStringToFelt("PROOF1"),
+    });
+
+    expect(proofFacts[0]).toBe("0x50524f4f4631");
+    expect(proofFacts[2]).toBe("0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473");
   });
 
   it("buildMessagePayload matches Cairo: [class_hash, ...serialized_actions]", () => {
@@ -77,7 +148,7 @@ describe("ProofFacts Compatibility with Cairo", () => {
     );
 
     expect(proofFacts).toHaveLength(9);
-    expect(proofFacts[0]).toBe(`0x${shortStringToFelt("PROOF0").toString(16)}`); // proof_version
+    expect(proofFacts[0]).toBe(`0x${shortStringToFelt("PROOF1").toString(16)}`); // proof_version
     expect(proofFacts[1]).toBe(reference.virtualSnos); // program_variant
     // [2] = virtual_program_hash
     expect(proofFacts[3]).toBe(reference.virtualSnos0); // starknet_os_output_version
