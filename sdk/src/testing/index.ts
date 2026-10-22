@@ -27,7 +27,10 @@ export {
   compute_enc_channel_key_hash,
   compute_enc_sender_addr_hash,
 } from "../utils/hashes.js";
-export { CallMockProofProvider } from "../internal/mock-proving.js";
+export {
+  CallMockProofProvider,
+  type CallMockProofProviderOptions,
+} from "../internal/mock-proving.js";
 export { ScreeningCallMockProofProvider } from "./screening-mock-proving.js";
 export {
   exemptOpenNoteDepositor,

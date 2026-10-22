@@ -315,6 +315,17 @@ describe("Devnet Integration", () => {
     // Explicit provingBlockId used as-is for base_block_number in proofFacts[4].
     const baseBlockNumber = BigInt(simResult.callAndProof.proof.proofFacts[4]);
     expect(baseBlockNumber).toBe(BigInt(olderBlock));
+    // Devnet reports Starknet 0.14.2, so the facts follow its protocol ('PROOF0').
+    expect(simResult.callAndProof.proof.proofFacts[0]).toBe("0x50524f4f4630");
+
+    // proofFactsConfig reaches the mock proof facts.
+    const overriddenSimResult = await transfers.alice
+      .build({ ...buildOptions, provingBlockId: olderBlock })
+      .with(env.strk)
+      .withdraw({ amount: 50n, recipient: env.alice.address })
+      .surplusTo(env.alice.address)
+      .simulate({ node: env.node, proofFactsConfig: { starknetVersion: "0.14.4" } });
+    expect(overriddenSimResult.callAndProof.proof.proofFacts[0]).toBe("0x50524f4f4631");
 
     // Wallet feeds the simulated CallAndProof into starknet.js's native fee estimation.
     // proofFacts flow into the transaction-level fields; proof data is ignored under
