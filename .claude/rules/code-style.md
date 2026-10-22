@@ -65,6 +65,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - For fallible operations: return `Result` with a descriptive error variant, or use saturating/capping alternatives when the exact value doesn't matter
 - *Example:* `check_slots_len(&values, 3)?` before indexing a returned Vec
 
+### Required settings default to empty, never to a placeholder
+- A required-value check only tests presence, so a default like `"<rpc-url>"` passes it and ships the placeholder as config. Default required settings to empty and show the expected shape in a comment or README
+- *Example:* the Helm chart's `rpcUrl: "<rpc-url>"` made `required "discoveryService.config.rpcUrl is required"` unreachable; an install that forgot the value rendered fine and pointed the service at a literal `<rpc-url>`
+
 ### Prefer intuitive semantics over internal convenience
 - Design APIs so callers don't need to know implementation details
 - *Example:* A `start_index` should work as-is; avoid requiring `start_index + 1` adjustments

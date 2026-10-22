@@ -1,18 +1,19 @@
-{{- $cfg := deepCopy .Values.transactionProver.config -}}
-{{- if .Values.transactionProver.proofInterceptor.enabled -}}
-{{- $pi := .Values.transactionProver.proofInterceptor -}}
-{{- $_ := set $cfg "blocking_check_url" (printf "http://localhost:%v" $pi.port) -}}
-{{- $_ := set $cfg "blocking_check_timeout_millis" (int $pi.blockingCheck.timeoutMillis) -}}
-{{- $_ := set $cfg "blocking_check_fail_open" $pi.blockingCheck.failOpen -}}
+{{- $prover := .Values.transactionProver -}}
+{{- $sidecar := $prover.proofInterceptor -}}
+{{- $component := list . "transaction-prover" -}}
+{{- $config := deepCopy $prover.config -}}
+{{- if $sidecar.enabled -}}
+{{- $_ := set $config "blocking_check_url" (printf "http://localhost:%v" $sidecar.port) -}}
+{{- $_ := set $config "blocking_check_timeout_millis" (int $sidecar.blockingCheck.timeoutMillis) -}}
+{{- $_ := set $config "blocking_check_fail_open" $sidecar.blockingCheck.failOpen -}}
 {{- end -}}
 apiVersion: v1
 kind: ConfigMap
 metadata:
-  name: transaction-prover-config
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: transaction-prover
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 data:
   config.json: |
-    {{- $cfg | toPrettyJson | nindent 4 }}
+    {{- $config | toPrettyJson | nindent 4 }}

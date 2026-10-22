@@ -40,8 +40,12 @@ jobs:
       - name: Helm dependency build
         run: helm dependency build "./${CHART_DIR}"
 
+      # Every ci/*-values.yaml is a standalone render path, as in chart-testing.
       - name: Helm lint
-        run: helm lint "./${CHART_DIR}" -f "./${CHART_DIR}/ci/default-values.yaml"
+        run: |
+          for values in "./${CHART_DIR}"/ci/*-values.yaml; do
+            helm lint --strict "./${CHART_DIR}" -f "$values"
+          done
 
   kubeconform:
     runs-on: ubuntu-latest
@@ -73,7 +77,11 @@ jobs:
         run: helm dependency build "./${CHART_DIR}"
 
       - name: Helm template
-        run: helm template ci "./${CHART_DIR}" -f "./${CHART_DIR}/ci/default-values.yaml" --output-dir "${RENDER_DIR}"
+        run: |
+          for values in "./${CHART_DIR}"/ci/*-values.yaml; do
+            name=$(basename "$values" -values.yaml)
+            helm template ci "./${CHART_DIR}" -f "$values" --output-dir "${RENDER_DIR}/${name}"
+          done
 
       - name: Kubeconform (Kubernetes ${{ matrix.kubernetes_version }})
         run: |

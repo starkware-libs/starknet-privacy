@@ -1,21 +1,21 @@
-{{- if and .Values.transactionProver.backendConfig .Values.transactionProver.backendConfig.enabled }}
+{{- $prover := .Values.transactionProver -}}
+{{- if $prover.backendConfig.enabled }}
+{{- $component := list . "transaction-prover" }}
+{{- $healthCheck := $prover.backendConfig.healthCheck }}
+{{- if not (or $healthCheck.port $prover.proofInterceptor.enabled) }}
+{{- fail "transactionProver.backendConfig.healthCheck.port is required when proofInterceptor is disabled: the prover has no GET health route for GCE to check" }}
+{{- end }}
 apiVersion: cloud.google.com/v1
 kind: BackendConfig
 metadata:
-  name: transaction-prover
+  name: {{ include "privacy-starknet.componentName" $component }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: transaction-prover
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
 spec:
-  # The prover has no GET health route, so GCE checks the sidecar instead.
-  # Allow GCE health-check traffic to reach the configured sidecar port.
+  # The prover has no GET health route, so GCE checks the proof-interceptor instead.
   healthCheck:
-    type: {{ .Values.transactionProver.backendConfig.healthCheck.type | default "HTTP" }}
-    {{- with .Values.transactionProver.backendConfig.healthCheck.requestPath }}
-    requestPath: {{ . }}
-    {{- end }}
-    {{- with .Values.transactionProver.backendConfig.healthCheck.port }}
-    port: {{ . }}
-    {{- end }}
+    type: {{ $healthCheck.type }}
+    requestPath: {{ $healthCheck.requestPath }}
+    port: {{ $healthCheck.port | default $prover.proofInterceptor.port }}
 {{- end }}

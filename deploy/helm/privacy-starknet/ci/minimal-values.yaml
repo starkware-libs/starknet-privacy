@@ -1,0 +1,21 @@
+# Placeholder values for CI rendering only: every optional feature off and secrets
+# supplied out-of-band, to validate the chart's other render path.
+transactionProver:
+  config:
+    rpc_node_url: "https://placeholder.invalid/rpc"
+    chain_id: "SN_SEPOLIA"
+  ohttp:
+    existingSecret: prover-ohttp
+  proofInterceptor:
+    enabled: false
+  backendConfig:
+    enabled: false
+
+discoveryService:
+  config:
+    rpcUrl: "https://placeholder.invalid/rpc"
+    wsUrl: "wss://placeholder.invalid/ws"
+  ohttp:
+    enabled: false
+  backendConfig:
+    enabled: false

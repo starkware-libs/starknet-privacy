@@ -1,33 +1,30 @@
-{{- if and .Values.discoveryService.ingress .Values.discoveryService.ingress.enabled }}
-{{- $svcPort := .Values.discoveryService.containerPort -}}
+{{- $discovery := .Values.discoveryService -}}
+{{- if $discovery.ingress.enabled }}
+{{- $component := list . "discovery-service" }}
+{{- $serviceName := include "privacy-starknet.componentName" $component }}
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: discovery-service
+  name: {{ $serviceName }}
   namespace: {{ .Release.Namespace }}
   labels:
-    {{- include "privacy-starknet.labels" . | nindent 4 }}
-    app: discovery-service
-  {{- with .Values.discoveryService.ingress.annotations }}
+    {{- include "privacy-starknet.labels" $component | nindent 4 }}
+  {{- with $discovery.ingress.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  {{- with .Values.discoveryService.ingress.className }}
+  {{- with $discovery.ingress.className }}
   ingressClassName: {{ . }}
   {{- end }}
-  {{- with .Values.discoveryService.ingress.tls }}
+  {{- with $discovery.ingress.tls }}
   tls:
     {{- toYaml . | nindent 4 }}
   {{- end }}
-  {{- with .Values.discoveryService.ingress.defaultBackend }}
-  defaultBackend:
-    {{- toYaml . | nindent 4 }}
-  {{- end }}
   rules:
-    {{- range .Values.discoveryService.ingress.hosts }}
-    - {{- if .host }}
-      host: {{ .host | quote }}
+    {{- range $discovery.ingress.hosts }}
+    - {{- with .host }}
+      host: {{ . | quote }}
       {{- end }}
       http:
         paths:
@@ -36,9 +33,9 @@ spec:
             pathType: {{ .pathType | default "Prefix" }}
             backend:
               service:
-                name: discovery-service
+                name: {{ $serviceName }}
                 port:
-                  number: {{ .servicePort | default $svcPort }}
+                  name: http
           {{- end }}
     {{- end }}
 {{- end }}
