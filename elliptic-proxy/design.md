@@ -70,6 +70,7 @@ re-reads it according to `configCacheTtlSeconds`.
 | `additionalBlockedAddresses` _(opt.)_ | Test-only deny list consumed by the mock upstream — listed addresses screen as sanctioned. Ignored when screening live (load-time warning).                              |
 | `signingPrivateKey` _(required)_      | STARK-curve private key (felt hex) signing screening attestations; production key is FPI-managed.                                                                        |
 | `chainId` _(required)_                | Hex felt of the network the deployment signs for, bound into the SNIP-12 domain. SN_MAIN + mock `elliptic.url` is rejected at config load.                               |
+| `metricsAuthToken` _(opt.)_           | Bearer token gating `GET /metrics` (timing-safe compare). Omitted means `/metrics` returns `404`; the exposition names partners and traffic volumes, so it fails closed.  |
 
 ### Verdict precedence
 
