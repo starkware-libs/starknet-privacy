@@ -13,8 +13,7 @@ transactionProver:
 
   image:
     repository: ghcr.io/starkware-libs/starknet-privacy/transaction-prover
-    # Defaults to the chart's appVersion, i.e. the release this chart was published with.
-    tag: ""
+    tag: PRIVACY-0.14.3-RC.2
     pullPolicy: IfNotPresent
 
   podAnnotations: {}
