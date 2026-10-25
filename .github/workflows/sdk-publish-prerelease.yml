@@ -22,7 +22,11 @@ jobs:
           registry-url: https://npm.pkg.github.com
           scope: '@starkware-libs'
           cache: 'npm'
-          cache-dependency-path: package-lock.json
+          # Keyed per install scope: `npm ci` in sdk/ installs only the SDK workspace, so sharing the
+          # root lockfile's key with full installs would fill that cache with only its packages.
+          cache-dependency-path: |
+            package-lock.json
+            sdk/package.json
 
       - name: Install npm dependencies
         run: npm ci
