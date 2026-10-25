@@ -49,6 +49,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Clarify behavioral details that the type signature doesn't convey
 - *Example:* For indices: inclusive vs exclusive; for optionals: what `None` means; for ranges: whether bounds are included
 
+### Classify changelog entries by what callers lose, not by intent
+- A change made to fix one target is Breaking when output that another supported target accepted is now rejected there, or restoring the old behavior takes caller work
+- *Example:* moving mock proof facts to 0.14.4 values was filed under Fixed, but 0.14.2 nodes (devnet v0.8) now reject them and the old output needs three overrides, one a hash the caller computes
+
 ---
 
 ## Edge Cases
