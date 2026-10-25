@@ -10,7 +10,9 @@
 # user on port 8080. /health responds 200 OK; use it for liveness +
 # readiness probes (see the deployment guide).
 
-ARG NODE_IMAGE=node:22.23.4-slim
+# Docker pulls by the digest and ignores the tag; the tag only shows which
+# Node version the digest is. When bumping Node, change both.
+ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
 
 # ---- build stage ----------------------------------------------------------
 FROM ${NODE_IMAGE} AS build
