@@ -1,13 +1,17 @@
 /**
  * Builds the ProofFacts serialization matching both the blockifier and Cairo contract.
  *
- * The blockifier validates the first two fields as a version+variant header.
  * The Cairo contract deserializes the same array via Serde into ProofFacts struct.
  *
- * Blockifier checks:
- * 1. `proof_facts[0] == PROOF_VERSION` ('PROOF0')
- * 2. `proof_facts[1] == VIRTUAL_SNOS`
- * 3. `proof_facts[3] == VIRTUAL_OS_OUTPUT_VERSION` ('VIRTUAL_SNOS0')
+ * Blockifier checks (sequencer 603f1bd, starknet_api fields.rs / blockifier account_transaction.rs):
+ * 1. `proof_facts[0]` is a known marker (PROOF0/1/2, fields.rs:757) and is in
+ *    `allowed_proof_versions` (account_transaction.rs:314)
+ * 2. `proof_facts[1] == VIRTUAL_SNOS` (fields.rs:768)
+ * 3. `proof_facts[3] == VIRTUAL_OS_OUTPUT_VERSION` ('VIRTUAL_SNOS0', fields.rs:787)
+ * 4. `proof_facts[2]` is in `allowed_virtual_os_program_hashes` (account_transaction.rs:324)
+ * 5. `proof_facts[4] <= current_block - STORED_BLOCK_HASH_BUFFER` (10, account_transaction.rs:238)
+ * 6. `proof_facts[5]` is non-zero and equals the stored block hash (account_transaction.rs:262)
+ * 7. `proof_facts[6] == block_context.virtual_os_config_hash()` (account_transaction.rs:341)
  *
  * Cairo contract `validate_proof` checks:
  * 1. `program_variant == 'VIRTUAL_SNOS'`
@@ -21,33 +25,38 @@ import { shortStringToFelt } from "./crypto.js";
 import { toBigInt, toHex } from "./convert.js";
 import type { BigNumberish } from "starknet";
 
-const PROOF_VERSION = shortStringToFelt("PROOF0");
 const VIRTUAL_SNOS = shortStringToFelt("VIRTUAL_SNOS");
 const VIRTUAL_SNOS0 = shortStringToFelt("VIRTUAL_SNOS0");
 
-// Allowed virtual OS program hash from blockifier versioned constants.
-// Source: https://github.com/starkware-libs/sequencer/blob/586b07b38d87f608b632e5795071d31317faf6c4/crates/blockifier/resources/blockifier_versioned_constants_0_14_2.json
-const VIRTUAL_PROGRAM_HASH = "0x3e98c2d7703b03a7edb73ed7f075f97f1dcbaa8f717cdf6e1a57bf058265473";
+// Allowed proof version and virtual OS program hash from blockifier versioned constants.
+// PROOF2 is accepted by both mainnet and devnet v0.10 (whose 0.14.4 constants allow only PROOF2).
+// Source: https://github.com/starkware-libs/sequencer/blob/603f1bd8dca9da4c37b75841bf322bfa9d032d12/crates/blockifier/resources/blockifier_versioned_constants_0_14_4.json
+const PROOF_VERSION = shortStringToFelt("PROOF2");
+const VIRTUAL_PROGRAM_HASH = "0x53f6c9fcfd31d27279ff7d7e422b44623550a732b59fe193354a7316a96daa1";
 
 // STRK fee token address — same on all Starknet networks (mainnet, sepolia, devnet).
 const STRK_FEE_TOKEN_ADDRESS = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
 
-// STARKNET_OS_CONFIG_HASH_VERSION = shortString("StarknetOsConfig3")
-// Source: https://github.com/starkware-libs/sequencer/blob/586b07b38d87f608b632e5795071d31317faf6c4/crates/starknet_api/src/core.rs
-const STARKNET_OS_CONFIG_HASH_VERSION = "0x537461726b6e65744f73436f6e66696733";
+// STARKNET_OS_CONFIG_HASH_VERSION_V4 = shortString("StarknetOsConfig4")
+// Source: https://github.com/starkware-libs/sequencer/blob/603f1bd8dca9da4c37b75841bf322bfa9d032d12/crates/starknet_api/src/core.rs
+const STARKNET_OS_CONFIG_HASH_VERSION = "0x537461726b6e65744f73436f6e66696734";
+
+/** Overrides for the protocol-dependent proof facts fields, e.g. after a protocol upgrade. */
+export type ProofFactsConfig = {
+  proofVersion?: BigNumberish;
+  virtualProgramHash?: BigNumberish;
+  osConfigHash?: BigNumberish;
+};
 
 /**
  * Compute the virtual OS config hash matching blockifier's OsChainInfo::compute_virtual_os_config_hash:
- *   Pedersen::hash_array([STARKNET_OS_CONFIG_HASH_VERSION, chain_id, strk_fee_token_address])
+ *   Blake2Felt252([STARKNET_OS_CONFIG_HASH_VERSION, chain_id, strk_fee_token_address])
  */
-function computeVirtualOsConfigHash(
-  chainId: BigNumberish,
-  strkFeeTokenAddress: BigNumberish
-): string {
-  return hash.computeHashOnElements([
-    STARKNET_OS_CONFIG_HASH_VERSION,
-    chainId,
-    strkFeeTokenAddress,
+function computeVirtualOsConfigHash(chainId: BigNumberish): bigint {
+  return hash.blake2sHashMany([
+    toBigInt(STARKNET_OS_CONFIG_HASH_VERSION),
+    toBigInt(chainId),
+    toBigInt(STRK_FEE_TOKEN_ADDRESS),
   ]);
 }
 
@@ -88,13 +97,13 @@ export function buildMessagePayload(
  * Build the ProofFacts array matching both blockifier wire format and Cairo Serde layout.
  *
  * Layout (shared by blockifier and Cairo Serde):
- *   [0] proof_version: felt252          → PROOF_VERSION ('PROOF0')
+ *   [0] proof_version: felt252          → PROOF_VERSION ('PROOF2')
  *   [1] program_variant: felt252        → VIRTUAL_SNOS
  *   [2] virtual_program_hash: felt252   → VIRTUAL_PROGRAM_HASH
  *   [3] starknet_os_output_version      → VIRTUAL_SNOS0
  *   [4] base_block_number: u64          → blockNumber
  *   [5] base_block_hash: felt252        → blockHash
- *   [6] starknet_os_config_hash: felt252 → Pedersen(version, chain_id, strk_token)
+ *   [6] starknet_os_config_hash: felt252 → Blake(version, chain_id, strk_token)
  *   [7] message_to_l1_hashes length     → 1 (Span serialization)
  *   [8] message_to_l1_hashes[0]         → poseidon(pool_addr, 0, payload_len, ...actions)
  */
@@ -104,18 +113,18 @@ export function buildProofFacts(
   serverActionsCalldata: string[],
   blockNumber: bigint,
   blockHash: BigNumberish,
-  chainId: BigNumberish
+  chainId: BigNumberish,
+  config: ProofFactsConfig = {}
 ): string[] {
   const messageHash = computeMessageHash(poolAddress, poolClassHash, serverActionsCalldata);
-  const configHash = computeVirtualOsConfigHash(chainId, STRK_FEE_TOKEN_ADDRESS);
   return [
-    `0x${PROOF_VERSION.toString(16)}`, // proof_version ('PROOF0')
+    toHex(config.proofVersion ?? PROOF_VERSION), // proof_version
     `0x${VIRTUAL_SNOS.toString(16)}`, // program_variant
-    VIRTUAL_PROGRAM_HASH, // virtual_program_hash
+    toHex(config.virtualProgramHash ?? VIRTUAL_PROGRAM_HASH), // virtual_program_hash
     `0x${VIRTUAL_SNOS0.toString(16)}`, // starknet_os_output_version
     `0x${blockNumber.toString(16)}`, // base_block_number
     `0x${toBigInt(blockHash).toString(16)}`, // base_block_hash
-    configHash, // starknet_os_config_hash
+    toHex(config.osConfigHash ?? computeVirtualOsConfigHash(chainId)), // starknet_os_config_hash
     "0x1", // message_to_l1_hashes length (Span serialization)
     `0x${messageHash.toString(16)}`, // message_to_l1_hashes[0]
   ];

@@ -149,6 +149,7 @@ export class PrivateTransfers extends AbstractPrivateTransfers {
 
     const mockProvider = new CallMockProofProvider(options.node, chainId, {
       validateSignature: options.validateSignature ?? false,
+      proofFactsConfig: options.proofFactsConfig,
     });
 
     const proof = await mockProvider.prove(invocation, options.provingBlockId);

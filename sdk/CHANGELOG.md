@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### Fixed
+
+- Mock proof facts (`simulate()`, `CallMockProofProvider`) now use the Starknet 0.14.4 values
+  (`PROOF2`, program hash `0x53f6c9fc…`, Blake config hash), which mainnet accepts. SDK devnet
+  tests now need starknet-devnet v0.10.1.
+
+### Added
+
+- `ProofFactsConfig` overrides the proof version, program hash and config hash. Pass it to
+  `buildProofFacts`, `CallMockProofProvider` (`proofFactsConfig`) or `simulate({ proofFactsConfig })`.
+
 ## 0.14.3-RC.8
 
 No SDK change. The version tracks the release. The discovery service it talks to now scans the

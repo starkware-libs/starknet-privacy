@@ -8,7 +8,7 @@
 import { describe, it, expect } from "vitest";
 import { buildProofFacts, buildMessagePayload } from "../../src/utils/proof-facts.js";
 import { shortStringToFelt } from "../../src/utils/crypto.js";
-import { hash, constants } from "starknet";
+import { constants } from "starknet";
 import referenceData from "../fixtures/cairo-reference-data.json" with { type: "json" };
 
 describe("ProofFacts Compatibility with Cairo", () => {
@@ -34,27 +34,32 @@ describe("ProofFacts Compatibility with Cairo", () => {
     expect(messageHash).toBe(reference.messageHash);
   });
 
-  it("computes correct virtual OS config hash for Sepolia", () => {
-    const STARKNET_OS_CONFIG_HASH_VERSION = "0x537461726b6e65744f73436f6e66696733";
-    const STRK_FEE_TOKEN = "0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d";
-
-    const expectedConfigHash = hash.computeHashOnElements([
-      STARKNET_OS_CONFIG_HASH_VERSION,
-      constants.StarknetChainId.SN_SEPOLIA,
-      STRK_FEE_TOKEN,
-    ]);
-
+  it("computes the virtual OS config hash mainnet expects", () => {
     const proofFacts = buildProofFacts(
       reference.poolAddress,
       reference.poolClassHash,
       reference.serializedActions,
       BigInt(reference.baseBlockNumber),
       "0x0",
-      constants.StarknetChainId.SN_SEPOLIA
+      constants.StarknetChainId.SN_MAIN
     );
 
-    // [6] is starknet_os_config_hash
-    expect(proofFacts[6]).toBe(expectedConfigHash);
+    // [6] of mainnet tx 0x56a224012f76e8451b9d22e7b6812801ec07fcef8ef74b871e3c9f735a215ba
+    expect(proofFacts[6]).toBe("0x5b3bc83b3a47231aa5f15e73309ef7e09e087bd4ace767656fe5d713f6e2d7a");
+  });
+
+  it("buildProofFacts applies config overrides", () => {
+    const proofFacts = buildProofFacts(
+      reference.poolAddress,
+      reference.poolClassHash,
+      reference.serializedActions,
+      BigInt(reference.baseBlockNumber),
+      "0x0",
+      constants.StarknetChainId.SN_MAIN,
+      { proofVersion: "0x1", virtualProgramHash: "0x2", osConfigHash: "0x3" }
+    );
+
+    expect([proofFacts[0], proofFacts[2], proofFacts[6]]).toEqual(["0x1", "0x2", "0x3"]);
   });
 
   it("buildMessagePayload matches Cairo: [class_hash, ...serialized_actions]", () => {
@@ -77,9 +82,9 @@ describe("ProofFacts Compatibility with Cairo", () => {
     );
 
     expect(proofFacts).toHaveLength(9);
-    expect(proofFacts[0]).toBe(`0x${shortStringToFelt("PROOF0").toString(16)}`); // proof_version
+    expect(proofFacts[0]).toBe(`0x${shortStringToFelt("PROOF2").toString(16)}`); // proof_version
     expect(proofFacts[1]).toBe(reference.virtualSnos); // program_variant
-    // [2] = virtual_program_hash
+    expect(proofFacts[2]).toBe("0x53f6c9fcfd31d27279ff7d7e422b44623550a732b59fe193354a7316a96daa1"); // virtual_program_hash
     expect(proofFacts[3]).toBe(reference.virtualSnos0); // starknet_os_output_version
     expect(proofFacts[4]).toBe(`0x${BigInt(reference.baseBlockNumber).toString(16)}`); // base_block_number
     expect(proofFacts[7]).toBe("0x1"); // message_to_l1_hashes length

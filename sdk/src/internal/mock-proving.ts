@@ -9,7 +9,11 @@ import type { BlockIdentifier, constants, ProviderInterface } from "starknet";
 import { TransactionType, stark } from "starknet";
 import type { Proof, ProofInvocation, ProofProviderInterface } from "../interfaces.js";
 import { getDefaultProofDetails, extractExecuteViewCalldata } from "./proof-invocation-factory.js";
-import { buildProofFacts, buildMessagePayload } from "../utils/proof-facts.js";
+import {
+  buildProofFacts,
+  buildMessagePayload,
+  type ProofFactsConfig,
+} from "../utils/proof-facts.js";
 
 /** An L2-to-L1 message in a simulation trace. */
 interface TraceMessage {
@@ -78,7 +82,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
     protected readonly node: ProviderInterface,
     protected readonly chainId: constants.StarknetChainId,
-    private readonly options?: { validateSignature?: boolean }
+    private readonly options?: { validateSignature?: boolean; proofFactsConfig?: ProofFactsConfig }
   ) {}
 
   async getDefaultDetails() {
@@ -110,7 +114,8 @@ export class CallMockProofProvider implements ProofProviderInterface {
       serverActions,
       baseBlockNumber,
       baseBlock.block_hash ?? "0x0",
-      this.chainId
+      this.chainId,
+      this.options?.proofFactsConfig
     );
 
     // Return the full L2-to-L1 message payload: [class_hash, ...serialized_actions].

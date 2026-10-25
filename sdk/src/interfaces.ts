@@ -13,6 +13,7 @@ import type {
 import { ec } from "starknet";
 import { AddressMap } from "./utils/index.js";
 import type { OhttpOption } from "./internal/ohttp-client.js";
+import type { ProofFactsConfig } from "./utils/proof-facts.js";
 import type { AdditionalData, ProvingRetryOptions } from "./internal/proving-service.js";
 
 export type Amount = bigint;
@@ -346,6 +347,8 @@ export type SimulateOptions = {
   node: ProviderInterface;
   /** When true, validate the user's signature during simulation. Default: false. */
   validateSignature?: boolean;
+  /** Overrides for the protocol-dependent fields of the mock proof facts. */
+  proofFactsConfig?: ProofFactsConfig;
 };
 
 export type Warning = {
