@@ -1,13 +1,17 @@
 /**
  * Builds the ProofFacts serialization matching both the blockifier and Cairo contract.
  *
- * The blockifier validates the first two fields as a version+variant header.
  * The Cairo contract deserializes the same array via Serde into ProofFacts struct.
  *
- * Blockifier checks:
- * 1. `proof_facts[0]` in allowed_proof_versions
- * 2. `proof_facts[1] == VIRTUAL_SNOS`
- * 3. `proof_facts[3] == VIRTUAL_OS_OUTPUT_VERSION` ('VIRTUAL_SNOS0')
+ * Blockifier checks (sequencer 603f1bd, starknet_api fields.rs / blockifier account_transaction.rs):
+ * 1. `proof_facts[0]` is a known marker (PROOF0/1/2, fields.rs:757) and is in
+ *    `allowed_proof_versions` (account_transaction.rs:314)
+ * 2. `proof_facts[1] == VIRTUAL_SNOS` (fields.rs:768)
+ * 3. `proof_facts[3] == VIRTUAL_OS_OUTPUT_VERSION` ('VIRTUAL_SNOS0', fields.rs:787)
+ * 4. `proof_facts[2]` is in `allowed_virtual_os_program_hashes` (account_transaction.rs:324)
+ * 5. `proof_facts[4] <= current_block - STORED_BLOCK_HASH_BUFFER` (10, account_transaction.rs:238)
+ * 6. `proof_facts[5]` is non-zero and equals the stored block hash (account_transaction.rs:262)
+ * 7. `proof_facts[6] == block_context.virtual_os_config_hash()` (account_transaction.rs:341)
  *
  * Cairo contract `validate_proof` checks:
  * 1. `program_variant == 'VIRTUAL_SNOS'`
