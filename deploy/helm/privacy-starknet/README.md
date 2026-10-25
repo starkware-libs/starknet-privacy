@@ -128,9 +128,7 @@ values:
   Deployment selectors are immutable, so the upgrade replaces the Deployments and
   Services instead of updating them, and in-cluster Service DNS names change.
 - Image tags default to the chart's appVersion; `image.tag` is only needed to pin a
-  different release. The transaction prover is the exception: it is built in
-  starkware-libs/sequencer on its own release cadence, so `values.yaml` pins its tag.
-  `pullPolicy` defaults to `IfNotPresent`.
+  different release. `pullPolicy` defaults to `IfNotPresent`.
 - `replicas` is now `replicaCount`. `discoveryService.containerPort` is now
   `discoveryService.port`, and `config.apiHost` is derived from it.
 - `proofInterceptor.screeningSecretName` is now `proofInterceptor.screening.existingSecret`.
