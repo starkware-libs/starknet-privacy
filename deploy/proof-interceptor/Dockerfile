@@ -10,11 +10,7 @@
 # user on port 8080. /health responds 200 OK; use it for liveness +
 # readiness probes (see the deployment guide).
 
-# Both stages share one pinned Node image, so a release image's Node version
-# is fixed by the commit it was built from. The tag names the version; the
-# digest (the multi-arch index) is what Docker resolves. Bump both together
-# when Node ships a security release.
-ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+ARG NODE_IMAGE=node:22.23.4-slim
 
 # ---- build stage ----------------------------------------------------------
 FROM ${NODE_IMAGE} AS build
