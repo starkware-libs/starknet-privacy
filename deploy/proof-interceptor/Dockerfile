@@ -6,12 +6,18 @@
 #
 #   docker build -f deploy/proof-interceptor/Dockerfile -t proof-interceptor:<tag> .
 #
-# The runtime stage is `node:22-slim` and runs as the unprivileged `node`
+# The runtime stage is `NODE_IMAGE` and runs as the unprivileged `node`
 # user on port 8080. /health responds 200 OK; use it for liveness +
 # readiness probes (see the deployment guide).
 
+# Both stages share one pinned Node image, so a release image's Node version
+# is fixed by the commit it was built from. The tag names the version; the
+# digest (the multi-arch index) is what Docker resolves. Bump both together
+# when Node ships a security release.
+ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+
 # ---- build stage ----------------------------------------------------------
-FROM node:22-slim AS build
+FROM ${NODE_IMAGE} AS build
 WORKDIR /app
 
 # Build the local SDK first so its compiled `dist/` is available when
@@ -36,7 +42,7 @@ RUN cd proof-interceptor \
  && npm prune --omit=dev
 
 # ---- runtime stage --------------------------------------------------------
-FROM node:22-slim
+FROM ${NODE_IMAGE}
 WORKDIR /app/proof-interceptor
 
 # The SDK is a file: dependency, so the runtime needs both directories present
