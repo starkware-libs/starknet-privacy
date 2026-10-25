@@ -90,6 +90,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - The failure is silent at deploy time and only surfaces later, when an access check reads the never-written slot
 - *Example:* deploying a shadow account via a Primer leaves `owner` zero, so every `execute` reverts with `NOT OWNER` and the account can never move the funds it holds
 
+### Verify a reduction step by inspecting what it left behind
+- A prune, omit or strip step that exits 0 has not proven it removed anything; tool semantics often change across layouts and versions. Inspect the result (list the image's `node_modules`, the tarball's files) before a comment claims what is gone
+- *Example:* in the npm workspace, `npm prune --omit=dev -w sdk -w proof-interceptor` left eslint, vitest and typescript-eslint hoisted at the root, and npm 10's fresh `npm ci --omit=dev -w ...` still nested them; the image only lost them once a separate stage ran that install under npm 11
+
 ### Check a cross-layer mirror case by case against the rule it mirrors
 - When one layer re-implements a rule another layer enforces (an off-chain resolver mirroring an on-chain match), enumerate the source rule's cases and state the mirror's answer for each. Do not reason from the mirror's own model of the world, which is where the blind spots live
 - A case the mirror folds into another (three different inputs all answering "nobody") is exactly where the two layers drift once the source rule changes
