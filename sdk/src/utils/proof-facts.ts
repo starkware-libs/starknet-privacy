@@ -29,7 +29,7 @@ const VIRTUAL_SNOS = shortStringToFelt("VIRTUAL_SNOS");
 const VIRTUAL_SNOS0 = shortStringToFelt("VIRTUAL_SNOS0");
 
 // Allowed proof version and virtual OS program hash from blockifier versioned constants.
-// PROOF2 is accepted by both mainnet and devnet v0.10 (whose 0.14.4 constants allow only PROOF2).
+// PROOF2 is the only proof version 0.14.5 still allows (0.14.4 allows PROOF1 and PROOF2).
 // Source: https://github.com/starkware-libs/sequencer/blob/603f1bd8dca9da4c37b75841bf322bfa9d032d12/crates/blockifier/resources/blockifier_versioned_constants_0_14_4.json
 const PROOF_VERSION = shortStringToFelt("PROOF2");
 const VIRTUAL_PROGRAM_HASH = "0x53f6c9fcfd31d27279ff7d7e422b44623550a732b59fe193354a7316a96daa1";

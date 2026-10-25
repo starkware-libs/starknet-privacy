@@ -2,11 +2,13 @@
 
 ## Unreleased
 
-### Fixed
+### Breaking
 
-- Mock proof facts (`simulate()`, `CallMockProofProvider`) now use the Starknet 0.14.4 values
-  (`PROOF2`, program hash `0x53f6c9fc…`, Blake config hash), which mainnet accepts. SDK devnet
-  tests now need starknet-devnet v0.10.1.
+- Mock proof facts (`buildProofFacts`, `simulate()`, `CallMockProofProvider`) now use the Starknet
+  0.14.4 values (`PROOF2`, program hash `0x53f6c9fc…`, Blake config hash), which mainnet accepts.
+  A 0.14.2 node, including the `testing` Devnet on starknet-devnet v0.8, rejects them; SDK devnet
+  tests now need starknet-devnet v0.10.1. Reproducing the old output takes all three
+  `ProofFactsConfig` overrides, with the Pedersen config hash computed by the caller.
 
 ### Added
 
