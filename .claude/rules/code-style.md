@@ -69,9 +69,9 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - A required-value check only tests presence, so a default like `"<rpc-url>"` passes it and ships the placeholder as config. Default required settings to empty and show the expected shape in a comment or README
 - *Example:* the Helm chart's `rpcUrl: "<rpc-url>"` made `required "discoveryService.config.rpcUrl is required"` unreachable; an install that forgot the value rendered fine and pointed the service at a literal `<rpc-url>`
 
-### Make build dependencies explicit, not an artifact of argument order
-- When one target consumes another's output, sequence them with `&&` (or separate steps) rather than relying on a multi-target command's implicit ordering. The ordering is undocumented, and the tool may keep going after the producer fails, burying the real error under secondary ones
-- *Example:* `npm run build -w sdk -w client` builds in `-w` flag order (not the root `workspaces` order) and still builds the client after the SDK build fails; `npm run build -w sdk && npm run build -w client` states the dependency and stops at the first failure
+### Declare build dependencies once, explicitly, in a named entry point
+- When one target consumes another's output, encode the order in a single script that callers invoke, rather than copying the sequence into every workflow and doc. Inside that script, sequence producer and consumer with `&&` instead of relying on a multi-target command's implicit ordering: the ordering is undocumented, and the tool may keep going after the producer fails, burying the real error under secondary ones
+- *Example:* `npm run build -w sdk -w client` builds in `-w` flag order (not the root `workspaces` order) and still builds the client after the SDK build fails. The root `build` script sequences the SDK before its consumers with `&&`, and CI and docs call `npm run build`
 
 ### Prefer intuitive semantics over internal convenience
 - Design APIs so callers don't need to know implementation details

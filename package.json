@@ -6,5 +6,8 @@
     "client",
     "proof-interceptor",
     "e2e"
-  ]
+  ],
+  "scripts": {
+    "build": "npm run build -w sdk && npm run build -w client -w proof-interceptor"
+  }
 }
