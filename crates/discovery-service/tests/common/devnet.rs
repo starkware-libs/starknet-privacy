@@ -76,6 +76,10 @@ impl DevnetClient {
                 "1",
                 "--gas-price-fri",
                 "1",
+                // The fixture dump is generated on the SDK devnet's chain (`DEVNET_CHAIN_ID`), and
+                // devnet_load re-validates every replayed signature against this chain id.
+                "--chain-id",
+                "SN_DEVNET",
                 "--proof-mode",
                 "none",
             ])

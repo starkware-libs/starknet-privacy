@@ -200,6 +200,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Broken imports or syntax errors can mask that tests were never working
 - *Example:* `git stash && cargo build` to check if the original code even compiles before investigating test logic
 
+### Scripts outside CI read environment parameters from the harness, never restate them
+- A fixture generator or one-off script that nothing runs in CI breaks silently when the harness it drives changes. Take chain ids, addresses and similar parameters from the harness's own output instead of hardcoding a copy
+- A fixture consumer must run its environment the same way the producer did, or replay fails in confusing places (signature checks rather than "wrong chain")
+- *Example:* devnet moved to chain id `SN_DEVNET` and exposed `env.chainId`, but `generate-dump.ts` kept `SN_SEPOLIA`, so every proof invocation it signed failed `INVALID_SIGNATURE`; the Rust harness replaying the dump also had to start devnet on `SN_DEVNET`
+
 ### A test suite's CI path filter must cover every layer the suite exercises
 - Filtering a CI job to the test directory alone lets changes to the code under test land without ever running the suite; include every layer it builds or links against (contracts, SDK, service crates)
 - *Example:* an e2e job filtered to `e2e/**` never ran when a Cairo struct gained a required field, so the test's hand-built calldata broke silently and only failed weeks later on a workflow-only PR
