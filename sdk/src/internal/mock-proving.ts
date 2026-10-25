@@ -92,18 +92,21 @@ export class CallMockProofProvider implements ProofProviderInterface {
   async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
     const { poolClassHash, serverActions } = await this.compileActions(invocation, blockIdentifier);
 
-    // Use the requested block (latest by default) as the base block, but no newer than latest - 10:
-    // the blockifier rejects a proof whose block hash is not yet stored as too recent.
-    const latestBlockNumber = BigInt((await this.node.getBlock("latest")).block_number);
-    const requestedBlockNumber =
-      blockIdentifier == null
-        ? latestBlockNumber
-        : BigInt((await this.node.getBlock(blockIdentifier)).block_number);
-    const newestAllowedBlockNumber = latestBlockNumber > 10n ? latestBlockNumber - 10n : 1n;
-    const baseBlockNumber =
-      requestedBlockNumber < newestAllowedBlockNumber
-        ? requestedBlockNumber
-        : newestAllowedBlockNumber;
+    // Build proof facts for on-chain validation.
+    // When the caller provides an explicit blockIdentifier, use it as the base block directly
+    // (the caller is responsible for picking a block old enough for the blockifier to accept).
+    // When falling back to "latest", subtract STORED_BLOCK_HASH_BUFFER so the blockifier
+    // can verify the block hash from state.
+    let baseBlockNumber: bigint;
+    if (blockIdentifier != null) {
+      const block = await this.node.getBlock(blockIdentifier);
+      baseBlockNumber = BigInt(block.block_number);
+    } else {
+      const latestBlock = await this.node.getBlock("latest");
+      const currentBlockNumber = BigInt(latestBlock.block_number);
+      const blocksBack = 10n;
+      baseBlockNumber = currentBlockNumber > blocksBack ? currentBlockNumber - blocksBack : 1n;
+    }
     const baseBlock = await this.node.getBlock(Number(baseBlockNumber));
     const proofFacts = buildProofFacts(
       invocation.sender_address,
