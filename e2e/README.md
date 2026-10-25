@@ -7,7 +7,7 @@ End-to-end tests and fixture generation for the privacy pool.
 1. Install the patched starknet-devnet (see [SDK README](../sdk/README.md#starknet-devnet) for instructions)
 2. Build the privacy contract: `scarb --profile release build`
 3. Install the npm workspace from the repo root: `npm ci` (links the local `sdk`, `client` and `proof-interceptor`)
-4. Build them from the repo root: `npm run build -w sdk && npm run build -w client -w proof-interceptor`
+4. Build them from the repo root: `npm run build`
 5. Build the discovery service: `cargo build --release -p discovery-service`
 
 ## Tests
