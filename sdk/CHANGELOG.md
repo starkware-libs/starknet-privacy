@@ -4,21 +4,15 @@
 
 ### Fixed
 
-- Mock proof facts from `simulate()` and `CallMockProofProvider` now match Starknet 0.14.3+
-  (current mainnet and Sepolia run 0.14.4): proof version `PROOF1`, virtual OS program hash
-  `0x53f6c9fc…`, and a Blake2s config hash over `'StarknetOsConfig4'`. Before this, mainnet rejected
-  them (`Proof version … is not allowed`). The mock provider reads the base block's
-  `starknet_version` and keeps the 0.14.2 values (`PROOF0`, Pedersen config hash) for older nodes
-  such as devnet v0.8.
-- `CallMockProofProvider` moves a base block newer than `latest - 10` (for example `"latest"` as
-  `provingBlockId`) back to `latest - 10`. The blockifier rejects such a block as too recent.
+- Mock proof facts (`simulate()`, `CallMockProofProvider`) now use the Starknet 0.14.4 values
+  (`PROOF2`, program hash `0x53f6c9fc…`, Blake config hash), which mainnet accepts. The mock no
+  longer picks a base block newer than `latest - 10`, which the blockifier rejects as too recent.
+  SDK devnet tests now need starknet-devnet v0.10.1.
 
 ### Added
 
-- `ProofFactsConfig` (`starknetVersion`, `proofVersion`, `virtualProgramHash`, `osConfigHash`)
-  overrides the protocol fields of mock proof facts. Pass it as `buildProofFacts`'s optional last
-  argument, `CallMockProofProvider`'s `proofFactsConfig` option, or `simulate({ proofFactsConfig })`.
-  Callers can then follow a protocol upgrade without waiting for an SDK release.
+- `ProofFactsConfig` overrides the proof version, program hash and config hash. Pass it to
+  `buildProofFacts`, `CallMockProofProvider` (`proofFactsConfig`) or `simulate({ proofFactsConfig })`.
 
 ## 0.14.3-RC.8
 

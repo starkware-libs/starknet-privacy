@@ -347,10 +347,7 @@ export type SimulateOptions = {
   node: ProviderInterface;
   /** When true, validate the user's signature during simulation. Default: false. */
   validateSignature?: boolean;
-  /**
-   * Overrides for the protocol fields of the mock proof facts. By default they follow the proving
-   * block's `starknet_version`.
-   */
+  /** Overrides for the protocol-dependent fields of the mock proof facts. */
   proofFactsConfig?: ProofFactsConfig;
 };
 

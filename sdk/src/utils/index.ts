@@ -48,8 +48,4 @@ export {
   type DecodedError,
 } from "./error-decoder.js";
 export { toBigInt, toBytes, toHex, type Numeric } from "./convert.js";
-export {
-  buildProofFacts,
-  DEFAULT_PROOF_FACTS_STARKNET_VERSION,
-  type ProofFactsConfig,
-} from "./proof-facts.js";
+export { buildProofFacts, type ProofFactsConfig } from "./proof-facts.js";

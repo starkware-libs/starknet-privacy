@@ -15,28 +15,6 @@ import {
   type ProofFactsConfig,
 } from "../utils/proof-facts.js";
 
-/**
- * The blockifier accepts a proof only on a block whose hash is already stored: at most
- * `current_block - STORED_BLOCK_HASH_BUFFER`, where the current block is the one the transaction
- * lands in (at least latest + 1). Simulation enforces this too.
- * Source: `validate_proof_block_number`, crates/blockifier/src/transaction/account_transaction.rs:238,
- * and crates/blockifier/src/abi/constants.rs:39 at
- * https://github.com/starkware-libs/sequencer/tree/603f1bd8dca9da4c37b75841bf322bfa9d032d12
- */
-const STORED_BLOCK_HASH_BUFFER = 10n;
-
-/** Options for {@link CallMockProofProvider}. */
-export type CallMockProofProviderOptions = {
-  /** When false, compile through the `compile_actions` view without checking the signature. */
-  validateSignature?: boolean;
-  /**
-   * Overrides for the protocol fields of the proof facts. Without a `starknetVersion`, the base
-   * block's `starknet_version` selects the defaults, so devnet (0.14.2) and current networks both
-   * accept the facts.
-   */
-  proofFactsConfig?: ProofFactsConfig;
-};
-
 /** An L2-to-L1 message in a simulation trace. */
 interface TraceMessage {
   to_address: string;
@@ -104,7 +82,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
   constructor(
     protected readonly node: ProviderInterface,
     protected readonly chainId: constants.StarknetChainId,
-    private readonly options?: CallMockProofProviderOptions
+    private readonly options?: { validateSignature?: boolean; proofFactsConfig?: ProofFactsConfig }
   ) {}
 
   async getDefaultDetails() {
@@ -114,25 +92,19 @@ export class CallMockProofProvider implements ProofProviderInterface {
   async prove(invocation: ProofInvocation, blockIdentifier?: BlockIdentifier): Promise<Proof> {
     const { poolClassHash, serverActions } = await this.compileActions(invocation, blockIdentifier);
 
-    // The base block is the requested one (latest by default), moved back to the newest block
-    // whose hash the blockifier can verify, so a `latest` or other recent block is not rejected
-    // as too recent.
-    const latestBlock = await this.node.getBlock("latest");
-    const latestBlockNumber = BigInt(latestBlock.block_number);
-    const newestProvableBlockNumber =
-      latestBlockNumber > STORED_BLOCK_HASH_BUFFER
-        ? latestBlockNumber - STORED_BLOCK_HASH_BUFFER
-        : 1n;
+    // Use the requested block (latest by default) as the base block, but no newer than latest - 10:
+    // the blockifier rejects a proof whose block hash is not yet stored as too recent.
+    const latestBlockNumber = BigInt((await this.node.getBlock("latest")).block_number);
     const requestedBlockNumber =
       blockIdentifier == null
         ? latestBlockNumber
         : BigInt((await this.node.getBlock(blockIdentifier)).block_number);
+    const newestAllowedBlockNumber = latestBlockNumber > 10n ? latestBlockNumber - 10n : 1n;
     const baseBlockNumber =
-      requestedBlockNumber < newestProvableBlockNumber
+      requestedBlockNumber < newestAllowedBlockNumber
         ? requestedBlockNumber
-        : newestProvableBlockNumber;
+        : newestAllowedBlockNumber;
     const baseBlock = await this.node.getBlock(Number(baseBlockNumber));
-    const proofFactsConfig = this.options?.proofFactsConfig;
     const proofFacts = buildProofFacts(
       invocation.sender_address,
       poolClassHash,
@@ -140,10 +112,7 @@ export class CallMockProofProvider implements ProofProviderInterface {
       baseBlockNumber,
       baseBlock.block_hash ?? "0x0",
       this.chainId,
-      {
-        ...proofFactsConfig,
-        starknetVersion: proofFactsConfig?.starknetVersion ?? baseBlock.starknet_version,
-      }
+      this.options?.proofFactsConfig
     );
 
     // Return the full L2-to-L1 message payload: [class_hash, ...serialized_actions].
