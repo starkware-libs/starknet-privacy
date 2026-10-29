@@ -20,6 +20,9 @@ use super::process::{find_free_port, signal_process, wait_for_log_pattern};
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct DumpMetadata {
     pub timestamp: u64,
+    /// Chain the dump was generated on. `devnet_load` re-validates every replayed signature
+    /// against the running devnet's chain id, so the two must agree.
+    pub chain_id: Felt,
     pub contract_address: Felt,
     pub alice_address: Felt,
     #[serde(deserialize_with = "secret_felt_serde::deserialize")]
@@ -30,6 +33,9 @@ pub struct DumpMetadata {
     pub strk_token: Felt,
 }
 
+/// Mirrors the SDK's `DEVNET_CHAIN_ID`, the chain the committed dump was generated on.
+const DEVNET_CHAIN_ID: &str = "SN_DEVNET";
+
 #[derive(Debug, Clone, Default)]
 pub struct DevnetConfig {
     pub seed: u32,
@@ -39,6 +45,9 @@ pub struct DevnetConfig {
     /// Keep the full state archive, which devnet requires before it will abort
     /// blocks. Defaults to `false`, leaving devnet at its cheapest setting.
     pub full_state_archive: bool,
+    /// Chain to run on. `None` uses `DEVNET_CHAIN_ID`, the only chain whose
+    /// signatures `load_dump` accepts.
+    pub chain_id: Option<String>,
 }
 
 pub struct DevnetClient {
@@ -76,10 +85,10 @@ impl DevnetClient {
                 "1",
                 "--gas-price-fri",
                 "1",
-                // The fixture dump is generated on the SDK devnet's chain (`DEVNET_CHAIN_ID`), and
-                // devnet_load re-validates every replayed signature against this chain id.
+                // devnet_load re-validates every replayed signature against this chain id, so the
+                // dump only loads on the chain it was generated on.
                 "--chain-id",
-                "SN_DEVNET",
+                config.chain_id.as_deref().unwrap_or(DEVNET_CHAIN_ID),
                 "--proof-mode",
                 "none",
             ])
@@ -121,6 +130,18 @@ impl DevnetClient {
     /// Prepends a devnet_setTime call to ensure correct block timestamps during replay.
     pub async fn load_dump(&mut self, fixtures_dir: &Path) -> Result<DumpMetadata> {
         let metadata = Self::read_metadata(fixtures_dir)?;
+
+        // A mismatch here surfaces as `Account: invalid signature` on every replayed
+        // transaction, which says nothing about the real cause.
+        let running_chain_id = self.chain_id().await?;
+        if running_chain_id != metadata.chain_id {
+            bail!(
+                "dump generated on chain id {:#x}, devnet runs on {:#x}: \
+                 start devnet with --chain-id matching the SDK's DEVNET_CHAIN_ID",
+                metadata.chain_id,
+                running_chain_id
+            );
+        }
 
         let dump_path = fixtures_dir.join("devnet-dump.json.gz");
         let gz_bytes = fs::read(&dump_path)
@@ -170,6 +191,27 @@ impl DevnetClient {
 
         self._temp_dump = Some(temp);
         Ok(metadata)
+    }
+
+    /// Chain id the running devnet reports.
+    async fn chain_id(&self) -> Result<Felt> {
+        let resp: serde_json::Value = reqwest::Client::new()
+            .post(self.rpc_url())
+            .json(&serde_json::json!({
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "starknet_chainId",
+            }))
+            .send()
+            .await?
+            .json()
+            .await?;
+
+        let chain_id = resp
+            .get("result")
+            .and_then(|result| result.as_str())
+            .with_context(|| format!("starknet_chainId returned no result: {resp}"))?;
+        Felt::from_hex(chain_id).with_context(|| format!("unparsable chain id {chain_id}"))
     }
 
     pub fn rpc_url(&self) -> String {

@@ -82,7 +82,7 @@ Integration tests use a local devnet loaded with fixture state. The fixtures are
 Note: Integration tests spawn starknet-devnet instances on dynamically allocated ports.
 
 ### Prerequisites
-1. Install the patched starknet-devnet (see [top-level README](../../README.md#starknet-devnet) for instructions)
+1. Install the patched starknet-devnet (see [SDK README](../../sdk/README.md#starknet-devnet) for instructions)
 2. Build the privacy contract: `scarb build`
 
 ### Generate fixtures (only when contract changes)

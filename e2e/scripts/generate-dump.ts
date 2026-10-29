@@ -124,6 +124,7 @@ writeFileSync(
   JSON.stringify(
     {
       timestamp: spawnTimestamp,
+      chain_id: env.chainId,
       contract_address: env.privacy.address,
       alice_address: env.alice.address,
       alice_viewing_key: "0x" + ALICE_VIEWING_KEY.toString(16),
