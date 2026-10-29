@@ -1,0 +1,8 @@
+{
+  "name": "starknet-privacy-workspace",
+  "private": true,
+  "workspaces": [
+    "sdk",
+    "client"
+  ]
+}
