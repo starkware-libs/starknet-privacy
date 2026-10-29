@@ -78,6 +78,22 @@ transactionProver:
     existingSecret: <secret-name>
 ```
 
+## Configuration delivery
+
+| Container | Settings | Delivered as |
+| --- | --- | --- |
+| discovery-service | `config.rpcUrl`, `config.wsUrl`, `config.rustLog`, `config.api.*`, `ohttp.enabled` | `config.toml` in ConfigMap `<release>-discovery-service` |
+| discovery-service | `port` | `API_HOST` env var, because the image sets `API_HOST` and an env var overrides the file |
+| discovery-service | OHTTP key | `OHTTP_KEY` from the OHTTP Secret |
+| transaction-prover | `config.*`, plus `blocking_check_*` when the sidecar is enabled | `config.json` in ConfigMap `<release>-transaction-prover` |
+| transaction-prover | `ohttp.enabled`, OHTTP key | `OHTTP_ENABLED`, and `OHTTP_KEY` from the OHTTP Secret |
+| proof-interceptor | `proofInterceptor.port`, `proofInterceptor.screening.*` except `existingSecret`, and `config.rpc_node_url` as `SCREENING_RPC_URL` | `envFrom` ConfigMap `<release>-proof-interceptor`, rendered only when the sidecar is enabled |
+| proof-interceptor | Partner credentials | `SCREENING_PARTNER_NAME` and `SCREENING_PARTNER_SECRET` from Secret `proofInterceptor.screening.existingSecret` |
+
+Each Pod template carries a checksum of every ConfigMap and Secret the chart renders for
+it, so changing one rolls only the Deployment that reads it. A Secret you create yourself
+(`existingSecret`) is not covered; restart the Deployment after rotating it.
+
 ## Optional features
 
 OHTTP and proof interception are enabled by default. Disable them explicitly:
@@ -118,6 +134,19 @@ Both Services are `ClusterIP` and both Ingresses are disabled. For public access
 configure the `ingress` blocks (class, hosts, annotations, TLS). With an ACME HTTP-01
 issuer, port 80 must stay reachable during certificate issuance; use DNS-01 otherwise.
 Setting a Service `type` to `LoadBalancer` exposes it directly, bypassing Ingress TLS.
+
+## Upgrading from 0.4.x
+
+0.5.0 moves the discovery service's `rpcUrl`, `wsUrl` and `rustLog` from env vars into its
+`config.toml`, and the proof-interceptor's non-secret settings into ConfigMap
+`<release>-proof-interceptor`. Values keys are unchanged.
+
+These settings now reach the services exactly as written. As container `env` entries,
+Kubernetes rewrote them: `$$` became `$`, and `$(NAME)` was replaced by an earlier env var
+of the same container. Before upgrading, check `discoveryService.config.rpcUrl`, `wsUrl`
+and `rustLog`, `transactionProver.config.rpc_node_url`, and
+`transactionProver.proofInterceptor.port` and `screening.*` for `$$` or `$(`, and replace
+each with its intended literal value.
 
 ## Upgrading from 0.3.x
 
