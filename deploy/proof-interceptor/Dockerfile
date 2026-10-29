@@ -1,8 +1,8 @@
 # Multi-stage build for the proof-interceptor sidecar.
 #
-# Build context MUST be the workspace root (`starknet-privacy/`) because
-# proof-interceptor depends on the local SDK via `"file:../sdk"` in its
-# package.json. Build with:
+# Build context MUST be the repo root (`starknet-privacy/`) because
+# proof-interceptor and the SDK are npm workspace members installed from the
+# root package-lock.json. Build with:
 #
 #   docker build -f deploy/proof-interceptor/Dockerfile -t proof-interceptor:<tag> .
 #
@@ -14,52 +14,47 @@
 # Node version the digest is. When bumping Node, change both.
 ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
 
-# ---- build stage ----------------------------------------------------------
-FROM ${NODE_IMAGE} AS build
+# Both install stages need only the workspace manifests and the root lockfile;
+# sources are copied later so source edits don't invalidate the install layers.
+# The build stages run node:24 for its bundled npm 11: npm 10's
+# `--omit=dev -w ...` install still nests and hoists other workspace members'
+# devDependencies. All production dependencies are pure JS, so they run
+# unchanged on the node:22 runtime.
+FROM node:24-slim AS manifests
 WORKDIR /app
-
-# Build the local SDK first so its compiled `dist/` is available when
-# proof-interceptor's `npm ci` resolves `file:../sdk`. The SDK is an npm workspace
-# member, so it installs from the root lockfile into the hoisted /app/node_modules.
-# Every member's package.json must be present for `npm ci` to accept that lockfile.
 COPY package.json package-lock.json ./
-COPY client/package.json ./client/
+COPY sdk/package.json ./sdk/
+COPY proof-interceptor/package.json ./proof-interceptor/
+
+FROM manifests AS build
+RUN npm ci -w sdk -w proof-interceptor
+
+# The SDK builds in its own layer first: proof-interceptor imports its compiled
+# `dist/`, and interceptor-only edits then reuse the cached SDK build.
 COPY sdk/ ./sdk/
-RUN cd sdk \
- && npm ci \
- && npm run build
-
-# Build proof-interceptor against the just-built SDK.
+RUN npm run build -w sdk
 COPY proof-interceptor/ ./proof-interceptor/
-RUN cd proof-interceptor \
- && npm ci \
- && npm run build
+RUN npm run build -w proof-interceptor
 
-# Drop devDependencies once compilation is done; the runtime stage only needs
-# the production deps. The SDK is pruned too — it is a file: dependency, so its
-# hoisted workspace tree ships in the image rather than being flattened into the
-# interceptor's.
-RUN cd proof-interceptor \
- && npm prune --omit=dev \
- && cd ../sdk \
- && npm prune --omit=dev
+# A fresh `--omit=dev` install, because `npm prune --omit=dev -w ...` leaves
+# devDependencies hoisted to the workspace root in place. It still keeps
+# optional peers (e.g. typescript via abitype).
+FROM manifests AS prod-deps
+RUN npm ci --omit=dev -w sdk -w proof-interceptor
 
-# ---- runtime stage --------------------------------------------------------
 FROM ${NODE_IMAGE}
 WORKDIR /app/proof-interceptor
 
-# The SDK is a file: dependency, so the runtime needs both directories present
-# at the path npm resolved during install: the interceptor's
-# node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
-# whose own dependencies resolve from the workspace's hoisted /app/node_modules.
-# No first-party sources, tests or configs are copied. The node_modules trees are
-# not minimal: `--omit=dev` keeps optional peers and the SDK's own prod deps.
+# Workspace layout must survive into the runtime: the hoisted
+# /app/node_modules/@starkware-libs/starknet-privacy-sdk is a symlink to /app/sdk,
+# and proof-interceptor/node_modules holds only the versions that could not be
+# hoisted.
 COPY --from=build /app/sdk/package.json /app/sdk/package.json
 COPY --from=build /app/sdk/dist /app/sdk/dist
-COPY --from=build /app/node_modules /app/node_modules
+COPY --from=prod-deps /app/node_modules /app/node_modules
 COPY --from=build /app/proof-interceptor/package.json /app/proof-interceptor/package.json
 COPY --from=build /app/proof-interceptor/dist /app/proof-interceptor/dist
-COPY --from=build /app/proof-interceptor/node_modules /app/proof-interceptor/node_modules
+COPY --from=prod-deps /app/proof-interceptor/node_modules /app/proof-interceptor/node_modules
 
 ENV NODE_ENV=production
 ENV PORT=8080

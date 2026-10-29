@@ -150,8 +150,12 @@ If `proof_interceptor_screening_results_total` stays at zero after real traffic,
 
 ## Development
 
+`proof-interceptor` is an npm workspace member alongside `sdk` and `client`: `npm ci` installs from
+the repo-root `package-lock.json` and links the local `sdk/`.
+
 ```bash
 npm ci
+(cd .. && npm run build -w sdk)    # the interceptor imports the SDK's compiled dist/
 (cd ../elliptic-proxy && npm ci)   # tests/e2e.test.ts imports its source, so lint resolves its deps
 npm run build       # tsc -p tsconfig.build.json → dist/
 npm test            # vitest run
