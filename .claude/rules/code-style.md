@@ -49,6 +49,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Clarify behavioral details that the type signature doesn't convey
 - *Example:* For indices: inclusive vs exclusive; for optionals: what `None` means; for ranges: whether bounds are included
 
+### Classify changelog entries by what callers lose, not by intent
+- A change made to fix one target is Breaking when output that another supported target accepted is now rejected there, or restoring the old behavior takes caller work
+- *Example:* moving mock proof facts to 0.14.4 values was filed under Fixed, but 0.14.2 nodes (devnet v0.8) now reject them and the old output needs three overrides, one a hash the caller computes
+
 ---
 
 ## Edge Cases
@@ -168,6 +172,13 @@ Apply these guidelines when writing or reviewing code in this codebase.
 ### Use accurate test names
 - Test names should precisely describe the scenario being verified
 - *Example:* `test_empty_collection` vs `test_no_new_items` convey different conditions
+
+### Give a table-driven test a label column instead of interpolating a case value
+- A title placeholder prints the value, so a case keyed on an encoded constant names itself in that
+  encoding and the report stops being readable. Add a column holding the case's name and substitute
+  that, leaving the value to the assertion
+- *Example:* `it.each` over `StarknetChainId` titled `the config hash %s expects` rendered
+  `the config hash 0x534e5f4d41494e expects`; a leading `"SN_MAIN"` column renders the chain's name
 
 ### A test must perform the transition its name claims
 - If the name says a property survives some change, the test has to *make* that change and assert the property on both sides of it. A test that only asserts the property in the steady state proves nothing about the change and silently duplicates whatever already covers the steady state
