@@ -16,6 +16,33 @@ use discovery_service::api::{
 };
 use starknet_core::types::{BlockId, Felt};
 
+/// The dump's signatures only validate on the chain it was generated on, and `devnet_load`
+/// reports that as `Account: invalid signature` on every replayed transaction. `load_dump`
+/// is expected to catch the mismatch first and name it.
+#[tokio::test]
+async fn test_load_dump_rejects_a_devnet_on_another_chain() {
+    let mut devnet = DevnetClient::spawn(DevnetConfig {
+        seed: 42,
+        accounts: 3,
+        chain_id: Some("SN_SEPOLIA".to_string()),
+        ..Default::default()
+    })
+    .expect("Failed to spawn devnet");
+
+    let error = devnet
+        .load_dump(std::path::Path::new(common::FIXTURES_DIR))
+        .await
+        .expect_err("load_dump accepted a dump from another chain");
+
+    let message = error.to_string();
+    assert!(
+        message.contains("dump generated on chain id")
+            && message.contains("devnet runs on")
+            && !message.contains("invalid signature"),
+        "expected a chain id mismatch, got: {message}"
+    );
+}
+
 #[tokio::test]
 async fn test_health_endpoint_returns_ok() {
     let devnet = DevnetClient::spawn(DevnetConfig::default()).expect("Failed to spawn devnet");

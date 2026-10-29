@@ -211,6 +211,22 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Broken imports or syntax errors can mask that tests were never working
 - *Example:* `git stash && cargo build` to check if the original code even compiles before investigating test logic
 
+### Scripts outside CI read environment parameters from the harness, never restate them
+- A fixture generator or one-off script that nothing runs in CI breaks silently when the harness it drives changes. Take chain ids, addresses and similar parameters from the harness's own output instead of hardcoding a copy
+- A fixture consumer must run its environment the same way the producer did, or replay fails in confusing places (signature checks rather than "wrong chain")
+- *Example:* devnet moved to chain id `SN_DEVNET` and exposed `env.chainId`, but `generate-dump.ts` kept `SN_SEPOLIA`, so every proof invocation it signed failed `INVALID_SIGNATURE`; the Rust harness replaying the dump also had to start devnet on `SN_DEVNET`
+
+### Record the environment a fixture was produced on, and check it when replaying
+- A generated fixture carries an implicit dependency on the environment that produced it. Write that
+  environment into the fixture's metadata and have the consumer compare it before replaying, so drift
+  is reported as itself instead of as whatever the mismatch happens to break first
+- The cost is a field and one comparison; the payoff is that the failure names its cause. Prefer this
+  over a comment telling the next reader which setting to keep in sync
+- *Example:* the devnet dump's signatures only validate on the chain that signed them, and a mismatch
+  surfaced as `Account: invalid signature` on every replayed transaction. Recording `chain_id` in
+  `devnet-dump.metadata.json` and comparing it with `starknet_chainId` turns that into "dump generated
+  on X, devnet runs on Y"
+
 ### A test suite's CI path filter must cover every layer the suite exercises
 - Filtering a CI job to the test directory alone lets changes to the code under test land without ever running the suite; include every layer it builds or links against (contracts, SDK, service crates)
 - *Example:* an e2e job filtered to `e2e/**` never ran when a Cairo struct gained a required field, so the test's hand-built calldata broke silently and only failed weeks later on a workflow-only PR

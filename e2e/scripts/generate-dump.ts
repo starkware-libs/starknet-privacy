@@ -14,7 +14,6 @@ import { gzipSync } from "zlib";
 import { join, dirname } from "path";
 import { tmpdir } from "os";
 import { fileURLToPath } from "url";
-import { constants } from "starknet";
 import { createPrivateTransfers } from "@starkware-libs/starknet-privacy-sdk";
 import {
   Devnet,
@@ -40,7 +39,6 @@ const BOB_VIEWING_KEY = BigInt("0xB0B");
 
 const devnet = new Devnet();
 const env = await devnet.initialize();
-const chainId = constants.StarknetChainId.SN_SEPOLIA;
 
 // The pool screens deposits, so the proving node signs each deposit's attestation with the
 // screener key the pool was deployed with.
@@ -48,14 +46,14 @@ const transfers = {
   alice: createPrivateTransfers({
     account: env.alice,
     viewingKeyProvider: { getViewingKey: async () => ALICE_VIEWING_KEY },
-    provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.node, env.chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   }),
   bob: createPrivateTransfers({
     account: env.bob,
     viewingKeyProvider: { getViewingKey: async () => BOB_VIEWING_KEY },
-    provingProvider: new ScreeningCallMockProofProvider(env.node, chainId),
+    provingProvider: new ScreeningCallMockProofProvider(env.node, env.chainId),
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   }),
@@ -126,6 +124,7 @@ writeFileSync(
   JSON.stringify(
     {
       timestamp: spawnTimestamp,
+      chain_id: env.chainId,
       contract_address: env.privacy.address,
       alice_address: env.alice.address,
       alice_viewing_key: "0x" + ALICE_VIEWING_KEY.toString(16),
