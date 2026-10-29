@@ -404,6 +404,46 @@ mod tests {
         });
     }
 
+    /// The Helm chart writes `$` in rendered TOML strings as `\u0024` so that a literal
+    /// value never reaches `expand_env_vars` as a placeholder. Expansion runs on the raw
+    /// text and must not decode escapes; TOML decodes them afterwards.
+    #[test]
+    fn test_load_keeps_unicode_escaped_placeholder_literal() {
+        let mut f = tempfile::NamedTempFile::new().unwrap();
+        f.write_all(
+            r#"
+[rpc]
+url = "http://rpc/\u0024{__TEST_ESCAPED_SET}/\u0024{__TEST_ESCAPED_MISSING}/\u0024\u0024"
+
+[indexer]
+ws_url = "ws://${__TEST_ESCAPED_SET}/ws"
+"#
+            .as_bytes(),
+        )
+        .unwrap();
+
+        with_locked_env(|| {
+            // SAFETY: env access is serialized by `ENV_LOCK`.
+            unsafe {
+                std::env::set_var("__TEST_ESCAPED_SET", "expanded");
+                std::env::remove_var("__TEST_ESCAPED_MISSING");
+            }
+
+            let config = ServiceConfig::load(f.path()).unwrap();
+
+            assert_eq!(
+                config.rpc.url,
+                "http://rpc/${__TEST_ESCAPED_SET}/${__TEST_ESCAPED_MISSING}/$$"
+            );
+            // The unescaped placeholder in the same file is expanded.
+            assert_eq!(config.indexer.ws_url, "ws://expanded/ws");
+
+            unsafe {
+                std::env::remove_var("__TEST_ESCAPED_SET");
+            }
+        });
+    }
+
     #[test]
     fn test_load_minimal_config() {
         let mut f = tempfile::NamedTempFile::new().unwrap();
