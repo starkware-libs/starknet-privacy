@@ -37,26 +37,31 @@ describe("ProofFacts Compatibility with Cairo", () => {
   it.each([
     // [6] of mainnet tx 0x56a224012f76e8451b9d22e7b6812801ec07fcef8ef74b871e3c9f735a215ba
     [
+      "SN_MAIN",
       constants.StarknetChainId.SN_MAIN,
       "0x5b3bc83b3a47231aa5f15e73309ef7e09e087bd4ace767656fe5d713f6e2d7a",
     ],
     // [6] of Sepolia tx 0x65a8e10fa2a2501b44dff6bce5b1fcbb63d9d1a50fa5f5ef7bdcfeb80b497ce
     [
+      "SN_SEPOLIA",
       constants.StarknetChainId.SN_SEPOLIA,
       "0x57ed4d5e20d617d8cc087a5882eae4f71d005172326be6439b2e1fd8b4dc57",
     ],
-  ])("computes the virtual OS config hash %s expects", (chainId, expectedConfigHash) => {
-    const proofFacts = buildProofFacts(
-      reference.poolAddress,
-      reference.poolClassHash,
-      reference.serializedActions,
-      BigInt(reference.baseBlockNumber),
-      "0x0",
-      chainId
-    );
+  ])(
+    "computes the virtual OS config hash %s expects",
+    (_chainName, chainId, expectedConfigHash) => {
+      const proofFacts = buildProofFacts(
+        reference.poolAddress,
+        reference.poolClassHash,
+        reference.serializedActions,
+        BigInt(reference.baseBlockNumber),
+        "0x0",
+        chainId
+      );
 
-    expect(proofFacts[6]).toBe(expectedConfigHash);
-  });
+      expect(proofFacts[6]).toBe(expectedConfigHash);
+    }
+  );
 
   it("buildProofFacts applies config overrides", () => {
     const proofFacts = buildProofFacts(

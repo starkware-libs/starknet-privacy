@@ -173,6 +173,13 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - Test names should precisely describe the scenario being verified
 - *Example:* `test_empty_collection` vs `test_no_new_items` convey different conditions
 
+### Give a table-driven test a label column instead of interpolating a case value
+- A title placeholder prints the value, so a case keyed on an encoded constant names itself in that
+  encoding and the report stops being readable. Add a column holding the case's name and substitute
+  that, leaving the value to the assertion
+- *Example:* `it.each` over `StarknetChainId` titled `the config hash %s expects` rendered
+  `the config hash 0x534e5f4d41494e expects`; a leading `"SN_MAIN"` column renders the chain's name
+
 ### A test must perform the transition its name claims
 - If the name says a property survives some change, the test has to *make* that change and assert the property on both sides of it. A test that only asserts the property in the steady state proves nothing about the change and silently duplicates whatever already covers the steady state
 - Assert that the change actually took effect, otherwise the surviving property is vacuous
