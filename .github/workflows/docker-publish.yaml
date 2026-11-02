@@ -57,6 +57,8 @@ jobs:
             proof-interceptor:
               - 'proof-interceptor/**'
               - 'sdk/**'
+              - 'package.json'
+              - 'package-lock.json'
               - 'deploy/proof-interceptor/**'
               - '.github/workflows/docker-publish.yaml'
 

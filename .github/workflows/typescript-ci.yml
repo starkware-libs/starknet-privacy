@@ -20,12 +20,18 @@ jobs:
           filters: |
             sdk:
               - 'sdk/**'
+              - 'package.json'
+              - 'package-lock.json'
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         if: steps.filter.outputs.sdk == 'true'
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: sdk/package-lock.json
+          # Keyed per install scope: `npm ci` in sdk/ installs only the SDK workspace, so sharing the
+          # root lockfile's key with full installs would fill that cache with only its packages.
+          cache-dependency-path: |
+            package-lock.json
+            sdk/package.json
       - if: steps.filter.outputs.sdk == 'true'
         run: npm ci && npm run lint
 
@@ -43,7 +49,9 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: sdk/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            sdk/package.json
 
       - name: Install npm dependencies
         run: npm ci
@@ -98,6 +106,8 @@ jobs:
           filters: |
             devnet:
               - 'sdk/**'
+              - 'package.json'
+              - 'package-lock.json'
               - 'packages/**'
               - 'Scarb.toml'
               - 'Scarb.lock'
@@ -108,7 +118,9 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-          cache-dependency-path: sdk/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            sdk/package.json
 
       - name: Install Scarb
         if: steps.filter.outputs.devnet == 'true'

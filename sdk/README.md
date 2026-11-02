@@ -6,7 +6,12 @@ TypeScript SDK for private transfers on Starknet.
 
 To publish a release:
 
-1. Bump `version` in `package.json` to the desired release version
+1. Bump `version` with `npm version <version> --no-git-tag-version` (it also updates the repo-root
+   `package-lock.json`). If the new version does not satisfy the client's SDK `peerDependencies`
+   range, bump that range in `client/package.json` too. A prerelease only satisfies a range within
+   the same `x.y.z`: `0.14.3-rc.9` fits `^0.14.3-rc.8`, but `0.14.4-rc.0` and `0.15.0` do not.
+   Client CI fails until the range covers the SDK version; check locally with
+   `npm run check:sdk-peer-range -w client`
 2. Authenticate with GitHub Packages:
    ```sh
    echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
