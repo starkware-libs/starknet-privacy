@@ -1,0 +1,21 @@
+{{- $prover := .Values.transactionProver -}}
+{{- $sidecar := $prover.proofInterceptor -}}
+{{- if $sidecar.enabled }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "privacy-starknet.componentName" (list . "proof-interceptor") }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "privacy-starknet.labels" (list . "transaction-prover") | nindent 4 }}
+data:
+  PORT: {{ $sidecar.port | quote }}
+  SCREENING_URL: {{ $sidecar.screening.url | quote }}
+  SCREENING_POOL_ADDRESS: {{ $sidecar.screening.poolAddress | quote }}
+  SCREENING_ANONYMIZER_ADDRESS: {{ $sidecar.screening.anonymizerAddress | quote }}
+  SCREENING_FAIL_OPEN: {{ $sidecar.screening.failOpen | quote }}
+  SCREENING_TIMEOUT_MS: {{ $sidecar.screening.timeoutMs | quote }}
+  SCREENING_MAX_RETRIES: {{ $sidecar.screening.maxRetries | quote }}
+  # The sidecar reads policy from the same node the prover proves against.
+  SCREENING_RPC_URL: {{ $prover.config.rpc_node_url | quote }}
+{{- end }}

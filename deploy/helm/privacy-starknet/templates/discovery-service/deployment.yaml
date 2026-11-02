@@ -49,15 +49,11 @@ spec:
           args:
             - --config
             - /etc/discovery-service/config.toml
+          # The other settings are in config.toml. API_HOST stays here because the image sets
+          # API_HOST, and an env var overrides the file.
           env:
-            - name: RPC_URL
-              value: {{ $discovery.config.rpcUrl | quote }}
-            - name: WS_URL
-              value: {{ $discovery.config.wsUrl | quote }}
             - name: API_HOST
               value: {{ printf "0.0.0.0:%v" $discovery.port | quote }}
-            - name: RUST_LOG
-              value: {{ $discovery.config.rustLog | quote }}
             {{- if $discovery.ohttp.enabled }}
             - name: OHTTP_KEY
               valueFrom:

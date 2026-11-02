@@ -9,8 +9,14 @@ metadata:
     {{- include "privacy-starknet.labels" $component | nindent 4 }}
 data:
   config.toml: |
+    [rpc]
+    url = {{ include "privacy-starknet.tomlString" $discovery.config.rpcUrl }}
+    [indexer]
+    ws_url = {{ include "privacy-starknet.tomlString" $discovery.config.wsUrl }}
     [api]
     health_max_lag_secs = {{ $discovery.config.api.health_max_lag_secs }}
+    [logging]
+    level = {{ include "privacy-starknet.tomlString" $discovery.config.rustLog }}
     {{- if $discovery.ohttp.enabled }}
     [ohttp]
     enabled = true

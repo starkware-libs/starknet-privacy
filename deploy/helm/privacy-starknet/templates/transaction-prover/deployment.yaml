@@ -24,6 +24,9 @@ spec:
     metadata:
       annotations:
         checksum/config: {{ include (print $.Template.BasePath "/transaction-prover/configmap.yaml") . | sha256sum }}
+        {{- if $sidecar.enabled }}
+        checksum/proof-interceptor-env: {{ include (print $.Template.BasePath "/transaction-prover/proof-interceptor-configmap.yaml") . | sha256sum }}
+        {{- end }}
         {{- if $prover.ohttp.enabled }}
         checksum/ohttp: {{ include (print $.Template.BasePath "/transaction-prover/secret.yaml") . | sha256sum }}
         {{- end }}
@@ -92,24 +95,10 @@ spec:
           securityContext:
             {{- toYaml . | nindent 12 }}
           {{- end }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "privacy-starknet.componentName" (list . "proof-interceptor") }}
           env:
-            - name: PORT
-              value: {{ $sidecar.port | quote }}
-            - name: SCREENING_URL
-              value: {{ $sidecar.screening.url | quote }}
-            - name: SCREENING_POOL_ADDRESS
-              value: {{ $sidecar.screening.poolAddress | quote }}
-            - name: SCREENING_ANONYMIZER_ADDRESS
-              value: {{ $sidecar.screening.anonymizerAddress | quote }}
-            - name: SCREENING_FAIL_OPEN
-              value: {{ $sidecar.screening.failOpen | quote }}
-            - name: SCREENING_TIMEOUT_MS
-              value: {{ $sidecar.screening.timeoutMs | quote }}
-            - name: SCREENING_MAX_RETRIES
-              value: {{ $sidecar.screening.maxRetries | quote }}
-            # The sidecar reads policy from the same node the prover proves against.
-            - name: SCREENING_RPC_URL
-              value: {{ $prover.config.rpc_node_url | quote }}
             - name: SCREENING_PARTNER_NAME
               valueFrom:
                 secretKeyRef:

@@ -78,3 +78,13 @@ Usage: {{ include "privacy-starknet.ohttpSecretName" (list . "discovery-service"
 {{- printf "%s-ohttp" (include "privacy-starknet.componentName" (list (first .) (index . 1))) }}
 {{- end }}
 {{- end }}
+
+{{/*
+TOML basic string. JSON string escapes are a subset of TOML's. `$` is written as a
+unicode escape because the discovery loader expands ${VAR} in the raw file before
+parsing, so a literal value must never reach it as a placeholder. DEL is escaped too:
+JSON leaves it raw, and neither the YAML block nor a TOML basic string allows it.
+*/}}
+{{- define "privacy-starknet.tomlString" -}}
+{{- ternary "" (toString .) (kindIs "invalid" .) | toRawJson | replace "$" "\\u0024" | replace "\u007f" "\\u007f" -}}
+{{- end }}

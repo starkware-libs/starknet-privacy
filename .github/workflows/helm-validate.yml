@@ -12,6 +12,7 @@ on:
     paths:
       - ".github/workflows/helm-validate.yml"
       - "deploy/helm/privacy-starknet/**"
+      - "deploy/helm/tests/**"
 
 permissions:
   contents: read
@@ -46,6 +47,10 @@ jobs:
           for values in "./${CHART_DIR}"/ci/*-values.yaml; do
             helm lint --strict "./${CHART_DIR}" -f "$values"
           done
+
+      # Config delivery contracts: rendered payloads, checksum scope, env channels.
+      - name: Config channel checks
+        run: python3 -m unittest discover -s deploy/helm/tests -v
 
   kubeconform:
     runs-on: ubuntu-latest
