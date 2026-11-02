@@ -102,6 +102,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - A prune, omit or strip step that exits 0 has not proven it removed anything; tool semantics often change across layouts and versions. Inspect the result (list the image's `node_modules`, the tarball's files) before a comment claims what is gone
 - *Example:* in the npm workspace, `npm prune --omit=dev -w sdk -w proof-interceptor` left eslint, vitest and typescript-eslint hoisted at the root, and npm 10's fresh `npm ci --omit=dev -w ...` still nested them; the image only lost them once a separate stage ran that install under npm 11
 
+### Read the whole lockfile diff after any npm command that rewrites it
+- `npm version`, `npm install` and `--package-lock-only` re-resolve the full tree with the local npm, so a one-field change can also drop or re-nest entries the committed lockfile's npm kept. Check that the diff contains only the intended lines; if it does not, edit the fields by hand and confirm with `npm ci --dry-run`
+- *Example:* bumping the SDK to 1.0.0 with `npm version -w sdk` also pruned 28 `e2e/node_modules/@esbuild/*` entries and `@emnapi/wasi-threads`; the release PR's lockfile change is the 13 lines for the versions, license, peer range and engines
+
 ### Check a cross-layer mirror case by case against the rule it mirrors
 - When one layer re-implements a rule another layer enforces (an off-chain resolver mirroring an on-chain match), enumerate the source rule's cases and state the mirror's answer for each. Do not reason from the mirror's own model of the world, which is where the blind spots live
 - A case the mirror folds into another (three different inputs all answering "nobody") is exactly where the two layers drift once the source rule changes
