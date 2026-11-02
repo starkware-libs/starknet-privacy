@@ -1,0 +1,242 @@
+name: npm Release
+
+# Publishes the SDK or the client to npmjs.
+#   - push of an `sdk-v<version>` / `client-v<version>` tag: verify, then publish
+#   - manual dispatch: pick the package. With `dry_run` (the default) every check runs, including
+#     `npm publish --dry-run`, but nothing is published. A real manual publish must be dispatched on
+#     the package's release tag, so every published version has a tag.
+#
+# The verify job packs the tarball; the publish job publishes that same tarball, so what was checked
+# is what ships. Tests are not rerun here: a real publish only accepts a commit on main, which CI has
+# already tested (the SDK suite also needs the Cairo toolchain).
+#
+# Publishing authenticates through npm trusted publishing (OIDC), bound on npmjs to this file and the
+# `npm-release` environment. A trusted publisher can only be attached to a package that already
+# exists, so a package's first version is published with the NPM_TOKEN environment secret; delete that
+# secret once both packages have a trusted publisher.
+
+on:
+  push:
+    tags:
+      - "sdk-v*"
+      - "client-v*"
+  workflow_dispatch:
+    inputs:
+      package:
+        description: Package to release
+        type: choice
+        options: [sdk, client]
+        required: true
+      dry_run:
+        description: Run every check but do not publish
+        type: boolean
+        default: true
+
+concurrency:
+  group: npm-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: "24"
+  # Trusted publishing needs npm >= 11.5.1, which Node 24's bundled npm may predate.
+  NPM_VERSION: "11.6.2"
+  SDK_NAME: "@starkware-libs/starknet-privacy-sdk"
+
+jobs:
+  verify:
+    name: Verify ${{ inputs.package || github.ref_name }}
+    runs-on: ubuntu-latest
+    outputs:
+      name: ${{ steps.release.outputs.name }}
+      version: ${{ steps.release.outputs.version }}
+      dist_tag: ${{ steps.release.outputs.dist_tag }}
+      dry_run: ${{ steps.release.outputs.dry_run }}
+      tarball: ${{ steps.pack.outputs.tarball }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          # Full history so a real publish can check the commit is on main.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+          # Same install scope and key as client-ci (`npm ci -w sdk -w client`).
+          cache-dependency-path: |
+            package-lock.json
+            client/package.json
+
+      - name: Install npm ${{ env.NPM_VERSION }}
+        run: npm install -g "npm@$NPM_VERSION"
+
+      - name: Resolve package, version and dist-tag
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+          INPUT_PACKAGE: ${{ inputs.package }}
+          INPUT_DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          if [ "$EVENT_NAME" = "push" ]; then
+            PACKAGE="${REF_NAME%%-v*}"
+            DRY_RUN=false
+          else
+            PACKAGE="$INPUT_PACKAGE"
+            DRY_RUN="$INPUT_DRY_RUN"
+          fi
+          case "$PACKAGE" in
+            sdk | client) ;;
+            *) echo "::error::Unknown package '$PACKAGE' (ref $REF_NAME)"; exit 1 ;;
+          esac
+
+          NAME=$(node -p "require('./$PACKAGE/package.json').name")
+          VERSION=$(node -p "require('./$PACKAGE/package.json').version")
+          RELEASE_TAG="$PACKAGE-v$VERSION"
+
+          if [ "$DRY_RUN" != "true" ]; then
+            if [ "$REF_TYPE" != "tag" ] || [ "$REF_NAME" != "$RELEASE_TAG" ]; then
+              echo "::error::Publishing $NAME@$VERSION must run on tag $RELEASE_TAG, not $REF_TYPE '$REF_NAME'. Bump $PACKAGE/package.json or fix the tag."
+              exit 1
+            fi
+            git fetch --quiet origin main
+            if ! git merge-base --is-ancestor HEAD origin/main; then
+              echo "::error::Tag $RELEASE_TAG points at a commit that is not on main"
+              exit 1
+            fi
+          fi
+
+          # npm 11 refuses to publish a prerelease without --tag, and `next` keeps `latest` on the last
+          # stable release.
+          if [[ "$VERSION" == *-* ]]; then DIST_TAG=next; else DIST_TAG=latest; fi
+
+          {
+            echo "package=$PACKAGE"
+            echo "name=$NAME"
+            echo "version=$VERSION"
+            echo "dist_tag=$DIST_TAG"
+            echo "dry_run=$DRY_RUN"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Check the version is not on npmjs yet
+        env:
+          NAME: ${{ steps.release.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+        run: |
+          # `npm view` fails for a package that was never published; that counts as not published.
+          PUBLISHED=$(npm view "$NAME@$VERSION" version 2>/dev/null || true)
+          if [ -n "$PUBLISHED" ]; then
+            echo "::error::$NAME@$VERSION is already on npmjs; versions cannot be republished"
+            exit 1
+          fi
+
+      # The client links the workspace SDK and type-checks against its ./dist, so the SDK is built
+      # for either package.
+      - name: Install workspace and build SDK
+        run: npm ci -w sdk -w client && npm run build -w sdk
+
+      - name: Build SDK browser bundles
+        if: steps.release.outputs.package == 'sdk'
+        run: npm run build:browser -w sdk
+
+      - name: Build client
+        if: steps.release.outputs.package == 'client'
+        run: npm run build -w client
+
+      - name: Lint
+        run: npm run lint -w "$PACKAGE"
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+
+      - name: Check the client's SDK peer range
+        if: steps.release.outputs.package == 'client'
+        run: |
+          npm run check:sdk-peer-range -w client
+          PEER_RANGE=$(node -p "require('./client/package.json').peerDependencies[process.env.SDK_NAME]")
+          RESOLVED=$(npm view "$SDK_NAME@$PEER_RANGE" version 2>/dev/null || true)
+          if [ -z "$RESOLVED" ]; then
+            echo "::error::No $SDK_NAME version on npmjs satisfies the client's peer range $PEER_RANGE; publish the SDK first"
+            exit 1
+          fi
+
+      - name: Pack
+        id: pack
+        env:
+          PACKAGE: ${{ steps.release.outputs.package }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/pack"
+          TARBALL=$(npm pack -w "$PACKAGE" --pack-destination "$RUNNER_TEMP/pack" --json | jq -r '.[0].filename')
+          echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+      - name: Publish (dry run)
+        env:
+          TARBALL: ${{ steps.pack.outputs.tarball }}
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+        run: npm publish "$RUNNER_TEMP/pack/$TARBALL" --dry-run --access public --tag "$DIST_TAG"
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: ${{ steps.pack.outputs.tarball }}
+          path: ${{ runner.temp }}/pack/${{ steps.pack.outputs.tarball }}
+          if-no-files-found: error
+
+      - name: Summary
+        env:
+          NAME: ${{ steps.release.outputs.name }}
+          VERSION: ${{ steps.release.outputs.version }}
+          DIST_TAG: ${{ steps.release.outputs.dist_tag }}
+          DRY_RUN: ${{ steps.release.outputs.dry_run }}
+        run: |
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry run: \`$NAME@$VERSION\` passed every check and would publish under \`$DIST_TAG\`. Nothing was published." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Verified \`$NAME@$VERSION\`; the publish job releases it under \`$DIST_TAG\`." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  publish:
+    name: Publish ${{ needs.verify.outputs.name }}@${{ needs.verify.outputs.version }}
+    needs: verify
+    if: needs.verify.outputs.dry_run != 'true'
+    runs-on: ubuntu-latest
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          registry-url: https://registry.npmjs.org
+
+      - name: Install npm ${{ env.NPM_VERSION }}
+        run: npm install -g "npm@$NPM_VERSION"
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: ${{ needs.verify.outputs.tarball }}
+          path: ${{ runner.temp }}/pack
+
+      - name: Publish to npmjs
+        env:
+          # Empty once the bootstrap secret is deleted; npm then authenticates through OIDC.
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          TARBALL: ${{ needs.verify.outputs.tarball }}
+          DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+        run: npm publish "$RUNNER_TEMP/pack/$TARBALL" --provenance --access public --tag "$DIST_TAG"
+
+      - name: Summary
+        env:
+          NAME: ${{ needs.verify.outputs.name }}
+          VERSION: ${{ needs.verify.outputs.version }}
+          DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
+        run: |
+          {
+            echo "Published \`$NAME@$VERSION\` to npmjs under \`$DIST_TAG\`."
+            echo '```'
+            echo "npm install $NAME@$VERSION"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
