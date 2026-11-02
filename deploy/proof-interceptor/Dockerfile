@@ -13,6 +13,8 @@
 # Docker pulls by the digest and ignores the tag; the tag only shows which
 # Node version the digest is. When bumping Node, change both.
 ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e10fecae2e30ec9e735122f38d
+# Pinned the same way: `prod-deps` builds the node_modules the runtime ships.
+ARG BUILD_NODE_IMAGE=node:24.22.2-slim@sha256:c86ecead9e55a5210ac1727de38a4ca840bf03dcaf34dc9749addbf383b1920c
 
 # Both install stages need only the workspace manifests and the root lockfile;
 # sources are copied later so source edits don't invalidate the install layers.
@@ -20,7 +22,7 @@ ARG NODE_IMAGE=node:22.23.4-slim@sha256:de170b39439eb0e5a3444ad7d60b015614a381e1
 # `--omit=dev -w ...` install still nests and hoists other workspace members'
 # devDependencies. All production dependencies are pure JS, so they run
 # unchanged on the node:22 runtime.
-FROM node:24-slim AS manifests
+FROM ${BUILD_NODE_IMAGE} AS manifests
 WORKDIR /app
 COPY package.json package-lock.json ./
 COPY sdk/package.json ./sdk/
