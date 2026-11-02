@@ -217,12 +217,12 @@ async function runDeposit() {
 
   const node = new RpcProvider({ nodeUrl: RPC });
   const adminAccount = accountOn(node, {
-        address: admin.address,
+    address: admin.address,
     signer: admin.privateKey,
     cairoVersion: "1",
   });
   const aliceAccount = accountOn(node, {
-        address: alice.address,
+    address: alice.address,
     signer: alice.privateKey,
     cairoVersion: "1",
   });
@@ -238,9 +238,7 @@ async function runDeposit() {
     },
     { tip: 0n, resourceBounds: ERC20_RESOURCE_BOUNDS },
   );
-  const mintReceipt = await node.waitForTransaction(
-    mintTx.transaction_hash,
-  );
+  const mintReceipt = await node.waitForTransaction(mintTx.transaction_hash);
   if (!mintReceipt.isSuccess()) {
     console.error("Mint failed");
     process.exit(1);
@@ -343,12 +341,12 @@ async function runTransfer() {
 
   const node = new RpcProvider({ nodeUrl: RPC });
   const adminAccount = accountOn(node, {
-        address: admin.address,
+    address: admin.address,
     signer: admin.privateKey,
     cairoVersion: "1",
   });
   const aliceAccount = accountOn(node, {
-        address: alice.address,
+    address: alice.address,
     signer: alice.privateKey,
     cairoVersion: "1",
   });
