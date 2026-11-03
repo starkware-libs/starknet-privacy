@@ -95,6 +95,7 @@ pub async fn find_last_note_index<S: IViews>(
     .await?;
     budget.reclaim((max_bisect_steps - bisect_step_count) * COST_NOTE_PROBING);
     cursor.total_n_notes = Some(boundary + 1);
+    cursor.last_note_index = Some(boundary);
     Ok((cache, false))
 }
 
@@ -566,5 +567,37 @@ mod tests {
             remaining_after_first,
             "no budget consumed"
         );
+    }
+
+    /// Regression: cursor.last_note_index must be set after boundary finding.
+    #[tokio::test]
+    async fn test_find_last_note_index_sets_cursor_last_note_index() {
+        let fixture = load_devnet_fixture();
+        let backend = MockBackend::new(fixture.slots);
+
+        let channel_key = get_channel_key(
+            &backend,
+            fixture.constants.alice_address,
+            &fixture.constants.alice_viewing_key,
+        )
+        .await
+        .expect("Alice should have at least one channel");
+
+        let token = get_subchannel_token(&backend, &channel_key)
+            .await
+            .expect("should have a subchannel");
+
+        let mut cursor = SubchannelCursor::default();
+        let budget = IoBudget::new(500);
+
+        let (cache, has_more) =
+            find_last_note_index(&backend, &channel_key, token, &mut cursor, 30, &budget)
+                .await
+                .unwrap();
+
+        assert!(!has_more);
+        assert!(!cache.is_empty());
+        let boundary = *cache.keys().max().expect("cache non-empty");
+        assert_eq!(cursor.last_note_index, Some(boundary));
     }
 }
