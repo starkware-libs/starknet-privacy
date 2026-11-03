@@ -85,6 +85,24 @@ describe("SimplePrivateTransfers", () => {
     expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(940n); // 1000 - 100 + 40
   });
 
+  it("one instance spends notes in consecutive operations", async () => {
+    const { mocknet, env, transfers } = testEnv;
+    const ace = toBigInt(env.ace);
+
+    mocknet.executeOutside(await transfers.alice.build().register().execute());
+
+    const alice = new SimplePrivateTransfersImpl(transfers.alice);
+
+    // The second withdraw is the first to discover notes from the cursor the first one left
+    mocknet.executeOutside(await alice.deposit(env.ace, 100n));
+    mocknet.executeOutside(await alice.withdraw(env.ace, env.alice.address, 40n));
+    mocknet.executeOutside(await alice.withdraw(env.ace, env.alice.address, 20n));
+
+    const aliceNotes = (await transfers.alice.discoverNotes()).notes.get(ace) ?? [];
+    expect(aliceNotes.map((note) => note.amount)).toEqual([40n]);
+    expect(env.contracts.get(ace).balanceOf(env.alice.address)).toBe(960n); // 1000 - 100 + 40 + 20
+  });
+
   it("withdraw keeps surplus with the sender when paying a third party", async () => {
     const { mocknet, env, transfers } = testEnv;
     const ace = toBigInt(env.ace);

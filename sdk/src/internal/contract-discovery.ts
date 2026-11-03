@@ -26,6 +26,9 @@ export type { PoolContractInterface, NoteData } from "./pool-contract-interface.
 class NotesDiscovery {
   private readonly tracker = new Tracker();
   private readonly notes = new AddressMap<Note[]>(() => []);
+  // With a cursor, discover() scans a known subchannel twice, from the cursor's note index and from
+  // 0 once discoverSubchannels finds it again, so both scans reach the same notes.
+  private readonly discoveredNoteIds = new Set<bigint>();
   private readonly cursor: NotesCursor;
   constructor(
     private readonly address: StarknetAddressBigint,
@@ -217,6 +220,9 @@ class NotesDiscovery {
       amount,
       isOpenNote ? "open" : "encrypted"
     );
+    // No await between this check and the push, so overlapping scans cannot both add the note
+    if (this.discoveredNoteIds.has(noteId)) return true;
+    this.discoveredNoteIds.add(noteId);
     this.notes.get(token)!.push({
       id: noteId,
       amount,

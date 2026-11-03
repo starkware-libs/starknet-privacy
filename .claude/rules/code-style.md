@@ -188,6 +188,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - *Example:* `it.each` over `StarknetChainId` titled `the config hash %s expects` rendered
   `the config hash 0x534e5f4d41494e expects`; a leading `"SN_MAIN"` column renders the chain's name
 
+### A test harness must not do the caller's step for it
+- A spy that performs work the real caller does afterwards (submitting, awaiting, committing) moves that work inside the code under test, so the test proves a guarantee production never gets. Drive the code the way its callers do, and make the step outside the call explicit in the test body
+- *Example:* a per-instance operation queue looked like it stopped two `SimplePrivateTransfers` operations spending the same note, because the test's `execute` spy submitted each proof to the mocknet. Real callers submit the proof `execute` returns after it resolves, outside the queue, so the next operation still selected the same note
+
 ### A test must perform the transition its name claims
 - If the name says a property survives some change, the test has to *make* that change and assert the property on both sides of it. A test that only asserts the property in the steady state proves nothing about the change and silently duplicates whatever already covers the steady state
 - Assert that the change actually took effect, otherwise the surviving property is vacuous

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Fixed
+
+- A registry reused across operations no longer spends one note twice. With a cursor,
+  `ContractDiscoveryProvider.discoverNotes` returned every unspent note of a known channel twice,
+  and auto note selection picked both copies, so the second note-spending operation from one
+  registry, including every `SimplePrivateTransfers` instance, failed proving with
+  `Nullifier ... already exists`. Discovery now returns each note once, and auto selection skips a
+  note it has already selected, whatever the registry lists.
+
 ## 0.14.4-RC.0
 
 ### Breaking
