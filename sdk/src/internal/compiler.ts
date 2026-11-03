@@ -716,6 +716,7 @@ export class ActionCompiler {
           if (usedNoteIds.has(note.id)) continue; // Skip used notes
 
           actions.useNotes.push({ token, note });
+          usedNoteIds.set(note.id, true); // a registry can list a note twice; spend it once
           balance += note.amount;
           if (balance >= 0n && options?.autoSelectNotes !== "all") break; // Deficit covered
         }
