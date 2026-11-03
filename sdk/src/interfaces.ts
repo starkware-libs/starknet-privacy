@@ -19,8 +19,8 @@ import type { AdditionalData, ProvingRetryOptions } from "./internal/proving-ser
 export type Amount = bigint;
 
 /**
- * Maximum valid viewing key value (half the STARK curve order).
- * Private keys must be in range [1, MAX_VIEWING_KEY].
+ * Exclusive upper bound for viewing keys (half the STARK curve order, the contract's HALF_ORDER).
+ * Private keys must be in range [1, MAX_VIEWING_KEY).
  */
 export const MAX_VIEWING_KEY = ec.starkCurve.CURVE.n / 2n;
 

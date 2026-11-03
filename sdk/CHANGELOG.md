@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Fixed
+
+- `assertViewingKey` accepted `MAX_VIEWING_KEY`, which the pool contract rejects as
+  `PRIVATE_KEY_NOT_CANONICAL`. It now requires `1 <= k < MAX_VIEWING_KEY`.
+
 ## 0.14.4-RC.0
 
 ### Breaking
