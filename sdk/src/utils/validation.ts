@@ -18,11 +18,13 @@ export function assert(condition: unknown, message: () => string): asserts condi
 }
 
 /**
- * Asserts that a viewing key is valid (in range [1, MAX_VIEWING_KEY]).
+ * Asserts that a viewing key is valid (in range [1, MAX_VIEWING_KEY)), matching the pool
+ * contract's `is_canonical_key` check (`key < HALF_ORDER`).
  * @throws Error if the viewing key is out of range
  */
 export function assertViewingKey(viewingKey: ViewingKey): void {
-  num.assertInRange(viewingKey, 1n, MAX_VIEWING_KEY, "viewingKey");
+  // `num.assertInRange` is inclusive on both bounds, and the contract rejects `MAX_VIEWING_KEY`.
+  num.assertInRange(viewingKey, 1n, MAX_VIEWING_KEY - 1n, "viewingKey");
 }
 
 /**
