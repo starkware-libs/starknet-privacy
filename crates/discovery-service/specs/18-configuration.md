@@ -60,6 +60,7 @@ max_cursor_channels = 256
 max_cursor_subchannels_per_channel = 64
 max_outgoing_recipients = 64
 server_budget = 10000
+history_time_limit = 10
 max_request_body_bytes = 102400
 ```
 
@@ -79,6 +80,7 @@ These env vars override the corresponding config file values at runtime:
 | `RUST_LOG` | `logging.level` | `info` |
 | `LOG_FORMAT` | `logging.format` | `text` (accepts `text` or `json`, case-insensitive) |
 | `SERVER_BUDGET` | `limits.server_budget` | `10000` |
+| `HISTORY_TIME_LIMIT_SECS` | `limits.history_time_limit` | `10` |
 | `TLS_CERT_PATH` | `api.tls.cert_path` | — (TLS disabled) |
 | `TLS_KEY_PATH` | `api.tls.key_path` | — (TLS disabled) |
 

@@ -19,6 +19,12 @@ use crate::io_budget::IoBudget;
 use crate::privacy_pool::events::{IEvents, PrivacyPoolEventContent};
 use crate::privacy_pool::views::IViews;
 
+/// Blocks per `get_withdrawal_events` call within a gap window. Keeps each call
+/// short enough that the budget's deadline is checked often: an RPC node pages
+/// a key-filtered event query over a wide range, so one call over the whole
+/// window can run far past the deadline.
+const GAP_SCAN_SUB_WINDOW_BLOCKS: u64 = 64 * EVENTS_COST_CHUNK_SIZE as u64;
+
 /// Outcome of one [`process_next_block`] iteration.
 enum ScanStep {
     /// Committed a gap window and its anchoring note block; keep scanning.
@@ -42,8 +48,9 @@ enum ScanStep {
 ///    via [`fetch_aggregated_block_events`].
 ///
 /// Budget is consumed incrementally; the scan stops at the first iteration that
-/// cannot make further progress within budget, with the cursor left at the
-/// frontier so the next page continues. A page that makes no progress at all
+/// cannot make further progress within budget, or at the first resumable point
+/// after the budget's deadline, with the cursor left at the frontier so the
+/// next page continues. A page that makes no progress at all
 /// (no transaction and no cursor movement) returns `InsufficientBudget`
 /// instead, since a same-budget retry would repeat it. Returns transactions
 /// sorted by `block_number` descending.
@@ -86,6 +93,9 @@ pub async fn fetch_transactions<B: IViews + IEvents>(
         )
         .await
         {
+            // The deadline is checked only after a committed step, so a page
+            // that reaches it has always moved the cursor.
+            Ok(ScanStep::Advanced) if budget.deadline_reached() => break,
             Ok(ScanStep::Advanced) => continue,
             Ok(ScanStep::Halted) => break,
             Ok(ScanStep::Exhausted) => {
@@ -433,7 +443,8 @@ async fn fetch_aggregated_block_events<E: IEvents>(
 /// Returns the lowest block scanned (`window_bottom`); the caller advances the
 /// cursor to `window_bottom - 1`. When the full gap was covered in this call,
 /// `window_bottom == from_block`; otherwise it is above `from_block` and the
-/// caller resumes the remainder on the next page.
+/// caller resumes the remainder on the next page. The scan also stops early, at
+/// a sub-window boundary, once the budget's deadline is reached.
 ///
 /// `to_block_id` is the `BlockId` used for the window top, so a fresh scan can
 /// pass the snapshot's pinned tag (e.g. `PreConfirmed`) to include
@@ -472,29 +483,52 @@ async fn fetch_gap_withdrawals_chunked<E: IEvents>(
     let granted_span = (chunks_granted as u64).saturating_mul(EVENTS_COST_CHUNK_SIZE as u64);
     let window_bottom = to_block.saturating_sub(granted_span - 1).max(from_block);
 
-    let events = backend
-        .get_withdrawal_events(user_address, BlockId::Number(window_bottom), to_block_id)
-        .await?;
+    // Walk the window top-down in sub-windows so the budget's deadline can end
+    // the scan at a sub-window boundary. The first sub-window always runs, so a
+    // call reaching the deadline has still moved the frontier down.
+    let mut sub_window_top = to_block;
+    let mut sub_window_top_id = to_block_id;
+    let scanned_bottom = loop {
+        let sub_window_bottom = sub_window_top
+            .saturating_sub(GAP_SCAN_SUB_WINDOW_BLOCKS - 1)
+            .max(window_bottom);
+        let events = backend
+            .get_withdrawal_events(
+                user_address,
+                BlockId::Number(sub_window_bottom),
+                sub_window_top_id,
+            )
+            .await?;
 
-    trace!(
-        from_block,
-        to_block,
-        window_bottom,
-        chunks_granted,
-        num_withdrawal_events = events.len(),
-        "withdrawal_events: chunked window fetched"
-    );
+        trace!(
+            from_block,
+            to_block,
+            sub_window_bottom,
+            sub_window_top,
+            chunks_granted,
+            num_withdrawal_events = events.len(),
+            "withdrawal_events: gap sub-window fetched"
+        );
 
-    for event in events {
-        let tx = transactions
-            .entry(event.transaction_hash)
-            .or_insert_with(|| HistoryTransaction::new(event.block_number, event.transaction_hash));
-        if let PrivacyPoolEventContent::Withdrawal(withdrawal) = event.content {
-            tx.withdrawals.push(withdrawal);
+        for event in events {
+            let tx = transactions
+                .entry(event.transaction_hash)
+                .or_insert_with(|| {
+                    HistoryTransaction::new(event.block_number, event.transaction_hash)
+                });
+            if let PrivacyPoolEventContent::Withdrawal(withdrawal) = event.content {
+                tx.withdrawals.push(withdrawal);
+            }
         }
-    }
 
-    Ok(window_bottom)
+        if sub_window_bottom == window_bottom || budget.deadline_reached() {
+            break sub_window_bottom;
+        }
+        sub_window_top = sub_window_bottom.saturating_sub(1);
+        sub_window_top_id = BlockId::Number(sub_window_top);
+    };
+
+    Ok(scanned_bottom)
 }
 
 /// Fetches the synthetic registration transaction for the user.
@@ -552,6 +586,7 @@ mod tests {
     use crate::privacy_pool::types::SecretFelt;
     use crate::storage_backend::{MockBackend, RawStorageAccess, StorageError};
     use starknet_core::types::StorageResult;
+    use std::time::Instant;
 
     const ADDRESS: Felt = Felt::from_hex_unchecked("0xABCD");
     const OTHER_ADDRESS: Felt = Felt::from_hex_unchecked("0x9999");
@@ -1334,6 +1369,89 @@ mod tests {
         assert_eq!(withdrawal_tx.withdrawals.len(), 1);
         assert_eq!(withdrawal_tx.withdrawals[0].amount, 50);
         assert!(cursor.history_complete);
+    }
+
+    #[tokio::test]
+    async fn expired_deadline_ends_gap_scan_after_one_sub_window() {
+        const TX_HASH_FAR_WITHDRAWAL: Felt = Felt::from_hex_unchecked("0x1009");
+        const GAP_TOP: u64 = 1_100_000;
+
+        let (backend, mut cursor) = FixtureBuilder::new()
+            .note(0, 100, TX_HASH_1)
+            .withdrawal(50, 150, TX_HASH_FAR_WITHDRAWAL)
+            .build(Some(0));
+        cursor.begin_block_number = Some(GAP_TOP);
+        let expired_budget = || IoBudget::new(10_000).with_deadline(Instant::now());
+
+        let page1 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &expired_budget())
+            .await
+            .unwrap();
+        assert!(page1.is_empty());
+        assert!(!cursor.history_complete);
+        assert_eq!(
+            cursor.begin_block_number,
+            Some(GAP_TOP - GAP_SCAN_SUB_WINDOW_BLOCKS),
+            "an expired deadline scans exactly one sub-window"
+        );
+
+        // Every page still moves the cursor, so the walk reaches the note.
+        let max_pages = GAP_TOP / GAP_SCAN_SUB_WINDOW_BLOCKS + 3;
+        let mut all_transactions = page1;
+        for _ in 0..max_pages {
+            if cursor.history_complete {
+                break;
+            }
+            let previous_bound = cursor.begin_block_number;
+            let page = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &expired_budget())
+                .await
+                .unwrap();
+            assert!(
+                !page.is_empty()
+                    || cursor.history_complete
+                    || cursor.begin_block_number < previous_bound,
+                "page made no progress"
+            );
+            all_transactions.extend(page);
+        }
+        assert!(cursor.history_complete);
+        let blocks: Vec<u64> = all_transactions.iter().map(|tx| tx.block_number).collect();
+        assert_eq!(blocks, vec![150, 100]);
+    }
+
+    #[tokio::test]
+    async fn expired_deadline_ends_page_after_note_block() {
+        let fixture = || {
+            FixtureBuilder::new()
+                .note(0, 10, TX_HASH_1)
+                .note(1, 20, TX_HASH_2)
+                .deposit(100, 10, TX_HASH_1)
+                .withdrawal(50, 20, TX_HASH_2)
+                .build(Some(1))
+        };
+
+        // Control: without a deadline both note blocks fit in one page.
+        let (backend, mut cursor) = fixture();
+        let unbounded_page =
+            fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &IoBudget::new(1000))
+                .await
+                .unwrap();
+        assert_eq!(unbounded_page.len(), 2);
+
+        let (backend, mut cursor) = fixture();
+        let expired_budget = || IoBudget::new(1000).with_deadline(Instant::now());
+        let page1 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &expired_budget())
+            .await
+            .unwrap();
+        assert_eq!(page1.len(), 1);
+        assert_eq!(page1[0].block_number, 20);
+        assert_eq!(cursor.begin_block_number, Some(19));
+        assert!(!cursor.history_complete);
+
+        let page2 = fetch_transactions(&backend, ADDRESS, &mut cursor, 10, &expired_budget())
+            .await
+            .unwrap();
+        assert_eq!(page2.len(), 1);
+        assert_eq!(page2[0].block_number, 10);
     }
 
     #[tokio::test]
