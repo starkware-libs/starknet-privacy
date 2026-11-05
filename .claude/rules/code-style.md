@@ -104,7 +104,7 @@ Apply these guidelines when writing or reviewing code in this codebase.
 
 ### Read the whole lockfile diff after any npm command that rewrites it
 - `npm version`, `npm install` and `--package-lock-only` re-resolve the full tree with the local npm, so a one-field change can also drop or re-nest entries the committed lockfile's npm kept. Check that the diff contains only the intended lines; if it does not, edit the fields by hand and confirm with `npm ci --dry-run`
-- *Example:* bumping the SDK to 1.0.0 with `npm version -w sdk` also pruned 28 `e2e/node_modules/@esbuild/*` entries and `@emnapi/wasi-threads`; the release PR's lockfile change is the 13 lines for the versions, license, peer range and engines
+- *Example:* bumping the SDK to 1.0.0 with `npm version -w sdk` also pruned 26 orphaned `e2e/node_modules/@esbuild/*` entries and `@emnapi/wasi-threads`; the release PR's lockfile change is the 13 lines for the versions, license, peer range and engines
 
 ### Check a cross-layer mirror case by case against the rule it mirrors
 - When one layer re-implements a rule another layer enforces (an off-chain resolver mirroring an on-chain match), enumerate the source rule's cases and state the mirror's answer for each. Do not reason from the mirror's own model of the world, which is where the blind spots live
