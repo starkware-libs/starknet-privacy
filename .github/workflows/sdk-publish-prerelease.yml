@@ -1,4 +1,4 @@
-name: SDK Branch Tarball
+name: SDK Publish Prerelease
 
 # Packs the SDK from any branch as a `<x.y.z>-<branch>.<sha>` tarball and uploads it as a workflow
 # artifact for testing. Branch builds never go to npmjs: a version published there is public and

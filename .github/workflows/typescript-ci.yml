@@ -75,6 +75,10 @@ jobs:
       - name: Regenerate Cairo contract artifacts
         run: npm run generate
 
+      # npm releases ship the committed generated files without regenerating them.
+      - name: Check generated artifacts match the Cairo sources
+        run: git diff --exit-code
+
       - name: Fetch proving API spec
         env:
           SEQUENCER_SPEC_REF: "avi/privacy/add-rpc-spec"
