@@ -102,6 +102,10 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - A prune, omit or strip step that exits 0 has not proven it removed anything; tool semantics often change across layouts and versions. Inspect the result (list the image's `node_modules`, the tarball's files) before a comment claims what is gone
 - *Example:* in the npm workspace, `npm prune --omit=dev -w sdk -w proof-interceptor` left eslint, vitest and typescript-eslint hoisted at the root, and npm 10's fresh `npm ci --omit=dev -w ...` still nested them; the image only lost them once a separate stage ran that install under npm 11
 
+### A lockfile `npm ci` accepts can still describe an invalid tree
+- `npm ci` installs whatever the lockfile places and never checks that each hoisted copy satisfies its dependents' ranges; `npm install` trusts that placement too and will not move or re-add entries. Run `npm ls --all` after merging, seeding or hand-editing a lockfile, and treat any `invalid`, `missing` or `extraneous` line as a broken tree
+- *Example:* seeding the root workspace lockfile from the per-package lockfiles left `mime-types@2.1.35` hoisted for `express@5` (needs `^3`) and swapped the root and nested copies of `balanced-match` and `eslint-visitor-keys`; every install and test still passed
+
 ### Check a cross-layer mirror case by case against the rule it mirrors
 - When one layer re-implements a rule another layer enforces (an off-chain resolver mirroring an on-chain match), enumerate the source rule's cases and state the mirror's answer for each. Do not reason from the mirror's own model of the world, which is where the blind spots live
 - A case the mirror folds into another (three different inputs all answering "nobody") is exactly where the two layers drift once the source rule changes
