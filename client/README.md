@@ -19,6 +19,13 @@ npm install @starkware-libs/starknet-privacy-client @starkware-libs/starknet-pri
 In this repo, `client` and `sdk` are npm workspaces: run `npm ci` at the repo root and the client
 links the local `sdk/`.
 
+## Publishing
+
+The client is released like the SDK (see the SDK README's Publishing section), with
+`npm version <version> -w client --no-git-tag-version`, entries in `client/CHANGELOG.md` and a
+`client-v<version>` tag. Publish the SDK first: the `npm Release` workflow refuses a client whose
+SDK peer range no version on npmjs satisfies.
+
 ## Signers
 
 The `./signers` subpath exports `Snip12CallSetSigner` (legacy Starknet wallets) and

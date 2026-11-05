@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+## 1.0.0
+
+The SDK now has its own semantic version, starting at 1.0.0 and continuing from 0.14.4-RC.0.
+Earlier versions followed the privacy release tags (`PRIVACY-*`); the README's Versioning section
+lists which privacy release each SDK version is tested with.
+
+### Breaking
+
+- Published to npmjs instead of GitHub Packages. Remove
+  `@starkware-libs:registry=https://npm.pkg.github.com` from `.npmrc` to install it. Versions up to
+  0.14.4-RC.0 remain on GitHub Packages only.
+
+### Changed
+
+- `license` is now Apache-2.0, matching the repository, and the package ships the license text.
+- `engines` declares Node.js >= 24, which the SDK already required.
+
 ## 0.14.4-RC.0
 
 ### Breaking
