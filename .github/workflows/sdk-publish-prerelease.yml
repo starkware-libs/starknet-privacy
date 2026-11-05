@@ -1,15 +1,19 @@
 name: SDK Publish Prerelease
 
+# Packs the SDK from any branch as a `<x.y.z>-<branch>.<sha>` tarball and uploads it as a workflow
+# artifact for testing. Branch builds never go to npmjs: a version published there is public and
+# permanent, and since prerelease identifiers compare lexically, a branch name sorting after `rc`
+# would satisfy dapps' `^x.y.z-rc.N` ranges. Releases go through npm-release.yml.
+
 on:
   workflow_dispatch:
 
 jobs:
-  publish:
-    name: Publish branch prerelease to GitHub Packages
+  pack:
+    name: Pack branch tarball
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      packages: write
     defaults:
       run:
         working-directory: sdk
@@ -19,8 +23,6 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-          registry-url: https://npm.pkg.github.com
-          scope: '@starkware-libs'
           cache: 'npm'
           # Keyed per install scope: `npm ci` in sdk/ installs only the SDK workspace, so sharing the
           # root lockfile's key with full installs would fill that cache with only its packages.
@@ -31,7 +33,7 @@ jobs:
       - name: Install npm dependencies
         run: npm ci
 
-      - name: Compute prerelease version
+      - name: Compute branch version
         id: version
         env:
           REF_NAME: ${{ github.ref_name }}
@@ -45,23 +47,16 @@ jobs:
           NEW_VERSION="${BASE_CLEAN}-${BRANCH}.${SHORT_SHA}"
           npm pkg set version="$NEW_VERSION"
           echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=branch-${BRANCH}" >> "$GITHUB_OUTPUT"
 
+      # Same build as npm-release.yml, so the tarball matches what a release ships.
       - name: Build
-        run: npm run build
+        run: npm run build && npm run build:browser
 
       - name: Pack tarball
         id: pack
         run: |
           TARBALL=$(npm pack --silent)
           echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
-      - name: Publish to GitHub Packages
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DIST_TAG: ${{ steps.version.outputs.tag }}
-          TARBALL: ${{ steps.pack.outputs.tarball }}
-        run: npm publish "$TARBALL" --tag "$DIST_TAG"
 
       - name: Upload tarball as workflow artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -73,26 +68,13 @@ jobs:
 
       - name: Summary
         env:
-          PUBLISHED_VERSION: ${{ steps.version.outputs.version }}
-          DIST_TAG: ${{ steps.version.outputs.tag }}
+          PACKED_VERSION: ${{ steps.version.outputs.version }}
           TARBALL: ${{ steps.pack.outputs.tarball }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           {
-            echo "Published \`@starkware-libs/starknet-privacy-sdk@${PUBLISHED_VERSION}\`"
+            echo "Packed \`@starkware-libs/starknet-privacy-sdk@${PACKED_VERSION}\`"
             echo
-            echo "**Install via npm (requires GitHub Packages auth):**"
-            echo '```'
-            echo "npm install @starkware-libs/starknet-privacy-sdk@${PUBLISHED_VERSION}"
-            echo "# or, latest from this branch:"
-            echo "npm install @starkware-libs/starknet-privacy-sdk@${DIST_TAG}"
-            echo '```'
-            echo
-            # Prerelease identifiers compare lexically, so `<x.y.z>-<branch>.<sha>` sorts below the
-            # client's `^x.y.z-rc.N` peer floor for most branch names.
-            echo "Next to a published \`@starkware-libs/starknet-privacy-client\`, this version may fall outside the client's SDK peer range; add \`--legacy-peer-deps\` if npm reports \`ERESOLVE\`."
-            echo
-            echo "**Or download the tarball from this run** (browser, GitHub login only)."
             echo "Open the run page below and grab \`${TARBALL}\` from the *Artifacts* section at the bottom:"
             echo
             echo "${RUN_URL}"
@@ -101,4 +83,8 @@ jobs:
             echo '```'
             echo "npm install ./${TARBALL}"
             echo '```'
+            echo
+            # A prerelease satisfies a range only when the range names a prerelease of the same x.y.z,
+            # so a branch build is outside the client's `^x.y.z` peer range.
+            echo "Next to a published \`@starkware-libs/starknet-privacy-client\`, this version is outside the client's SDK peer range; add \`--legacy-peer-deps\` if npm reports \`ERESOLVE\`."
           } >> "$GITHUB_STEP_SUMMARY"
