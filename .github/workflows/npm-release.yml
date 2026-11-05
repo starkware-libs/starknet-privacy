@@ -6,14 +6,17 @@ name: npm Release
 #     `npm publish --dry-run`, but nothing is published. A real manual publish must be dispatched on
 #     the package's release tag, so every published version has a tag.
 #
-# The verify job packs the tarball; the publish job publishes that same tarball, so what was checked
-# is what ships. Tests are not rerun here: a real publish only accepts a commit on main, which CI has
-# already tested (the SDK suite also needs the Cairo toolchain).
+# Follows the org's NPM Package Publishing Policy. The verify job packs the tarball; the publish job
+# publishes that same tarball, so what was checked is what ships. The client's tests run here; the
+# SDK's tests and Cairo artifact generation do not: a real publish only accepts a commit on main, where
+# CI has already tested it and checked the generated files match the Cairo sources (both need the
+# Cairo toolchain). Release builds install with `npm ci --ignore-scripts` and no dependency cache.
 #
 # Publishing authenticates through npm trusted publishing (OIDC), bound on npmjs to this file and the
 # `npm-release` environment. A trusted publisher can only be attached to a package that already
-# exists, so a package's first version is published with the NPM_TOKEN environment secret; delete that
-# secret once both packages have a trusted publisher.
+# exists, so each package's first version is published with a one-time NPM_TOKEN secret in that
+# environment, a documented exception to the policy's no-token rule. Delete the secret once both
+# packages have a trusted publisher and are set to disallow tokens.
 
 on:
   push:
@@ -32,8 +35,11 @@ on:
         type: boolean
         default: true
 
+# A group holds one running and one pending run, and a newer run cancels the pending one. Releases
+# wait on environment approval, so a shared group would let one release cancel another; per ref,
+# only a rerun of the same tag (or dispatch on the same branch) can.
 concurrency:
-  group: npm-release
+  group: npm-release-${{ github.ref }}
   cancel-in-progress: false
 
 permissions:
@@ -41,8 +47,8 @@ permissions:
 
 env:
   NODE_VERSION: "24"
-  # Trusted publishing needs npm >= 11.5.1, which Node 24's bundled npm may predate.
-  NPM_VERSION: "11.6.2"
+  # Trusted publishing needs npm >= 11.5.1; the publish job checks Node's bundled npm meets it.
+  MIN_NPM_VERSION: "11.5.1"
   SDK_NAME: "@starkware-libs/starknet-privacy-sdk"
 
 jobs:
@@ -54,6 +60,8 @@ jobs:
       version: ${{ steps.release.outputs.version }}
       dist_tag: ${{ steps.release.outputs.dist_tag }}
       dry_run: ${{ steps.release.outputs.dry_run }}
+      release_tag: ${{ steps.release.outputs.release_tag }}
+      commit: ${{ steps.release.outputs.commit }}
       tarball: ${{ steps.pack.outputs.tarball }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -61,17 +69,10 @@ jobs:
           # Full history so a real publish can check the commit is on main.
           fetch-depth: 0
 
+      # No dependency cache: a poisoned cache would flow straight into the published tarball.
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: ${{ env.NODE_VERSION }}
-          cache: "npm"
-          # Same install scope and key as client-ci (`npm ci -w sdk -w client`).
-          cache-dependency-path: |
-            package-lock.json
-            client/package.json
-
-      - name: Install npm ${{ env.NPM_VERSION }}
-        run: npm install -g "npm@$NPM_VERSION"
 
       - name: Resolve package, version and dist-tag
         id: release
@@ -120,6 +121,8 @@ jobs:
             echo "version=$VERSION"
             echo "dist_tag=$DIST_TAG"
             echo "dry_run=$DRY_RUN"
+            echo "release_tag=$RELEASE_TAG"
+            echo "commit=$(git rev-parse HEAD)"
           } >> "$GITHUB_OUTPUT"
 
       - name: Check the version is not on npmjs yet
@@ -135,17 +138,18 @@ jobs:
           fi
 
       # The client links the workspace SDK and type-checks against its ./dist, so the SDK is built
-      # for either package.
+      # for either package. No dependency needs its install script for the build (esbuild's only
+      # validates the binary its platform package already ships).
       - name: Install workspace and build SDK
-        run: npm ci -w sdk -w client && npm run build -w sdk
+        run: npm ci --ignore-scripts -w sdk -w client && npm run build -w sdk
 
       - name: Build SDK browser bundles
         if: steps.release.outputs.package == 'sdk'
         run: npm run build:browser -w sdk
 
-      - name: Build client
+      - name: Build and test client
         if: steps.release.outputs.package == 'client'
-        run: npm run build -w client
+        run: npm run build -w client && npm test -w client
 
       - name: Lint
         run: npm run lint -w "$PACKAGE"
@@ -154,12 +158,15 @@ jobs:
 
       - name: Check the client's SDK peer range
         if: steps.release.outputs.package == 'client'
+        # The client is built against the workspace SDK, which the range check confirms is in the
+        # peer range; that exact version must be on npmjs, or dapps could resolve an older SDK
+        # lacking APIs the client uses.
         run: |
           npm run check:sdk-peer-range -w client
-          PEER_RANGE=$(node -p "require('./client/package.json').peerDependencies[process.env.SDK_NAME]")
-          RESOLVED=$(npm view "$SDK_NAME@$PEER_RANGE" version 2>/dev/null || true)
-          if [ -z "$RESOLVED" ]; then
-            echo "::error::No $SDK_NAME version on npmjs satisfies the client's peer range $PEER_RANGE; publish the SDK first"
+          SDK_VERSION=$(node -p "require('./sdk/package.json').version")
+          PUBLISHED=$(npm view "$SDK_NAME@$SDK_VERSION" version 2>/dev/null || true)
+          if [ -z "$PUBLISHED" ]; then
+            echo "::error::The client is built against $SDK_NAME@$SDK_VERSION, which is not on npmjs; publish the SDK first"
             exit 1
           fi
 
@@ -212,8 +219,27 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           registry-url: https://registry.npmjs.org
 
-      - name: Install npm ${{ env.NPM_VERSION }}
-        run: npm install -g "npm@$NPM_VERSION"
+      - name: Check npm supports trusted publishing
+        run: |
+          NPM_VERSION=$(npm --version)
+          if ! printf '%s\n%s\n' "$MIN_NPM_VERSION" "$NPM_VERSION" | sort -V -C; then
+            echo "::error::npm $NPM_VERSION is older than $MIN_NPM_VERSION, which trusted publishing needs"
+            exit 1
+          fi
+
+      # Approval can take hours; a tag deleted or moved meanwhile must not publish.
+      - name: Check the release tag still points at the verified commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          RELEASE_TAG: ${{ needs.verify.outputs.release_tag }}
+          VERIFIED_COMMIT: ${{ needs.verify.outputs.commit }}
+        run: |
+          TAG_COMMIT=$(gh api "repos/$REPOSITORY/commits/refs/tags/$RELEASE_TAG" --jq .sha)
+          if [ "$TAG_COMMIT" != "$VERIFIED_COMMIT" ]; then
+            echo "::error::Tag $RELEASE_TAG now points at $TAG_COMMIT, not the verified $VERIFIED_COMMIT"
+            exit 1
+          fi
 
       - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
@@ -222,7 +248,8 @@ jobs:
 
       - name: Publish to npmjs
         env:
-          # Empty once the bootstrap secret is deleted; npm then authenticates through OIDC.
+          # Set only while the one-time bootstrap secret exists; once it is deleted this is empty and
+          # npm authenticates through OIDC.
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           TARBALL: ${{ needs.verify.outputs.tarball }}
           DIST_TAG: ${{ needs.verify.outputs.dist_tag }}
