@@ -4,26 +4,25 @@ TypeScript SDK for private transfers on Starknet.
 
 ## Publishing
 
-To publish a release:
+Releases go to npmjs through the `npm Release` workflow (`.github/workflows/npm-release.yml`):
 
-1. Bump `version` with `npm version <version> --no-git-tag-version` (it also updates the repo-root
-   `package-lock.json`). If the new version does not satisfy the client's SDK `peerDependencies`
-   range, bump that range in `client/package.json` too. A prerelease only satisfies a range within
-   the same `x.y.z`: `0.14.3-rc.9` fits `^0.14.3-rc.8`, but `0.14.4-rc.0` and `0.15.0` do not.
-   Client CI fails until the range covers the SDK version; check locally with
-   `npm run check:sdk-peer-range -w client`
-2. Authenticate with GitHub Packages:
-   ```sh
-   echo "//npm.pkg.github.com/:_authToken=YOUR_GITHUB_TOKEN" >> ~/.npmrc
-   ```
-3. Build and publish:
-   ```sh
-   cd sdk
-   npm ci
-   npm run generate
-   npm run build
-   npm publish
-   ```
+1. In a PR, bump `version` with `npm version <version> -w sdk --no-git-tag-version` from the repo
+   root (it also updates `package-lock.json`) and move the `## Unreleased` changelog entries under
+   the new version. A Breaking entry means a major bump. If the new version does not satisfy the
+   client's SDK `peerDependencies` range, bump that range in `client/package.json` too. A prerelease
+   only satisfies a range that names a prerelease of the same `x.y.z`: `1.1.0-rc.1` fits
+   `^1.1.0-rc.0`, but not `^1.0.0`. Client CI fails until the range covers the SDK version; check
+   locally with `npm run check:sdk-peer-range -w client`
+2. Optionally, dispatch `npm Release` with `package: sdk` and `dry_run` checked: it runs every
+   check and `npm publish --dry-run` without publishing.
+3. After the PR merges, tag the merge commit `sdk-v<version>` and push the tag. The workflow
+   verifies the tag matches `sdk/package.json` and is on `main`, then waits for approval in the
+   `npm-release` environment and publishes. A prerelease (`x.y.z-rc.N`) goes out under the `next`
+   dist-tag, so `latest` stays on the last stable release.
+
+For a branch build to test before release, dispatch `npm Release` on the branch with `dry_run`
+checked and install the tarball it uploads (`npm install ./<tarball>.tgz`). The tarball carries the
+version in `package.json`, not a branch-specific one. Branch builds are never published to npmjs.
 
 ## Prerequisites
 
@@ -40,17 +39,23 @@ npm run test:fast # run tests excluding devnet
 
 ## Installation
 
-From a tagged release (GitHub npm registry):
-
 ```bash
 npm install @starkware-libs/starknet-privacy-sdk
 ```
 
-From a specific commit (git):
+Versions up to 0.14.4-RC.0 were published to GitHub Packages only. If your `.npmrc` routes the
+scope there (`@starkware-libs:registry=https://npm.pkg.github.com`), remove that line to install
+from npmjs.
 
-```bash
-npm install "starkware-libs/starknet-privacy#<commit-sha>"
-```
+## Versioning
+
+The SDK follows semantic versioning on its own, starting at 1.0.0: a major bump means a breaking
+change for callers, including dropping support for a Starknet version. Versions up to 0.14.4-RC.0
+followed the privacy release tags (`PRIVACY-*`) instead. Each SDK version is tested with:
+
+| SDK     | Privacy release       | Starknet |
+| ------- | --------------------- | -------- |
+| `1.0.0` | `PRIVACY-0.14.4-RC.0` | 0.14.4   |
 
 ## Quick start
 
@@ -206,14 +211,14 @@ Rule of thumb: any on-chain state that the pool proof reads — account viewing 
 
 ### `createPrivateTransfers(params)`
 
-| Parameter                 | Type                              | Description                                                                                  |
-| ------------------------- | --------------------------------- | -------------------------------------------------------------------------------------------- |
-| `account`                 | `PrivateTransfersUser`            | `{ address, signer }` used to sign proof invocations. A full `Account` is also assignable.   |
-| `viewingKeyProvider`      | `ViewingKeyProvider`              | Provides the private viewing key used for encryption/decryption                              |
-| `provingProvider`         | `ProofProviderInterface`          | Backend that generates validity proofs                                                       |
-| `discoveryProvider`       | `DiscoveryProviderInterface`      | Backend for discovering notes and channels                                                   |
-| `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                                                |
-| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction                                          |
+| Parameter                 | Type                              | Description                                                                                |
+| ------------------------- | --------------------------------- | ------------------------------------------------------------------------------------------ |
+| `account`                 | `PrivateTransfersUser`            | `{ address, signer }` used to sign proof invocations. A full `Account` is also assignable. |
+| `viewingKeyProvider`      | `ViewingKeyProvider`              | Provides the private viewing key used for encryption/decryption                            |
+| `provingProvider`         | `ProofProviderInterface`          | Backend that generates validity proofs                                                     |
+| `discoveryProvider`       | `DiscoveryProviderInterface`      | Backend for discovering notes and channels                                                 |
+| `poolContractAddress`     | `StarknetAddress`                 | Address of the deployed privacy pool contract                                              |
+| `proofInvocationFactory?` | `ProofInvocationFactoryInterface` | Optional override for proof invocation construction                                        |
 
 ### Discovery providers
 
@@ -509,9 +514,8 @@ For gasless transactions via a paymaster (e.g. Avnu), the wallet adds a dust wit
 const { callAndProof: simulated } = await transfers
   .build(options)
   .with(USDC, (t) =>
-    t
-      .transfer({ recipient: bob, amount: 50n })
-      .withdraw({ recipient: 0x1, amount: 1n }))
+    t.transfer({ recipient: bob, amount: 50n }).withdraw({ recipient: 0x1, amount: 1n })
+  )
   .surplusTo(self)
   .simulate({ provider });
 
