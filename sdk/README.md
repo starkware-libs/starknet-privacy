@@ -20,8 +20,9 @@ Releases go to npmjs through the `npm Release` workflow (`.github/workflows/npm-
    `npm-release` environment and publishes. A prerelease (`x.y.z-rc.N`) goes out under the `next`
    dist-tag, so `latest` stays on the last stable release.
 
-For a branch build to test before release, dispatch `SDK Publish Prerelease` on the branch and install
-the tarball it uploads. Branch builds are never published to npmjs.
+For a branch build to test before release, dispatch `npm Release` on the branch with `dry_run`
+checked and install the tarball it uploads (`npm install ./<tarball>.tgz`). The tarball carries the
+version in `package.json`, not a branch-specific one. Branch builds are never published to npmjs.
 
 ## Prerequisites
 
