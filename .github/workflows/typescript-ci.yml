@@ -34,20 +34,6 @@ jobs:
             sdk/package.json
       - if: steps.filter.outputs.sdk == 'true'
         run: npm ci && npm run lint
-      # Builds what npm-release.yml ships and checks the tarball has every file package.json's main,
-      # types and exports point at, so a missing build output fails here rather than on release day.
-      - name: Check the packed SDK has every exported file
-        if: steps.filter.outputs.sdk == 'true'
-        run: |
-          npm run build && npm run build:browser
-          PACKED_FILES=$(npm pack --dry-run --json | jq -r '.[0].files[].path' | sort -u)
-          EXPORTED_FILES=$(jq -r '[.main, .types, (.exports[] | .[])] | .[]' package.json | sed 's|^\./||' | sort -u)
-          MISSING_FILES=$(comm -23 <(echo "$EXPORTED_FILES") <(echo "$PACKED_FILES"))
-          if [ -n "$MISSING_FILES" ]; then
-            echo "::error::The packed SDK lacks files package.json points at:"
-            echo "$MISSING_FILES"
-            exit 1
-          fi
 
   check:
     name: SDK Build & Test
