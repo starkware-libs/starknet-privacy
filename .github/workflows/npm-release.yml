@@ -4,7 +4,8 @@ name: npm Release
 #   - push of an `sdk-v<version>` / `client-v<version>` tag: verify, then publish
 #   - manual dispatch: pick the package. With `dry_run` (the default) every check runs, including
 #     `npm publish --dry-run`, but nothing is published. A real manual publish must be dispatched on
-#     the package's release tag, so every published version has a tag.
+#     the package's release tag, so every published version has a tag. A dry run on a branch also
+#     serves as a branch build: install the tarball it uploads to test the branch before a release.
 #
 # Follows the org's NPM Package Publishing Policy. The verify job packs the tarball; the publish job
 # publishes that same tarball, so what was checked is what ships. The client's tests run here; the
@@ -129,13 +130,21 @@ jobs:
         env:
           NAME: ${{ steps.release.outputs.name }}
           VERSION: ${{ steps.release.outputs.version }}
+          DRY_RUN: ${{ steps.release.outputs.dry_run }}
         run: |
           # `npm view` fails for a package that was never published; that counts as not published.
           PUBLISHED=$(npm view "$NAME@$VERSION" version 2>/dev/null || true)
-          if [ -n "$PUBLISHED" ]; then
-            echo "::error::$NAME@$VERSION is already on npmjs; versions cannot be republished"
-            exit 1
+          if [ -z "$PUBLISHED" ]; then
+            exit 0
           fi
+          # A branch between releases still carries the last published version, so a dry run there
+          # only warns: it can still check and pack the branch.
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "::warning::$NAME@$VERSION is already on npmjs; bump the version before tagging a release"
+            exit 0
+          fi
+          echo "::error::$NAME@$VERSION is already on npmjs; versions cannot be republished"
+          exit 1
 
       # The client links the workspace SDK and type-checks against its ./dist, so the SDK is built
       # for either package. No dependency needs its install script for the build (esbuild's only
