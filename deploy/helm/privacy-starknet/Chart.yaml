@@ -2,9 +2,9 @@ apiVersion: v2
 name: privacy-starknet
 description: Starknet privacy transaction prover and discovery service
 type: application
-version: 0.4.0
+version: 0.4.1
 # The release workflow overrides this with the pushed release tag. Image tags default to it.
-appVersion: "PRIVACY-0.14.4-RC.0"
+appVersion: "PRIVACY-0.14.4-RC.1"
 keywords:
   - starknet
   - privacy

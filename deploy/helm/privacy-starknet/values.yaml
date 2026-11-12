@@ -32,7 +32,8 @@ transactionProver:
   tolerations: []
   affinity: {}
 
-  # The prover's JSON-RPC server has no GET health route, so its probes check the port.
+  # The probes check the port. The prover's GET /health returns 503 while it is saturated,
+  # so keep it off the liveness probe: a restart discards the proofs in flight.
   livenessProbe:
     tcpSocket:
       port: http
@@ -49,9 +50,9 @@ transactionProver:
     annotations: {}
       # cloud.google.com/neg: '{"ingress":true}'
 
-  # GKE BackendConfig. The prover's JSON-RPC backend is POST-only, so the GCE health
-  # check targets the proof-interceptor's /health instead. The chart links it to the
-  # Service through the cloud.google.com/backend-config annotation. Disable off GKE.
+  # GKE BackendConfig. The GCE health check targets the proof-interceptor's /health by
+  # default, so a saturated prover stays in rotation. The chart links it to the Service
+  # through the cloud.google.com/backend-config annotation. Disable off GKE.
   backendConfig:
     enabled: true
     healthCheck:
