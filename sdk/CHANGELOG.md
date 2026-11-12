@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+## 0.14.4-RC.1
+
+No SDK change. The version tracks the release. The transaction prover it talks to
+(`transaction-prover:PRIVACY-0.14.4-RC.1`) changes what a `starknet_proveTransaction`
+caller can see:
+
+- A transaction that uses a builtin the prover does not support (`ecdsa`, `range_check96`,
+  `add_mod`, `mul_mod`) is rejected before proving with JSON-RPC error `1002`. The SDK
+  surfaces it as a `ProvingServiceError` and does not retry it.
+- `starknet_specVersion` reports `0.10.4`, up from `0.10.3-rc.2`.
+- The prover serves `GET /metrics`, and `GET /health` now returns `503` while the prover
+  is saturated. `isHealthy()` calls `starknet_specVersion`, so it is unaffected.
+
 ## 0.14.4-RC.0
 
 ### Breaking

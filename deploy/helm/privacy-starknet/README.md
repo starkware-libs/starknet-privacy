@@ -101,7 +101,9 @@ sidecar blocks the transaction. Review `proofInterceptor.screening.failOpen` and
 
 Each component gets a `cloud.google.com/v1` BackendConfig, linked to its Service by the
 `cloud.google.com/backend-config` annotation. The prover's health check targets the
-sidecar, because the prover has no GET health route. On other clusters, disable it:
+sidecar's `/health` by default. Read
+[Prover health, metrics and shutdown](#prover-health-metrics-and-shutdown) before pointing
+it at the prover. On other clusters, disable it:
 
 ```yaml
 transactionProver:
@@ -111,6 +113,62 @@ discoveryService:
   backendConfig:
     enabled: false
 ```
+
+## Prover health, metrics and shutdown
+
+The prover answers two unauthenticated GET routes on its JSON-RPC port
+(`transactionProver.config.port`). `/metrics` and the saturation check behind `/health`
+need `transaction-prover:PRIVACY-0.14.4-RC.1` or newer; older images answer `/health`
+with `200` unconditionally. The
+[prover README](https://github.com/starkware-libs/sequencer/tree/PRIVACY-0.14.4-RC.1/crates/starknet_transaction_prover#observability)
+is the reference for both.
+
+### `/health`
+
+Returns `200` while the prover accepts work. It returns `503` once the prover is
+saturated: requests were rejected as busy (JSON-RPC error `-32005`) and no worker slot
+made progress for `health_max_saturated_ms`, 10 seconds by default. An idle prover always
+returns `200`. Set the threshold with the other prover settings:
+
+```yaml
+transactionProver:
+  config:
+    health_max_saturated_ms: 10000
+```
+
+The chart's default probes check the TCP port, so saturation does not affect them. If you
+switch a check to `/health`:
+
+- Use it for the readiness probe or the load balancer health check, where a `503` takes
+  the Pod out of rotation until a proof finishes. With a single replica that leaves no
+  backend, so clients get the load balancer's error in place of `-32005`.
+- Keep it off the liveness probe. A saturated prover is busy proving, and a restart
+  discards the proofs in flight.
+
+### `/metrics`
+
+Serves Prometheus metrics:
+
+- `prover_prove_transaction_outcome_total` and `prover_prove_transaction_duration_seconds`,
+  labelled by outcome. Busy-rejects and transactions rejected for an unsupported builtin
+  (JSON-RPC error `1002`) are outcomes of their own.
+- `prover_queue_waiting_requests` and `prover_queue_wait_duration_seconds`.
+- `prover_http_requests_total`, `prover_http_request_duration_seconds` and
+  `prover_http_inflight_requests`.
+- `prover_panics_total`.
+- `prover_build_info`, which carries the image's version and git SHA.
+
+The chart does not create a scrape configuration. An Ingress path of `/` routes
+`/metrics` and `/health` to the prover along with the JSON-RPC endpoint, so anyone who
+can reach the host can read them. Restrict the Ingress paths or filter at the load
+balancer if that is not acceptable.
+
+### Shutdown
+
+On `SIGTERM` the prover stops accepting requests and lets in-flight proofs finish.
+Kubernetes sends `SIGKILL` when the Pod's termination grace period ends, 30 seconds by
+default, and the chart does not set a longer one. A proof still running at that point is
+lost and the client must retry.
 
 ## Network exposure
 
