@@ -32,7 +32,7 @@ import {
   type DiscoveryOptions,
 } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
-import { Devnet as StarknetDevnet } from "starknet-devnet";
+import type { Devnet as StarknetDevnet } from "starknet-devnet";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -147,7 +147,8 @@ export class Devnet {
     // Spawn a devnet instance on a random free port using the system-installed binary.
     // keepAlive: true skips the npm package's registerCleanup() which installs a global
     // uncaughtException handler that calls process.exit(1) — fatal in Vitest fork workers.
-    this.devnet = await StarknetDevnet.spawnInstalled({
+    const starknetDevnetClass = await loadStarknetDevnet();
+    this.devnet = await starknetDevnetClass.spawnInstalled({
       args: devnetArgs,
       keepAlive: true,
     });
@@ -531,4 +532,20 @@ export function createUnattestedAliceTransfers(env: DevnetEnvironment): PrivateT
     discoveryProvider: new ContractDiscoveryProvider(env.privacy),
     poolContractAddress: env.privacy.address,
   });
+}
+
+/**
+ * Load `starknet-devnet`, an optional peer dependency, only when a devnet is spawned, so the
+ * rest of the testing entry point works without it. The `try` also makes bundlers such as
+ * esbuild leave the import unresolved instead of failing the consumer's build.
+ */
+async function loadStarknetDevnet(): Promise<typeof StarknetDevnet> {
+  try {
+    return (await import("starknet-devnet")).Devnet;
+  } catch (cause) {
+    throw new Error(
+      "Devnet requires the optional peer dependency starknet-devnet; install it to spawn a devnet",
+      { cause }
+    );
+  }
 }
