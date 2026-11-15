@@ -73,9 +73,16 @@
   "dependencies": {
     "@starknet-io/starknet-types-0101": "npm:@starknet-io/types-js@~0.10.2",
     "ohttp-ts": "^0.3.0",
-    "starknet": "10.5.0",
-    "starknet-devnet": "^0.7.2",
-    "zod": "^3.24.0"
+    "starknet": "^10.5.0",
+    "zod": "^4.6.6"
+  },
+  "peerDependencies": {
+    "starknet-devnet": "^0.11.0"
+  },
+  "peerDependenciesMeta": {
+    "starknet-devnet": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@eslint/js": "^9.39.2",
@@ -88,6 +95,7 @@
     "eslint": "^9.39.2",
     "playwright": "^1.58.1",
     "prettier": "^3.7.4",
+    "starknet-devnet": "^0.11.0",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.51.0",
     "vitest": "^4.0.15"

@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+### Breaking
+
+- `starknet-devnet` is now an optional peer dependency (`^0.11.0`) instead of a dependency, so
+  consumers no longer install it or its archive-extraction dependencies (`decompress`, with
+  GHSA-mp2f-45pm-3cg9 and related advisories). Install it yourself to use `Devnet` from
+  `/testing`; the rest of `/testing` loads without it.
+
+### Changed
+
+- `zod` moves to `^4.6.6` (GHSA-mrhx-c7xc-m3w5 has no fix in 3.x).
+- `starknet` accepts `^10.5.0` instead of exactly `10.5.0`. Tested on 10.5.0 and 10.8.0.
+
 ## 0.14.4-RC.1
 
 No SDK change. The version tracks the release. The transaction prover it talks to

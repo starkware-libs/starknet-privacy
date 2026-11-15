@@ -32,7 +32,7 @@ import {
   type DiscoveryOptions,
 } from "../internal/contract-discovery.js";
 import { toBigInt } from "../utils/crypto.js";
-import { Devnet as StarknetDevnet } from "starknet-devnet";
+import type { Devnet as StarknetDevnet } from "starknet-devnet";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -147,7 +147,10 @@ export class Devnet {
     // Spawn a devnet instance on a random free port using the system-installed binary.
     // keepAlive: true skips the npm package's registerCleanup() which installs a global
     // uncaughtException handler that calls process.exit(1) — fatal in Vitest fork workers.
-    this.devnet = await StarknetDevnet.spawnInstalled({
+    // starknet-devnet is an optional peer dependency, loaded only when a devnet is spawned
+    // so that the rest of the testing entry point works without it installed.
+    const { Devnet } = await import("starknet-devnet");
+    this.devnet = await Devnet.spawnInstalled({
       args: devnetArgs,
       keepAlive: true,
     });
