@@ -85,6 +85,11 @@ Apply these guidelines when writing or reviewing code in this codebase.
 - When adding a configurable option to a low-level constructor, thread it through the higher-level factory/builder that wraps it — especially if the option changes default behavior. An escape hatch that only exists on a surface most callers don't use is not a real escape hatch
 - *Example:* A `retry` option added to a service constructor must also be reachable from the `createX` factory config; otherwise factory users get the new default-on behavior with no way to tune or disable it
 
+### An optional dependency must survive the consumer's bundler, not just Node
+- A lazy `await import("pkg")` keeps a missing package from failing at load time in Node, but bundlers resolve literal import specifiers at build time and fail the consumer's build even when the code path is never used. Guard the import in `try/catch` (esbuild then leaves it unresolved) and rethrow an error naming the package to install
+- Test it by bundling the entry point with the package aliased to a path that does not exist; a plugin that returns a resolve error does not reproduce it, because esbuild only tolerates its own resolution failures inside `try`
+- *Example:* making `starknet-devnet` an optional peer of the SDK left `import { Mocknet } from ".../testing"` unbundleable for Node consumers without it, though direct Node imports worked
+
 ### Simplify when defaults add no value
 - If `None` just means a default value, consider using a plain type instead
 - *Example:* `start_index: u64` with default 0 is simpler than `Option<u64>` where `None` means 0

@@ -7,7 +7,8 @@
 - `starknet-devnet` is now an optional peer dependency (`^0.11.0`) instead of a dependency, so
   consumers no longer install it or its archive-extraction dependencies (`decompress`, with
   GHSA-mp2f-45pm-3cg9 and related advisories). Install it yourself to use `Devnet` from
-  `/testing`; the rest of `/testing` loads without it.
+  `/testing`; the rest of `/testing` loads and bundles without it, and spawning a `Devnet`
+  without it throws an error naming the missing package.
 
 ### Changed
 
