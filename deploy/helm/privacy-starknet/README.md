@@ -120,7 +120,7 @@ The prover answers two unauthenticated GET routes on its JSON-RPC port
 (`transactionProver.config.port`). `/metrics` and the saturation check behind `/health`
 need `transaction-prover:PRIVACY-0.14.4-RC.1` or newer; older images answer `/health`
 with `200` unconditionally. The
-[prover README](https://github.com/starkware-libs/sequencer/tree/PRIVACY-0.14.4-RC.1/crates/starknet_transaction_prover#observability)
+[prover README](https://github.com/starkware-libs/sequencer/tree/PRIVACY-0.14.4-RC.2/crates/starknet_transaction_prover#observability)
 is the reference for both.
 
 ### `/health`

@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 0.14.4-RC.2
+
 ### Breaking
 
 - `starknet-devnet` is now an optional peer dependency (`^0.11.0`) instead of a dependency, so
