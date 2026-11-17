@@ -75,6 +75,12 @@ jobs:
       - name: Regenerate Cairo contract artifacts
         run: npm run generate
 
+      # npm releases ship the committed generated sources without regenerating them. Only src/ is
+      # compared: it is what ships, while the regenerated test fixture differs from the committed one
+      # in formatting alone and the asdf step above rewrites .tool-versions.
+      - name: Check generated sources match the Cairo sources
+        run: git diff --exit-code -- src/
+
       - name: Fetch proving API spec
         env:
           SEQUENCER_SPEC_REF: "avi/privacy/add-rpc-spec"
